@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title data-i18n-title="title.upload">上傳影片 — 行車記錄</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .sftp-card { padding:18px 20px; margin-top:16px; }
+    .sftp-card-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+    .sftp-rows { display:flex; flex-direction:column; gap:8px; }
+    .sftp-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .sftp-row .lbl { width:88px; flex:none; color:var(--ink-3); font-size:13px; }
+    .sftp-row .val { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; color:var(--ink-1);
+                     background:var(--surface-2); border:1px solid var(--border); border-radius:6px;
+                     padding:5px 9px; flex:1; min-width:140px; overflow:auto; white-space:nowrap; }
+    .copy-btn { flex:none; }
+    .sftp-meta { display:flex; gap:14px; flex-wrap:wrap; color:var(--ink-2); font-size:13px; margin:14px 0 4px; }
+    .sftp-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px;
+                    padding-top:14px; border-top:1px solid var(--border); }
+    .countdown { font-variant-numeric:tabular-nums; font-weight:600; font-family:var(--font-mono); }
+    .countdown.warn { color:var(--crit); }
+    .status-pill { font-size:11px; padding:3px 10px; border-radius:999px; font-weight:600;
+                   font-family:var(--font-mono); letter-spacing:.06em; text-transform:uppercase; }
+    .status-active { background:color-mix(in oklch, var(--ok) 16%, var(--surface)); color:var(--ok); }
+    .status-processing { background:var(--accent-soft); color:var(--accent); }
+
+    /* ── 處理間隔滑桿(重新設計) ─────────────────────────────────────────── */
+    .gap-field { display:flex; align-items:center; gap:12px; padding:7px 14px;
+      background:var(--surface-2); border:1px solid var(--border); border-radius:999px; }
+    .gap-label { font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-3); flex:none; }
+    .gap-val { font-size:13px; color:var(--ink-2); flex:none; min-width:44px; }
+    .gap-val strong { font-family:var(--font-mono); font-size:15px; color:var(--accent); font-variant-numeric:tabular-nums; }
+    .gap-range { -webkit-appearance:none; appearance:none; width:130px; height:6px; border-radius:999px;
+      background:var(--surface-3); outline:none; cursor:pointer; flex:none; }
+    .gap-range::-webkit-slider-runnable-track { height:6px; border-radius:999px; background:transparent; }
+    .gap-range::-moz-range-track { height:6px; border-radius:999px; background:var(--surface-3); }
+    .gap-range::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:18px; height:18px; margin-top:-6px;
+      border-radius:50%; background:var(--accent); border:3px solid var(--surface); box-shadow:var(--shadow-sm);
+      cursor:pointer; transition:transform .12s ease; }
+    .gap-range::-webkit-slider-thumb:hover { transform:scale(1.12); }
+    .gap-range::-moz-range-thumb { width:18px; height:18px; border-radius:50%; background:var(--accent);
+      border:3px solid var(--surface); box-shadow:var(--shadow-sm); cursor:pointer; }
+    .gap-range:focus-visible { box-shadow:0 0 0 3px var(--accent-soft); }
+    @media (max-width: 560px) {
+      .sftp-actions { flex-wrap:wrap; }
+      .gap-field { width:100%; box-sizing:border-box; justify-content:space-between; }
+      .gap-range { flex:1; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap hdr-inner">
+    <a class="hdr-brand" href="/">
+      <div class="hdr-brand-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+      <span class="hdr-brand-text">行車記錄</span>
+    </a>
+    <nav class="hdr-nav">
+      <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
+      <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
+      <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
+      <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
+    </nav>
+    <div class="hdr-ctrls" id="hdr-ctrls"></div>
+  </div>
+</header>
+
+<div class="page-body">
+  <div class="wrap section-tight">
+
+    <div class="eyebrow sec-eyebrow" style="margin-bottom:12px;">
+      <span class="tick"></span><span data-i18n="upload.eyebrow">管理員</span>
+    </div>
+    <h1 class="page-title" style="margin-bottom:6px;" data-i18n="upload.title">透過 SFTP 上傳行車記錄</h1>
+    <p class="page-sub" id="upload-intro" style="margin-bottom:24px;" data-i18n="upload.intro">
+      建立一個臨時 SFTP 上傳工作階段,用 FileZilla 等工具把片段直接傳到專屬資料夾,完成後回此頁按「確認並處理」。
+    </p>
+
+    <!-- 說明卡(建立工作階段後自動隱藏,讓資訊上移、不需捲動) -->
+    <div class="info-card" id="how-card" style="padding:18px 22px;margin-bottom:18px;">
+      <div class="info-card-title" style="margin-bottom:10px;">怎麼上傳?</div>
+
+      <p style="margin:0 0 14px;color:var(--ink-2);font-size:14px;line-height:1.8;">
+        本系統目前針對 <strong>MiVue™ MP20</strong> 前後雙鏡頭行車記錄器設計。它會把行車過程切成一段段短片,
+        本站會依「日期 / 趟次」自動整理、用 ffmpeg <strong>無損合併</strong>成完整旅程供瀏覽。
+      </p>
+
+      <div style="font-weight:600;font-size:13px;color:var(--ink-1);margin-bottom:6px;">檔案格式</div>
+      <ul style="margin:0 0 14px;padding-left:20px;color:var(--ink-2);font-size:13.5px;line-height:1.8;">
+        <li>影片檔名格式:<code>(FILE|EMER)YYMMDD-HHMMSS-序號(F|R).mp4</code>。<code>F</code>=前鏡頭、<code>R</code>=後鏡頭;<code>EMER</code>=G-sensor 緊急鎖檔。</li>
+        <li>每支影片通常伴隨一個<strong>同名 <code>.NMEA</code></strong> 檔(GPS / G-force 軌跡),請一併上傳。</li>
+        <li>可直接把記憶卡裡的原始片段整批拖入(結構不拘),或上傳已整理好的 <code>YYYY-MM-DD/</code> 旅程資料夾。</li>
+      </ul>
+
+      <div style="font-weight:600;font-size:13px;color:var(--ink-1);margin-bottom:6px;">上傳流程</div>
+      <ol style="margin:0;padding-left:20px;color:var(--ink-2);font-size:13.5px;line-height:1.8;">
+        <li>按下方<strong>「建立上傳工作階段」</strong>,取得一組一次性 SFTP 連線資訊(使用者 / 密碼 / 伺服器)。</li>
+        <li>用 FileZilla / WinSCP / <code>sftp</code> 連線(最快:複製<strong>「FileZilla 指令」</strong>貼進終端機自動開啟),把上述檔案<strong>直接拖進去</strong>。</li>
+        <li>傳完回到此頁,按該工作階段的<strong>「確認並處理」</strong>。系統會自動依停留間隔切趟、無損合併前後鏡頭、解析 NMEA 的 G-force 事件。</li>
+        <li>處理完成後即可到<strong>「瀏覽旅程」</strong>觀看。閒置過久(未上傳)資料夾會自動清除失效。</li>
+      </ol>
+    </div>
+
+    <button class="btn btn--lg" id="create-btn" data-i18n="upload.createBtn">建立上傳工作階段</button>
+
+    <!-- 工作階段清單 -->
+    <div id="sessions-empty" style="display:none;color:var(--ink-3);font-size:14px;margin-top:18px;" data-i18n="upload.emptyList">
+      目前沒有進行中的上傳工作階段。
+    </div>
+    <div id="sessions-list" style="margin-top:8px;"></div>
+
+    <!-- 處理進度(確認後顯示,沿用 SSE) -->
+    <div id="upload-progress" style="display:none;margin-top:20px;">
+      <div class="progress-card">
+        <div class="progress-stage" id="prog-stage"><div class="spinner"></div><span data-i18n="upload.preparing">準備中…</span></div>
+        <div class="progress-track">
+          <div class="progress-fill" id="prog-bar" style="width:0%"></div>
+        </div>
+        <div class="progress-log" id="prog-log"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/app.js"></script>
+<script>
+/* ── 狀態 ────────────────────────────────────────────────────────────────── */
+let pollTimer = null;
+let tickTimer = null;
+let processing = false;            // 確認後切到進度檢視
+const gapBySession = new Map();    // id -> gap 分鐘(保留使用者調整)
+const droppedIds = new Set();      // 倒數歸零已就地關閉的 id(避免輪詢競態又把卡片加回來)
+
+/* ── Init ────────────────────────────────────────────────────────────────── */
+(async () => {
+  await configReady;
+  const user = await checkAuth();
+  renderHeader(user);
+  document.getElementById('create-btn').addEventListener('click', createSession);
+  await loadSessions();
+  pollTimer = setInterval(loadSessions, 5000);
+  tickTimer = setInterval(tickCountdowns, 1000);
+})();
+
+/** 預設處理間隔(分),來自 /api/config。 */
+function defaultGap() { return (__cfg.defaults && __cfg.defaults.gapMin) || 15; }
+
+/* ── 建立 / 取消 / 確認 ────────────────────────────────────────────────────── */
+async function createSession() {
+  const btn = document.getElementById('create-btn');
+  btn.disabled = true; btn.textContent = t('upload.creating');
+  try {
+    await apiFetch('/api/upload-sessions', { method: 'POST' });
+    showToast(t('upload.created'), 'success');
+    await loadSessions();
+  } catch (e) {
+    showToast(t('upload.createFail') + ':' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = t('upload.createBtn');
+  }
+}
+
+async function cancelSession(id) {
+  if (!confirm(t('upload.cancelConfirm'))) return;
+  try {
+    await apiFetch('/api/upload-sessions/' + id, { method: 'DELETE' });
+    showToast(t('upload.cancelled'));
+    await loadSessions();
+  } catch (e) {
+    showToast(t('upload.cancelFail') + ':' + e.message, 'error');
+  }
+}
+
+async function confirmSession(id) {
+  const gap = gapBySession.get(id) ?? defaultGap();
+  try {
+    const r = await apiFetch('/api/upload-sessions/' + id + '/confirm?gap_min=' + gap, { method: 'POST' });
+    // 切到進度檢視
+    processing = true;
+    clearInterval(pollTimer); clearInterval(tickTimer);
+    document.getElementById('sessions-list').style.display = 'none';
+    document.getElementById('sessions-empty').style.display = 'none';
+    document.getElementById('create-btn').style.display = 'none';
+    document.getElementById('upload-progress').style.display = '';
+    log(t('upload.received', { n: r.accepted }) + (r.rejected.length ? t('upload.skipped', { n: r.rejected.length }) : '') + t('upload.startProcessing'));
+    listenSSE(id);
+  } catch (e) {
+    showToast(t('upload.createFail') + ':' + e.message, 'error');
+  }
+}
+
+/* ── 載入並渲染清單(in-place 更新避免閃爍) ───────────────────────────────── */
+async function loadSessions() {
+  if (processing) return;
+  let list;
+  try { list = await apiFetch('/api/upload-sessions'); }
+  catch { return; }
+
+  const wrap = document.getElementById('sessions-list');
+  document.getElementById('sessions-empty').style.display = list.length ? 'none' : '';
+  // 有進行中的工作階段時,收起說明卡與前言,讓連線資訊上移、不需捲動即可見。
+  const hasSessions = list.length > 0;
+  document.getElementById('how-card').style.display = hasSessions ? 'none' : '';
+  document.getElementById('upload-intro').style.display = hasSessions ? 'none' : '';
+
+  const seen = new Set();
+  for (const s of list) {
+    if (droppedIds.has(s.id)) continue;   // 已就地到期關閉,等伺服器回收,別再加回來
+    seen.add(s.id);
+    let card = document.getElementById('sc-' + s.id);
+    if (!card) { card = buildCard(s); wrap.appendChild(card); }
+    updateCard(card, s);
+  }
+  // 移除已消失的卡片
+  for (const child of [...wrap.children]) {
+    if (!seen.has(child.dataset.id)) child.remove();
+  }
+}
+
+function buildCard(s) {
+  const card = document.createElement('div');
+  card.className = 'info-card sftp-card';
+  card.id = 'sc-' + s.id;
+  card.dataset.id = s.id;
+  const u = s.sftp;
+  // 使用者名稱可能是 email(含 @),密碼為 base64url(只含 A-Za-z0-9-_,絕不含 @)。
+  // FileZilla 與 WHATWG URL 解析器都以「最後一個 @」當 user/host 分隔點,
+  // 因此 email 裡的 @ 可保留原樣;只需百分比編碼其餘特殊字元(@ 還原回來,避免顯示成 %40)。
+  const encUser = encodeURIComponent(u.username).replace(/%40/g, '@');
+  const authUrl = `sftp://${encUser}:${encodeURIComponent(u.password)}@${u.host}:${u.port}`;
+  // 各 OS 的 FileZilla 啟動方式不同:mac 是 App bundle(無 PATH 指令),Win/Linux 才有 filezilla。
+  const plat = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent;
+  const isMac = /mac/i.test(plat);
+  const launchCmd = isMac
+    ? `open -a FileZilla --args "${authUrl}"`
+    : `filezilla "${authUrl}"`;
+  card.innerHTML = `
+    <div class="sftp-card-head">
+      <div class="info-card-title">${t('upload.sessionLabel')} <span style="color:var(--ink-3);font-weight:500;">#${s.id}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="status-pill" data-status></span>
+        <span class="countdown" data-countdown></span>
+      </div>
+    </div>
+    <div class="sftp-rows">
+      ${row(t('upload.rowServer'), `sftp://${u.host}:${u.port}`)}
+      ${row(t('upload.rowUser'), u.username)}
+      ${row(t('upload.rowPassword'), u.password)}
+      ${row(isMac ? t('upload.rowFilezillaCmdMac') : t('upload.rowFilezillaCmd'), launchCmd)}
+    </div>
+    <div class="sftp-meta">
+      <span>${t('upload.uploaded')} <strong data-files>0</strong> ${t('upload.filesUnit')}</span>
+      <span><strong data-bytes>0 B</strong></span>
+      <span data-speed style="color:var(--accent);font-weight:600;display:none;"></span>
+    </div>
+    <div class="sftp-actions">
+      <div class="gap-field">
+        <span class="gap-label">${t('upload.gap')}</span>
+        <input type="range" class="gap-range" min="5" max="60" step="5" value="${gapBySession.get(s.id) ?? defaultGap()}" data-gap>
+        <span class="gap-val"><strong data-gapval>${gapBySession.get(s.id) ?? defaultGap()}</strong> ${t('upload.gapUnit')}</span>
+      </div>
+      <span style="flex:1;"></span>
+      <button class="btn btn--ghost btn--sm" type="button" data-act="cancel">${t('common.cancel')}</button>
+      <button class="btn btn--sm" type="button" data-act="confirm">${t('upload.confirmBtn')}</button>
+    </div>`;
+
+  // 複製鈕事件
+  card.querySelectorAll('[data-copy]').forEach(btn => {
+    btn.addEventListener('click', () => copy(btn.getAttribute('data-copy'), btn));
+  });
+  // 間隔滑桿
+  const gap = card.querySelector('[data-gap]');
+  const gapVal = card.querySelector('[data-gapval]');
+  gap.addEventListener('input', () => {
+    gapBySession.set(s.id, parseInt(gap.value, 10));
+    gapVal.textContent = gap.value;
+  });
+  card.querySelector('[data-act="cancel"]').addEventListener('click', () => cancelSession(s.id));
+  card.querySelector('[data-act="confirm"]').addEventListener('click', () => confirmSession(s.id));
+  return card;
+}
+
+function row(label, value) {
+  return `<div class="sftp-row">
+      <span class="lbl">${label}</span>
+      <span class="val">${escapeHtml(value)}</span>
+      <button class="btn btn--ghost btn--sm copy-btn" type="button" data-copy="${escapeAttr(value)}">${t('common.copy')}</button>
+    </div>`;
+}
+
+function updateCard(card, s) {
+  const pill = card.querySelector('[data-status]');
+  pill.textContent = s.status === 'processing' ? t('upload.statusProcessing') : t('upload.statusWaiting');
+  pill.className = 'status-pill ' + (s.status === 'processing' ? 'status-processing' : 'status-active');
+
+  card.querySelector('[data-files]').textContent = s.file_count;
+  card.querySelector('[data-bytes]').textContent = fmtBytes(s.total_bytes);
+
+  // 即時網速(傳輸中且 >0 才顯示)
+  const spEl = card.querySelector('[data-speed]');
+  if (s.uploading && s.speed_bps > 0) {
+    spEl.textContent = t('upload.speedPrefix') + fmtSpeed(s.speed_bps);
+    spEl.style.display = '';
+  } else {
+    spEl.style.display = 'none';
+  }
+
+  const cd = card.querySelector('[data-countdown]');
+  if (s.uploading) {
+    // 有連線在傳輸:不倒數,顯示「上傳中」
+    cd.textContent = t('upload.uploading');
+    cd.classList.remove('warn');
+    card._expiresAt = null;
+  } else if (s.expires_in === null || s.expires_in === undefined) {
+    // idle_ttl_sec===null 代表此帳號不限時(管理員預設或後台設定);其餘情況不顯示倒數。
+    cd.textContent = (s.status === 'active' && s.idle_ttl_sec === null) ? '不限時' : '';
+    cd.classList.remove('warn');
+    card._expiresAt = null;
+  } else {
+    card._expiresAt = Date.now() + s.expires_in * 1000;
+    renderCountdown(card);
+  }
+}
+
+/* ── 倒數計時(本地每秒 tick;每 5 秒由 server 校正) ──────────────────────── */
+function tickCountdowns() {
+  // 快照:renderCountdown 可能在歸零時移除卡片,避免邊走邊改 live collection
+  for (const card of [...document.getElementById('sessions-list').children]) {
+    if (card._expiresAt) renderCountdown(card);
+  }
+}
+function renderCountdown(card) {
+  const cd = card.querySelector('[data-countdown]');
+  const left = Math.round((card._expiresAt - Date.now()) / 1000);
+  if (left <= 0) { expireCard(card); return; }   // 歸零即關閉,不等伺服器 sweep
+  const m = Math.floor(left / 60), sec = left % 60;
+  cd.textContent = `${m}:${String(sec).padStart(2, '0')} ${t('upload.expiresSuffix')}`;
+  cd.classList.toggle('warn', left <= 60);
+}
+
+/** 倒數歸零:立即移除卡片並主動通知伺服器回收(不等 30s sweep)。 */
+function expireCard(card) {
+  const id = card.dataset.id;
+  if (droppedIds.has(id)) return;
+  droppedIds.add(id);
+  card._expiresAt = null;
+  card.remove();
+  apiFetch('/api/upload-sessions/' + id, { method: 'DELETE' }).catch(() => {});
+  const wrap = document.getElementById('sessions-list');
+  document.getElementById('sessions-empty').style.display = wrap.children.length ? 'none' : '';
+}
+
+/* ── 複製到剪貼簿 ────────────────────────────────────────────────────────── */
+async function copy(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+  }
+  if (btn) {
+    const orig = btn.textContent; btn.textContent = t('common.copied');
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  }
+}
+
+/* ── SSE 進度(確認處理後) ──────────────────────────────────────────────── */
+function listenSSE(sid) {
+  const es = new EventSource(`/api/process/${sid}/events`);
+  const stageMap = { merge: 30, scan: 55, duration: 65, detect: 78, done: 100, error: 100 };
+  es.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.stage === 'done') {
+      setStage(t('upload.done'), 100);
+      document.querySelector('.progress-stage .spinner')?.remove();
+      es.close();
+      showToast(t('upload.doneToast'), 'success');
+      setTimeout(() => { location.href = '/browse'; }, 1500);
+      return;
+    }
+    if (d.stage === 'error') {
+      log(`× ${d.message}`); setStage(t('upload.errStage'), 100);
+      document.querySelector('.progress-stage .spinner')?.remove();
+      es.close();
+      return;
+    }
+    let pct = stageMap[d.stage] ?? 50;
+    if (d.total && d.done !== undefined) pct = Math.round(d.done / d.total * 100);
+    setStage(d.message, pct);
+    log(d.message);
+  };
+  es.onerror = () => { log(t('upload.errConn')); es.close(); };
+}
+
+/* ── 工具 ────────────────────────────────────────────────────────────────── */
+function setStage(text, pct) {
+  document.getElementById('prog-stage').innerHTML = `<div class="spinner"></div>${text}`;
+  document.getElementById('prog-bar').style.width = pct + '%';
+}
+function log(msg) {
+  const el = document.getElementById('prog-log');
+  const p = document.createElement('p'); p.textContent = msg;
+  el.appendChild(p); el.scrollTop = el.scrollHeight;
+}
+function fmtBytes(b) {
+  if (b >= 1e9) return (b / 1e9).toFixed(2) + ' GB';
+  if (b >= 1e6) return (b / 1e6).toFixed(1) + ' MB';
+  if (b >= 1e3) return (b / 1e3).toFixed(0) + ' KB';
+  return (b || 0) + ' B';
+}
+function fmtSpeed(bps) {
+  if (bps >= 1e6) return (bps / 1e6).toFixed(1) + ' MB/s';
+  if (bps >= 1e3) return (bps / 1e3).toFixed(0) + ' KB/s';
+  return (bps || 0).toFixed(0) + ' B/s';
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+</script>
+</body>
+</html>

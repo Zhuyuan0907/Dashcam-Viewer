@@ -1,0 +1,82 @@
+# Dashcam 行車記錄器網頁系統
+
+把行車記錄器產生的細碎影片,依「日期 / 趟次」自動整理、用 ffmpeg 無損合併成完整旅程,並透過網頁瀏覽、縮放檢視前後雙鏡頭。後端 **Node.js + Fastify + TypeScript**,資料庫 **SQLite**,前端為零建置的原生 JS。
+
+> v2 起後端由 Python(FastAPI)改寫為 TypeScript。舊版保留於 `legacy-python/` 供參考。
+
+## 功能
+
+- **上傳(SFTP)**:每個網頁工作階段取得一組一次性 SFTP 連線資訊(如 Pterodactyl 面板),用 FileZilla / WinSCP / `sftp` 把片段直接傳到專屬資料夾,完成後在網頁按「確認並處理」。原始片段(`FILE/EMER…F|R.mp4` + `.NMEA`)與已整理旅程資料夾系統自動判別。閒置過久的工作階段自動回收。
+- **整理**:依停留間隔切趟,合併前後鏡頭,解析 NMEA 的 G-force。
+- **瀏覽 / 觀看**:雙鏡頭子母畫面、**滾輪縮放 + 拖曳平移**、逐格前進/後退、播放速度、截圖存檔、全螢幕、鍵盤快捷。
+- **帳號**:PBKDF2 雜湊、Session cookie、管理員 / 訪客分級。
+- **CLI**:`dashcam-import` 從資料夾批次匯入(支援遞迴巢狀日期夾)。
+
+## 需求
+
+- Node.js ≥ 20(建議 LTS)
+- `ffmpeg` 與 `ffprobe`(影片合併與時長偵測)
+- `ssh-keygen`(首次啟動自動產生 SFTP host key)
+- 對外開放 **SFTP 埠 2022**(防火牆 / port forward),使用者才能從外部連入上傳
+
+## 安裝與啟動
+
+```bash
+npm install          # 安裝相依(含原生模組 better-sqlite3,需編譯工具)
+npm run build        # 編譯 TypeScript → dist/
+npm start            # 啟動(預設 http://0.0.0.0:8080)
+```
+
+開發模式:`npm run dev`(tsx 熱重載)。首次開啟瀏覽器到 `/setup` 建立管理員帳號。
+
+預設資料存在專案內 `./data`。若要放到獨立資料碟,設定 `DASHCAM_DATA_DIR`(見 `.env.example`)。
+常駐部署可參考 `dashcam.service.example`(systemd)。
+
+## 環境變數
+
+| 變數 | 預設 | 說明 |
+|------|------|------|
+| `DASHCAM_DATA_DIR` | `./data` | 影片與 DB 根目錄(預設專案內 `./data`;正式部署可指向掛載碟,如 `/mnt/data/dashcam`) |
+| `DASHCAM_PORT` | `8080` | 監聽埠 |
+| `DASHCAM_HOST` | `0.0.0.0` | 監聽位址 |
+| `DASHCAM_SESSION_TTL` | `2592000` | Session 有效秒數(30 天) |
+| `DASHCAM_COOKIE_SECURE` | `auto` | `auto`/`true`/`false`;反向代理走 HTTPS 時設 `true` |
+| `DASHCAM_LOGIN_RATE_MAX` | `5` | 登入速率限制(每視窗次數) |
+| `DASHCAM_SFTP_ENABLED` | `true` | 是否啟用內嵌 SFTP 上傳伺服器 |
+| `DASHCAM_SFTP_PORT` | `2022` | SFTP 監聽埠(系統 sshd 通常在 22) |
+| `DASHCAM_SFTP_HOST` | `0.0.0.0` | SFTP 監聽位址 |
+| `DASHCAM_SFTP_PUBLIC_HOST` | `localhost` | 顯示給使用者的對外主機名(部署時設成你的網域或對外 IP) |
+| `DASHCAM_UPLOAD_SESSION_IDLE_SEC` | `600` | 上傳工作階段閒置回收門檻(秒,預設 10 分) |
+
+## CLI 批次匯入
+
+```bash
+npm run import -- <來源資料夾>            # 複製匯入
+npm run import -- <來源資料夾> --move      # 搬移
+npm run import -- <來源資料夾> --dry-run   # 只預覽
+```
+
+## 測試
+
+```bash
+npm test         # node:test:核心邏輯、相容性、安全性回歸
+npm run typecheck
+```
+
+## SFTP 上傳
+
+1. 網頁 `/upload`(管理員)按「建立上傳工作階段」,取得一次性連線資訊:
+   `sftp://<帳號>.<sid>@<host>:2022`,密碼為當次隨機產生(可在頁面複製或下載 FileZilla 站台)。
+2. 用 SFTP 客戶端把片段傳入,結構不拘(原始片段或 `YYYY-MM-DD/` 旅程夾皆可)。
+3. 回網頁按「確認並處理」,進入既有整理/合併管線(SSE 進度)。
+4. 工作階段閒置超過 `DASHCAM_UPLOAD_SESSION_IDLE_SEC`(預設 10 分)會自動刪資料夾並失效。
+
+## 安全性
+
+- SFTP 採內嵌伺服器:一次性密碼以 `timingSafeEqual` 比對,每條連線只開放 SFTP 子系統(拒 shell/exec),所有路徑操作沙箱在該工作階段資料夾內(不可逃逸、不建符號連結)。
+- 所有 SQL 走參數化綁定;上傳路徑經 `safeJoin` 防止路徑穿越;登入有速率限制;helmet 安全標頭。
+- 發版前請確保 `npm audit` 無 high/critical(專案附 Dependabot 設定每週檢查)。
+
+## 授權
+
+MIT

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title data-i18n-title="title.account">個人設定 — 行車記錄</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* ── 個人設定 scoped(只吃全域 token) ─────────────────────────────────────── */
+    .acct { max-width: 640px; display: flex; flex-direction: column; gap: 18px; }
+    .acct .panel-title { font-size: 14px; }
+    .acct-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+    .acct-row:last-child { margin-bottom: 0; }
+    .acct-hint { font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+    .acct-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+    /* Email 區:頭像 + 輸入 */
+    .acct-id { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+    .acct-avatar { width: 56px; height: 56px; flex: none; border-radius: 50%;
+      background: var(--accent-soft); color: var(--accent); display: flex; align-items: center;
+      justify-content: center; font-size: 22px; font-weight: 700; overflow: hidden; }
+    .acct-id .grow { flex: 1; min-width: 0; }
+    @media (min-width: 560px) {
+      .acct-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .acct-grid2 .acct-row { margin-bottom: 0; }
+    }
+    /* 公開旅程開關 */
+    .vis-toggle { display: inline-flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; }
+    .vis-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .vis-switch { position: relative; flex: none; width: 44px; height: 26px; border-radius: 999px;
+      background: var(--surface-3); border: 1px solid var(--line); transition: background .2s ease, border-color .2s ease; }
+    .vis-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px;
+      border-radius: 50%; background: var(--surface); box-shadow: var(--shadow-sm); transition: transform .2s cubic-bezier(.2,.8,.3,1); }
+    .vis-toggle input:checked + .vis-switch { background: var(--accent); border-color: var(--accent); }
+    .vis-toggle input:checked + .vis-switch::after { transform: translateX(18px); }
+    .vis-toggle input:focus-visible + .vis-switch { box-shadow: 0 0 0 3px var(--accent-soft); }
+    .vis-label { font-size: 14px; font-weight: 500; color: var(--ink); }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap hdr-inner">
+    <a class="hdr-brand" href="/">
+      <div class="hdr-brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+      <span class="hdr-brand-text">行車記錄</span>
+    </a>
+    <nav class="hdr-nav">
+      <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
+      <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
+      <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
+      <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
+    </nav>
+    <div class="hdr-ctrls" id="hdr-ctrls"></div>
+  </div>
+</header>
+
+<div class="page-body">
+  <div class="wrap section-tight">
+
+    <div class="eyebrow" style="margin-bottom:12px;"><span class="tick"></span><span data-i18n="account.eyebrow">我的帳號</span></div>
+    <h1 class="page-title" data-i18n="account.title">個人設定</h1>
+    <p class="page-sub" data-i18n="account.sub">管理你的帳號、看片偏好與介面外觀。</p>
+
+    <div class="acct">
+
+      <!-- 帳號 + 改密碼 -->
+      <section class="panel">
+        <div class="panel-title" data-i18n="account.section.account">帳號</div>
+        <div class="acct-row">
+          <label class="form-label" data-i18n="account.username">帳號</label>
+          <input class="form-input" id="acct-username" type="text" readonly disabled>
+          <span class="acct-hint" data-i18n="account.usernameHint">登入帳號,無法更改。</span>
+        </div>
+        <div class="acct-row">
+          <label class="form-label" data-i18n="account.currentPassword">目前密碼</label>
+          <input class="form-input" id="pw-current" type="password" autocomplete="current-password">
+        </div>
+        <div class="acct-grid2">
+          <div class="acct-row">
+            <label class="form-label" data-i18n="account.newPassword">新密碼</label>
+            <input class="form-input" id="pw-new" type="password" autocomplete="new-password">
+          </div>
+          <div class="acct-row">
+            <label class="form-label" data-i18n="account.confirmPassword">確認新密碼</label>
+            <input class="form-input" id="pw-confirm" type="password" autocomplete="new-password">
+          </div>
+        </div>
+        <div class="form-error" id="pw-error"></div>
+        <span class="acct-hint" data-i18n="account.pwHint">更新後,其他已登入的裝置會被登出。</span>
+        <div class="acct-actions">
+          <button type="button" class="btn btn--solid btn--sm" onclick="changePassword()" data-i18n="account.changePassword">更新密碼</button>
+        </div>
+      </section>
+
+      <!-- 顯示名稱 + Email(頭像) -->
+      <section class="panel">
+        <div class="panel-title" data-i18n="account.section.email">Email(頭像)</div>
+        <div class="acct-row">
+          <label class="form-label" data-i18n="account.displayName">顯示名稱</label>
+          <input class="form-input" id="acct-display" type="text" maxlength="60" placeholder="例如 小明">
+          <span class="acct-hint" data-i18n="account.displayNameHint">各處介面(頁首、瀏覽選單、管理列表)會優先顯示此名稱;留空則顯示帳號。</span>
+        </div>
+        <div class="acct-id">
+          <div class="acct-avatar" id="acct-avatar">?</div>
+          <div class="grow">
+            <label class="form-label" data-i18n="account.email">Email</label>
+            <input class="form-input" id="acct-email" type="email" autocomplete="email" placeholder="you@example.com">
+          </div>
+        </div>
+        <span class="acct-hint" data-i18n="account.emailHint">用於顯示 Gravatar 頭像;留空則用文字頭像。</span>
+        <div class="acct-actions">
+          <button type="button" class="btn btn--solid btn--sm" onclick="saveProfile()" data-i18n="account.save">儲存</button>
+        </div>
+      </section>
+
+      <!-- 看片偏好 -->
+      <section class="panel">
+        <div class="panel-title" data-i18n="account.section.viewing">看片偏好</div>
+        <div class="acct-grid2">
+          <div class="acct-row">
+            <label class="form-label" data-i18n="account.camera">預設主鏡頭</label>
+            <select class="form-input form-select" id="acct-camera">
+              <option value="" data-i18n="account.cameraGlobal">跟隨全域設定</option>
+              <option value="front" data-i18n="account.front">前鏡頭</option>
+              <option value="rear" data-i18n="account.rear">後鏡頭</option>
+            </select>
+          </div>
+          <div class="acct-row">
+            <label class="form-label" data-i18n="account.speed">預設播放速度</label>
+            <select class="form-input form-select" id="acct-speed">
+              <option value="" data-i18n="account.speedDefault">預設(1×)</option>
+              <option value="1">1×</option>
+              <option value="1.5">1.5×</option>
+              <option value="2">2×</option>
+            </select>
+          </div>
+        </div>
+        <div class="acct-actions">
+          <button type="button" class="btn btn--solid btn--sm" onclick="savePrefs()" data-i18n="account.save">儲存</button>
+        </div>
+      </section>
+
+      <!-- 旅程可見性(即時儲存) -->
+      <section class="panel">
+        <div class="panel-title" data-i18n="account.section.visibility">旅程可見性</div>
+        <label class="vis-toggle">
+          <input type="checkbox" id="acct-public" onchange="saveVisibility(this.checked)">
+          <span class="vis-switch" aria-hidden="true"></span>
+          <span class="vis-label" data-i18n="account.publicTrips">公開我的旅程</span>
+        </label>
+        <span class="acct-hint" style="margin-top:10px;display:block;" data-i18n="account.publicTripsHint">開啟後,其他登入的使用者可在「瀏覽旅程」的選單看到並觀看你的旅程;關閉則僅你本人與管理員可見。</span>
+      </section>
+
+      <!-- 介面主題(即時套用,免按儲存) -->
+      <section class="panel">
+        <div class="panel-title" data-i18n="account.section.theme">介面主題</div>
+        <div class="acct-row">
+          <label class="form-label" data-i18n="account.theme">主題</label>
+          <select class="form-input form-select" id="acct-theme" onchange="onThemeChange(this.value)">
+            <option value="auto" data-i18n="account.themeAuto">自動(跟隨系統)</option>
+            <option value="light" data-i18n="account.themeLight">淺色</option>
+            <option value="dark" data-i18n="account.themeDark">深色</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- 使用的行車記錄器 -->
+      <section class="panel">
+        <div class="panel-title" data-i18n="account.section.device">使用的行車記錄器</div>
+        <div class="acct-row">
+          <label class="form-label" data-i18n="account.deviceNote">型號 / 備註</label>
+          <textarea class="form-input" id="acct-device" rows="3" maxlength="500" placeholder=""></textarea>
+          <span class="acct-hint" data-i18n="account.deviceHint">選填,例如記錄器型號或安裝備註。</span>
+        </div>
+        <div class="acct-actions">
+          <button type="button" class="btn btn--solid btn--sm" onclick="saveProfile()" data-i18n="account.save">儲存</button>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/app.js"></script>
+<script>
+let user = null;
+
+(async () => {
+  await configReady;
+  user = await checkAuth();          // 未登入會自動導去 /login
+  if (!user) return;
+  renderHeader(user);
+  fillForm();
+})();
+
+function fillForm() {
+  document.getElementById('acct-username').value = user.username || '';
+  document.getElementById('acct-display').value = user.display_name || '';
+  document.getElementById('acct-email').value = user.email || '';
+  document.getElementById('acct-device').value = user.device_note || '';
+  setAvatar(user.gravatar_url, user.username);
+  document.getElementById('acct-camera').value = user.pref_camera || '';
+  document.getElementById('acct-speed').value = user.pref_speed != null ? String(user.pref_speed) : '';
+  let theme = user.pref_theme;
+  if (!theme) { try { theme = localStorage.getItem('dc.theme') || 'auto'; } catch { theme = 'auto'; } }
+  document.getElementById('acct-theme').value = theme;
+  document.getElementById('acct-public').checked = user.trips_public === 1;
+}
+
+async function saveVisibility(pub) {
+  try {
+    await apiFetch('/api/account/visibility', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ public: pub }),
+    });
+    user = { ...user, trips_public: pub ? 1 : 0 };
+    cacheSet('user', user);
+    showToast(t('account.visibilitySaved'), 'success');
+  } catch (e) {
+    // 還原 UI 狀態
+    document.getElementById('acct-public').checked = !pub;
+    showToast(e.message, 'error');
+  }
+}
+
+function setAvatar(url, username) {
+  const el = document.getElementById('acct-avatar');
+  const initial = ((username || '?')[0] || '?').toUpperCase();
+  el.innerHTML = url
+    ? `<img src="${url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.parentNode.textContent='${initial}'">`
+    : initial;
+}
+
+async function saveProfile() {
+  const email = document.getElementById('acct-email').value.trim();
+  const device_note = document.getElementById('acct-device').value.trim();
+  const display_name = document.getElementById('acct-display').value.trim();
+  try {
+    const r = await apiFetch('/api/account/profile', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, device_note, display_name }),
+    });
+    user = { ...user, email: r.email, device_note: r.device_note, display_name: r.display_name, gravatar_url: r.gravatar_url };
+    cacheSet('user', user);
+    setAvatar(r.gravatar_url, user.username);
+    renderHeader(user);             // 即時刷新頁首頭像 / 顯示名稱
+    showToast(t('account.profileOk'), 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function savePrefs() {
+  const camRaw = document.getElementById('acct-camera').value;
+  const spRaw = document.getElementById('acct-speed').value;
+  const body = { camera: camRaw || null, speed: spRaw ? Number(spRaw) : null };
+  try {
+    await apiFetch('/api/account/prefs', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    user = { ...user, pref_camera: body.camera, pref_speed: body.speed };
+    cacheSet('user', user);
+    showToast(t('account.profileOk'), 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function onThemeChange(v) {
+  applyTheme(v);                     // 立即套用(無閃爍)
+  try {
+    await apiFetch('/api/account/prefs', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme: v }),
+    });
+    user = { ...user, pref_theme: v };
+    cacheSet('user', user);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function changePassword() {
+  const current = document.getElementById('pw-current').value;
+  const next = document.getElementById('pw-new').value;
+  const confirm = document.getElementById('pw-confirm').value;
+  const errEl = document.getElementById('pw-error');
+  errEl.classList.remove('show');
+  if (next !== confirm) {
+    errEl.textContent = t('account.pwMismatch');
+    errEl.classList.add('show');
+    return;
+  }
+  try {
+    await apiFetch('/api/account/password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current, next }),
+    });
+    document.getElementById('pw-current').value = '';
+    document.getElementById('pw-new').value = '';
+    document.getElementById('pw-confirm').value = '';
+    showToast(t('account.pwOk'), 'success');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+  }
+}
+</script>
+</body>
+</html>

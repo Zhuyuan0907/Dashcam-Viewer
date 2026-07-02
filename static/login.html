@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title data-i18n-title="title.login">登入 — 行車記錄</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* ── 登入 · 整頁一張底圖、左右等寬、深色大膽(scoped) ─────────────────────────── */
+    .auth-wrap {
+      min-height: 100svh; margin: 0; padding: 0; color: #fff;
+      display: grid; grid-template-columns: 1fr; gap: 0;
+      background:
+        radial-gradient(80% 120% at 12% 18%, color-mix(in oklch, var(--accent) 60%, transparent), transparent 55%),
+        radial-gradient(70% 100% at 95% 95%, color-mix(in oklch, var(--accent) 32%, transparent), transparent 50%),
+        linear-gradient(135deg, oklch(.30 .08 264), oklch(.14 .035 266));
+      position: relative; overflow: hidden;
+    }
+    .auth-wrap::before {
+      content: ""; position: absolute; inset: -20%;
+      background:
+        repeating-linear-gradient(115deg, transparent 0 84px, rgba(255,255,255,.035) 84px 85px),
+        radial-gradient(rgba(255,255,255,.10) 1px, transparent 1.4px);
+      background-size: auto, 24px 24px; pointer-events: none;
+    }
+    @media (min-width: 860px) { .auth-wrap { grid-template-columns: 1fr 1fr; } }
+    .auth-col { position: relative; z-index: 1; display: flex; flex-direction: column;
+      justify-content: center; padding: clamp(36px, 5vw, 80px); }
+    /* 右半:整個登入區塊水平＋垂直置中(欄位內容仍左對齊) */
+    .auth-form-side { align-items: center; }
+    .auth-hero { gap: 22px; }
+    .auth-hero .auth-brand-mark { background: transparent; color: #fff; width: 34px; height: 34px; }
+    .auth-hero .auth-brand-mark svg { width: 26px; height: 26px; }
+    .auth-brand { display: inline-flex; align-items: center; gap: 11px; margin-bottom: 6px; }
+    .auth-hero-slogan { font-family: var(--font-display); font-weight: 900;
+      font-size: clamp(48px, 6vw, 92px); line-height: 1.0; letter-spacing: -.045em; }
+    .auth-hero-slogan em { font-style: normal; color: color-mix(in oklch, var(--accent) 45%, white);
+      text-shadow: 0 0 32px color-mix(in oklch, var(--accent) 70%, transparent); }
+    .auth-hero-sub { font-size: clamp(16px, 1.5vw, 20px); line-height: 1.6; color: rgba(255,255,255,.82); max-width: 26ch; }
+    .auth-title { font-size: clamp(28px, 3.2vw, 38px); font-weight: 800; letter-spacing: -.02em; color: #fff; }
+    .auth-sub { font-size: 15px; color: rgba(255,255,255,.7); margin: 8px 0 24px; }
+    .auth-form-inner { width: 100%; max-width: 380px; }
+    .auth-form-inner .form-label { color: rgba(255,255,255,.82); }
+    .auth-form-inner .form-input { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.22); color: #fff; backdrop-filter: blur(6px); }
+    .auth-form-inner .form-input::placeholder { color: rgba(255,255,255,.45); }
+    .auth-form-inner .form-input:focus { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.18); background: rgba(255,255,255,.12); }
+    .auth-form-inner .btn { background: #fff; color: var(--accent-2); box-shadow: 0 10px 26px -12px rgba(0,0,0,.55); text-decoration: none; }
+    .auth-form-inner .btn:hover { background: #fff; color: var(--accent-2); filter: none; transform: translateY(-1.5px); box-shadow: 0 16px 34px -14px rgba(0,0,0,.6); text-decoration: none; }
+    .auth-form-inner .form-error { background: color-mix(in oklch, var(--crit) 30%, transparent); color: #fff; }
+
+    /* ── 手機:整頁置中、單欄。標語精簡居中,登入欄位收進毛玻璃卡片 ─────────────── */
+    @media (max-width: 859px) {
+      .auth-wrap {
+        display: flex; flex-direction: column;
+        justify-content: center; align-items: center; gap: 4px;
+        padding: calc(28px + var(--safe-top)) 22px calc(28px + var(--safe-bottom));
+      }
+      .auth-col { width: 100%; max-width: 400px; padding: 0; }
+
+      /* 標語:全部撐滿整欄寬、文字置中 → 品牌列、標語、副標共用同一條中心軸,不再各自縮成
+         不同寬度而看起來歪掉。品牌(logo＋字)改 flex 滿寬置中,logo 緊貼置中的字旁邊。 */
+      .auth-hero { text-align: center; align-items: stretch; gap: 12px; margin-bottom: 22px; }
+      .auth-brand { display: flex; width: 100%; justify-content: center; gap: 10px; margin-bottom: 2px; }
+      .auth-hero-slogan { width: 100%; font-size: clamp(30px, 8.5vw, 44px); letter-spacing: -.03em; text-wrap: balance; }
+      .auth-hero-sub { width: 100%; font-size: 14.5px; max-width: 30ch; margin: 0 auto; }
+
+      /* 登入卡片:毛玻璃、置中 */
+      .auth-form-side { align-items: stretch; padding-top: 0; }
+      .auth-form-inner {
+        width: 100%; max-width: 400px;
+        background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.16);
+        border-radius: var(--radius-lg); padding: 26px 22px;
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 24px 60px -24px rgba(0,0,0,.55);
+      }
+      .auth-title { font-size: 25px; text-align: center; }
+      .auth-sub { text-align: center; margin: 8px 0 22px; }
+    }
+    /* 極窄機:標語再收一點,避免擠壓卡片 */
+    @media (max-width: 380px) {
+      .auth-hero { margin-bottom: 16px; }
+      .auth-hero-sub { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="auth-wrap">
+  <section class="auth-col auth-hero">
+    <div class="auth-brand">
+      <div class="auth-brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+      <span class="auth-brand-name" style="color:#fff;font-weight:700;font-size:17px;">行車記錄</span>
+    </div>
+    <h2 class="auth-hero-slogan" data-i18n="auth.login.heroSlogan">路在前方<br><em>回憶在路上</em></h2>
+    <p class="auth-hero-sub" data-i18n="auth.login.heroSub">登入，回顧你記錄的每一段旅程。</p>
+  </section>
+
+  <section class="auth-col auth-form-side">
+    <div class="auth-form-inner">
+      <h1 class="auth-title" data-i18n="auth.login.title">歡迎回來</h1>
+      <p class="auth-sub" id="auth-tagline" data-i18n="auth.login.sub">登入以瀏覽行車記錄</p>
+
+      <form id="login-form" onsubmit="doLogin(event)">
+        <div class="form-field">
+          <label class="form-label" for="username" data-i18n="auth.login.user">帳號</label>
+          <input class="form-input" id="username" name="username" type="text" autocomplete="username"
+                 placeholder="輸入帳號" data-i18n-attr="placeholder:auth.login.userPlaceholder" required>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="password" data-i18n="auth.login.password">密碼</label>
+          <input class="form-input" id="password" name="password" type="password" autocomplete="current-password"
+                 placeholder="輸入密碼" data-i18n-attr="placeholder:auth.login.passwordPlaceholder" required>
+        </div>
+        <div class="form-error" id="login-error"></div>
+        <button class="btn btn--solid btn--lg" type="submit" id="submit-btn" style="width:100%;margin-top:6px;" data-i18n="auth.login.submit">登入</button>
+      </form>
+    </div>
+  </section>
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+(async () => {
+  await configReady;
+  const tg = (__cfg.brand && __cfg.brand.loginTagline) || '';
+  if (tg) document.getElementById('auth-tagline').textContent = tg;
+  const user = await checkAuth({ redirect: false });
+  if (user) location.href = '/';
+})();
+
+/* ════════════ 登入(僅帳號 + 密碼) ════════════ */
+function doLogin(e) {
+  e.preventDefault();        // required 已確保帳密非空才會走到這
+  performLogin();
+}
+async function performLogin() {
+  const btn = document.getElementById('submit-btn');
+  const err = document.getElementById('login-error');
+  err.classList.remove('show');
+  btn.disabled = true;
+  btn.textContent = t('auth.login.submitting');
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  try {
+    await apiFetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    location.href = '/';
+  } catch (ex) {
+    err.textContent = (ex.message.includes('401') || ex.message.includes('403')) ? t('auth.login.errBad') : t('auth.login.errFail');
+    err.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = t('auth.login.submit');
+  }
+}
+</script>
+</body>
+</html>

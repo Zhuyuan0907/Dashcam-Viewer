@@ -1,0 +1,31 @@
+# systemd 服務範例 — 讓 Dashcam 開機自啟、常駐。
+#
+# 安裝步驟:
+#   1. 依實際路徑/使用者修改下方 <...> 佔位符
+#   2. sudo cp dashcam.service.example /etc/systemd/system/dashcam.service
+#   3. (選用)把環境變數寫進 /etc/dashcam.env,並啟用下方 EnvironmentFile
+#   4. sudo systemctl daemon-reload && sudo systemctl enable --now dashcam.service
+#
+# 提醒:先 `npm install && npm run build` 產生 dist/。
+
+[Unit]
+Description=Dashcam 行車記錄器網頁系統
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=<YOUR_USER>
+WorkingDirectory=<PATH_TO_REPO>
+ExecStart=/usr/bin/node dist/server.js
+Restart=on-failure
+RestartSec=3
+Environment=NODE_ENV=production
+# 自訂設定改用環境變數(見 .env.example);建議指向獨立資料碟:
+#Environment=DASHCAM_DATA_DIR=/mnt/data/dashcam
+#Environment=DASHCAM_SFTP_PUBLIC_HOST=dashcam.example.com
+# 或集中放檔案:
+#EnvironmentFile=/etc/dashcam.env
+
+[Install]
+WantedBy=multi-user.target

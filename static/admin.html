@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title data-i18n-title="title.admin">使用者管理 — 行車記錄</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* 設定分組 */
+    .cfg-section { border:1px solid var(--line); border-radius:var(--radius); margin-bottom:14px; overflow:hidden; background:var(--surface); }
+    .cfg-section-head { font-family:var(--font-mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); background:var(--surface-2); padding:10px 16px; border-bottom:1px solid var(--line); }
+    .cfg-section-body { padding:16px; }
+    .cfg-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px 18px; }
+    .cfg-field { display:flex; flex-direction:column; gap:6px; }
+    .cfg-field label { font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); }
+    .cfg-field .hint { font-family:var(--font-sans); font-size:11px; letter-spacing:0; text-transform:none; color:var(--ink-3); }
+    .cfg-color-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; min-width:0; }
+    .cfg-color-row input[type=color] { width:40px; height:38px; padding:0; border:1px solid var(--line-2); border-radius:var(--radius-sm); background:none; cursor:pointer; }
+    .cfg-color-row input[type=file] { min-width:0; max-width:100%; flex:1 1 160px; font-size:13px; }
+    .cfg-preview { width:40px; height:40px; border-radius:var(--radius-sm); border:1px solid var(--line); object-fit:contain; background:var(--bg); }
+    .links-row { display:flex; gap:8px; margin-bottom:8px; }
+    .links-row input { flex:1; }
+    .strings-status { font-size:12px; margin-left:8px; font-family:var(--font-mono); }
+    .strings-status.ok { color:var(--ok); }
+    .strings-status.err { color:var(--crit); }
+    /* 角色下拉(總管理員專用) */
+    .role-select { width:auto; min-width:104px; padding:5px 10px; font-size:13px; }
+    /* 檔案總管 modal */
+    .files-box { max-width:760px; }
+    .files-box .modal-body { max-height:min(70vh,620px); overflow-y:auto; }
+    .fm-day { margin-bottom:16px; }
+    .fm-day-head { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+    .fm-day-date { font-weight:700; font-size:14px; }
+    .fm-day-meta { font-family:var(--font-mono); font-size:11px; color:var(--ink-3); }
+    .fm-trip { display:flex; align-items:center; gap:12px; padding:9px 10px; border-radius:8px; background:var(--surface-2); margin-bottom:6px; }
+    .fm-trip-main { flex:1; min-width:0; }
+    .fm-trip-title { font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .fm-trip-path { font-family:var(--font-mono); font-size:11px; color:var(--ink-3); margin-top:3px; word-break:break-all; }
+    .fm-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }
+    .fm-dl { font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--line-2); color:var(--ink-2); text-decoration:none; white-space:nowrap; }
+    .fm-dl:hover { border-color:var(--accent); color:var(--accent); }
+    /* ── 行動版 ───────────────────────────────────────────────────────────── */
+    @media (max-width: 560px) {
+      .links-row { flex-wrap: wrap; }
+      .links-row input { flex: 1 1 100%; }
+      .links-row button { margin-left: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap hdr-inner">
+    <a class="hdr-brand" href="/">
+      <div class="hdr-brand-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+      <span class="hdr-brand-text">行車記錄</span>
+    </a>
+    <nav class="hdr-nav">
+      <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
+      <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
+      <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
+      <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
+    </nav>
+    <div class="hdr-ctrls" id="hdr-ctrls"></div>
+  </div>
+</header>
+
+<div class="page-body">
+  <div class="wrap section-tight">
+
+    <div class="eyebrow sec-eyebrow" style="margin-bottom:12px;">
+      <span class="tick"></span><span data-i18n="admin.eyebrow">管理員</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px;flex-wrap:wrap;">
+      <div>
+        <h1 class="page-title" style="margin-bottom:4px;" data-i18n="admin.title">使用者管理</h1>
+        <p class="page-sub" style="margin-bottom:0;" data-i18n="admin.sub">新增、刪除使用者，或更改密碼</p>
+      </div>
+      <button class="btn btn--solid btn--sm" onclick="openCreateModal()" data-i18n="admin.addUser">+ 新增使用者</button>
+    </div>
+
+    <!-- 外觀與品牌(分組,清爽) -->
+    <div style="margin-bottom:28px;">
+      <div class="sec-head" style="margin-bottom:16px;">
+        <div class="eyebrow"><span class="tick"></span><span>外觀與品牌</span></div>
+        <div style="display:flex;gap:12px;align-items:center;">
+          <span class="strings-status" id="cfg-status"></span>
+          <button type="button" class="btn btn--solid btn--sm" id="cfg-save-btn" onclick="saveSettings()">儲存設定</button>
+        </div>
+      </div>
+
+      <!-- 品牌識別 -->
+      <div class="cfg-section">
+        <div class="cfg-section-head">品牌識別</div>
+        <div class="cfg-section-body">
+          <div class="cfg-grid">
+            <div class="cfg-field"><label>網站標題</label><input class="form-input" id="cfg-site_title" type="text" maxlength="200"></div>
+            <div class="cfg-field"><label>頁尾文字</label><input class="form-input" id="cfg-footer_text" type="text" maxlength="200"></div>
+            <div class="cfg-field"><label>登入頁標語</label><input class="form-input" id="cfg-login_tagline" type="text" maxlength="200"></div>
+            <div class="cfg-field"><label>登入頁背景 <span class="hint">(CSS 色值或圖片,選填)</span></label><input class="form-input" id="cfg-login_bg" type="text" placeholder="如 #0b1020 或留空"></div>
+            <div class="cfg-field"><label>站台 icon <span class="hint">(建議 32×32 PNG)</span></label><div class="cfg-color-row"><img class="cfg-preview" id="cfg-icon-preview" alt=""><input type="file" id="cfg-icon-file" accept="image/png,image/svg+xml,image/x-icon"></div></div>
+            <div class="cfg-field"><label>favicon <span class="hint">(≤64×64)</span></label><div class="cfg-color-row"><img class="cfg-preview" id="cfg-favicon-preview" alt=""><input type="file" id="cfg-favicon-file" accept="image/png,image/svg+xml,image/x-icon"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 顯示與行為 -->
+      <div class="cfg-section">
+        <div class="cfg-section-head">顯示與行為</div>
+        <div class="cfg-section-body">
+          <div class="cfg-grid">
+            <div class="cfg-field"><label>語言 locale</label><input class="form-input" id="cfg-locale" type="text" placeholder="zh-TW / en-US ..."></div>
+            <div class="cfg-field"><label>單位</label><select class="form-input form-select" id="cfg-units"><option value="km">公里 km</option><option value="mi">英里 mi</option></select></div>
+            <div class="cfg-field"><label>每頁筆數</label><input class="form-input" id="cfg-items_per_page" type="number" min="1" max="200"></div>
+            <div class="cfg-field"><label>預設鏡頭</label><select class="form-input form-select" id="cfg-default_camera"><option value="front">前鏡頭</option><option value="rear">後鏡頭</option></select></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 上傳 -->
+      <div class="cfg-section">
+        <div class="cfg-section-head">上傳</div>
+        <div class="cfg-section-body">
+          <div class="cfg-grid">
+            <div class="cfg-field"><label>SFTP 顯示主機</label><input class="form-input" id="cfg-sftp_public_host" type="text"></div>
+            <div class="cfg-field"><label>SFTP 顯示埠 <span class="hint">(僅顯示;實際綁定走環境變數)</span></label><input class="form-input" id="cfg-sftp_port" type="number" min="1" max="65535"></div>
+            <div class="cfg-field"><label>上傳閒置逾時 (秒)</label><input class="form-input" id="cfg-upload_session_idle_sec" type="number" min="60" max="86400"></div>
+            <div class="cfg-field"><label>預設處理間隔 (分)</label><input class="form-input" id="cfg-default_gap_min" type="number" min="1" max="120"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 頁尾連結 -->
+      <div class="cfg-section">
+        <div class="cfg-section-head">頁尾連結</div>
+        <div class="cfg-section-body">
+          <div id="cfg-links"></div>
+          <button type="button" class="btn btn--ghost btn--sm" onclick="addLinkRow()">+ 新增連結</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 介面字串改由直接編輯後端 DATA_DIR/strings.yml 維護(改後重啟服務即生效)。 -->
+
+    <!-- 資料碟使用情況 -->
+    <div style="margin-bottom:28px;">
+      <div class="info-card" style="padding:16px 18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
+          <div class="info-card-title" style="padding:0;margin-bottom:0;" data-i18n="admin.storage.title">資料碟使用情況</div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <button type="button" class="btn btn--ghost btn--sm" onclick="openFilesModal()" data-i18n="admin.files.openBtn">檢視檔案</button>
+            <div id="storage-updated" style="font-size:11px;color:var(--ink-3);"></div>
+          </div>
+        </div>
+
+        <!-- Stacked bar -->
+        <div style="display:flex;height:6px;border-radius:99px;overflow:hidden;background:var(--surface-2);margin-bottom:6px;">
+          <div id="bar-trips" style="height:100%;background:var(--accent);transition:width .6s ease;width:0%;"></div>
+          <div id="bar-other" style="height:100%;background:oklch(.76 .07 252);transition:width .6s ease;width:0%;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink-3);margin-bottom:14px;">
+          <span><span data-i18n="admin.storage.used">已用</span> <strong id="st-used" style="color:var(--ink-1);">—</strong></span>
+          <span><strong id="st-pct" style="color:var(--accent);">—%</strong></span>
+          <span><span data-i18n="admin.storage.totalPrefix">共</span> <strong id="st-total" style="color:var(--ink-1);">—</strong></span>
+        </div>
+
+        <!-- Breakdown -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div style="background:var(--surface-2);border-radius:8px;padding:8px 12px;">
+            <div style="font-size:11px;color:var(--ink-3);margin-bottom:2px;" data-i18n="admin.storage.tripsVideo">旅程影片</div>
+            <div style="font-size:14px;font-weight:600;color:var(--ink-1);" id="st-trips">—</div>
+          </div>
+          <div style="background:var(--surface-2);border-radius:8px;padding:8px 12px;">
+            <div style="font-size:11px;color:var(--ink-3);margin-bottom:2px;" data-i18n="admin.storage.free">可用空間</div>
+            <div style="font-size:14px;font-weight:600;color:var(--ink-1);" id="st-free">—</div>
+          </div>
+          <div style="background:var(--surface-2);border-radius:8px;padding:8px 12px;">
+            <div style="font-size:11px;color:var(--ink-3);margin-bottom:2px;" data-i18n="admin.storage.db">資料庫</div>
+            <div style="font-size:14px;font-weight:600;color:var(--ink-1);" id="st-db">—</div>
+          </div>
+        </div>
+
+        <!-- Legend -->
+        <div style="display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--ink-3);">
+          <span style="display:flex;align-items:center;gap:4px;">
+            <span style="width:8px;height:8px;border-radius:2px;background:var(--accent);display:inline-block;flex-shrink:0;"></span><span data-i18n="admin.storage.tripsVideo">旅程影片</span>
+          </span>
+          <span style="display:flex;align-items:center;gap:4px;">
+            <span style="width:8px;height:8px;border-radius:2px;background:oklch(.76 .07 252);display:inline-block;flex-shrink:0;"></span><span data-i18n="admin.storage.other">其他資料</span>
+          </span>
+          <span style="display:flex;align-items:center;gap:4px;">
+            <span style="width:8px;height:8px;border-radius:2px;background:var(--surface-2);border:1px solid var(--line);display:inline-block;flex-shrink:0;"></span><span data-i18n="admin.storage.available">可用</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 即時上傳狀況 -->
+    <div id="active-uploads-wrap" style="margin-bottom:28px;display:none;">
+      <div class="info-card" style="padding:16px 18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:6px;">
+          <div class="info-card-title" style="padding:0;margin-bottom:0;display:flex;align-items:center;gap:8px;">
+            <span class="spinner" style="width:14px;height:14px;border-width:2px;flex-shrink:0;"></span>
+            <span data-i18n="admin.activeUploads">即時上傳狀況</span>
+          </div>
+          <div id="active-uploads-count" style="font-size:12px;color:var(--ink-3);"></div>
+        </div>
+        <div id="active-uploads-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+    </div>
+
+    <!-- 使用者列表 -->
+    <div style="background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm);">
+      <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th data-i18n="admin.table.account">帳號</th>
+            <th data-i18n="admin.table.role">角色</th>
+            <th>上傳時限</th>
+            <th style="text-align:right;" data-i18n="admin.table.actions">操作</th>
+          </tr>
+        </thead>
+        <tbody id="user-table-body">
+          <tr><td colspan="4" style="text-align:center;padding:32px;color:var(--ink-3);">
+            <div class="loading-row" style="justify-content:center;"><div class="spinner"></div><span data-i18n="common.loading">載入中…</span></div>
+          </td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 新增使用者 Modal -->
+<div class="modal-scrim" id="create-modal" style="display:none;" onclick="closeModal('create-modal')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h3 data-i18n="admin.modal.newUser">新增使用者</h3>
+      <button class="modal-close" onclick="closeModal('create-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <form onsubmit="doCreate(event)">
+        <div class="form-field">
+          <label class="form-label" data-i18n="admin.modal.account">帳號</label>
+          <input class="form-input" id="new-username" type="text"
+                 autocomplete="off" placeholder="輸入帳號" data-i18n-attr="placeholder:auth.login.userPlaceholder" required minlength="2">
+        </div>
+        <div class="form-field">
+          <label class="form-label"><span data-i18n="admin.modal.email">Email</span> <span style="font-weight:400;color:var(--ink-3);" data-i18n="admin.modal.emailHint">（選填，用於 Gravatar 頭貼）</span></label>
+          <input class="form-input" id="new-email" type="email"
+                 autocomplete="email" placeholder="example@example.com">
+        </div>
+        <div class="form-field">
+          <label class="form-label" data-i18n="admin.modal.password">密碼</label>
+          <input class="form-input" id="new-password" type="password"
+                 autocomplete="new-password" placeholder="至少 8 個字元" data-i18n-attr="placeholder:admin.modal.passwordPlaceholder" required minlength="8">
+        </div>
+        <div class="form-field">
+          <label class="form-label" data-i18n="admin.modal.role">角色</label>
+          <select class="form-input form-select" id="new-role">
+            <option value="viewer" data-i18n="admin.modal.roleViewer">訪客（只能觀看）</option>
+            <option value="admin" data-i18n="admin.modal.roleAdmin">管理員（可上傳／管理）</option>
+          </select>
+        </div>
+        <div class="form-error" id="create-error"></div>
+        <div style="display:flex;gap:10px;margin-top:12px;justify-content:flex-end;">
+          <button type="button" class="btn btn--ghost btn--sm"
+                  onclick="closeModal('create-modal')" data-i18n="common.cancel">取消</button>
+          <button type="submit" class="btn btn--solid btn--sm" id="create-btn" data-i18n="admin.modal.create">建立</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 更改密碼 Modal -->
+<div class="modal-scrim" id="pw-modal" style="display:none;" onclick="closeModal('pw-modal')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h3 data-i18n="admin.modal.changePassword">更改密碼</h3>
+      <button class="modal-close" onclick="closeModal('pw-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--ink-2);font-size:14px;margin-bottom:16px;">
+        為 <strong id="pw-username"></strong> 設定新密碼
+      </p>
+      <form onsubmit="doChangePassword(event)">
+        <div class="form-field">
+          <label class="form-label" data-i18n="admin.modal.newPassword">新密碼</label>
+          <input class="form-input" id="pw-new" type="password"
+                 autocomplete="new-password" placeholder="至少 8 個字元" data-i18n-attr="placeholder:admin.modal.passwordPlaceholder" required minlength="8">
+        </div>
+        <div class="form-field">
+          <label class="form-label" data-i18n="admin.modal.confirmPassword">確認密碼</label>
+          <input class="form-input" id="pw-confirm" type="password"
+                 autocomplete="new-password" placeholder="再次輸入" data-i18n-attr="placeholder:admin.modal.confirmPlaceholder" required>
+        </div>
+        <div class="form-error" id="pw-error"></div>
+        <div style="display:flex;gap:10px;margin-top:12px;justify-content:flex-end;">
+          <button type="button" class="btn btn--ghost btn--sm"
+                  onclick="closeModal('pw-modal')" data-i18n="common.cancel">取消</button>
+          <button type="submit" class="btn btn--solid btn--sm" id="pw-btn" data-i18n="admin.modal.updatePassword">更新密碼</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 上傳時限 Modal -->
+<div class="modal-scrim" id="idle-modal" style="display:none;" onclick="closeModal('idle-modal')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h3>上傳時限</h3>
+      <button class="modal-close" onclick="closeModal('idle-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--ink-2);font-size:14px;margin-bottom:16px;">
+        設定 <strong id="idle-username"></strong> 的 SFTP 上傳工作階段閒置逾時(逾時自動失效並刪除暫存資料夾)。
+      </p>
+      <form onsubmit="doSaveIdle(event)">
+        <div class="form-field">
+          <label class="form-label">模式</label>
+          <select class="form-input form-select" id="idle-mode" onchange="onIdleModeChange()">
+            <option value="default">角色預設(管理員＝不限時)</option>
+            <option value="unlimited">不限時</option>
+            <option value="custom">自訂秒數</option>
+          </select>
+        </div>
+        <div class="form-field" id="idle-custom-field" style="display:none;">
+          <label class="form-label">秒數(60–86400)</label>
+          <input class="form-input" id="idle-seconds" type="number" min="60" max="86400" value="600">
+        </div>
+        <div class="form-error" id="idle-error"></div>
+        <div style="display:flex;gap:10px;margin-top:12px;justify-content:flex-end;">
+          <button type="button" class="btn btn--ghost btn--sm" onclick="closeModal('idle-modal')">取消</button>
+          <button type="submit" class="btn btn--solid btn--sm" id="idle-btn">儲存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 檔案總管 Modal -->
+<div class="modal-scrim" id="files-modal" style="display:none;" onclick="closeModal('files-modal')">
+  <div class="modal-box files-box" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <div>
+        <h3 data-i18n="admin.files.title">檔案總管</h3>
+        <p style="margin:2px 0 0;font-size:12px;color:var(--ink-3);" data-i18n="admin.files.sub">所有旅程影片的實際存放位置,可下載或刪除。</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('files-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="files-list">
+        <div class="loading-row" style="justify-content:center;padding:24px;"><div class="spinner"></div><span data-i18n="common.loading">載入中…</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/app.js"></script>
+<script>
+let currentUser = null;
+let pwTargetId  = null;
+
+(async () => {
+  await configReady;
+  currentUser = await checkAuth({ adminOnly: true });
+  renderHeader(currentUser);
+  loadUsers();
+  loadStorage();
+  loadActiveUploads();
+  loadSettingsForm();
+  setInterval(loadStorage, 10_000);
+  setInterval(loadActiveUploads, 3_000);
+})();
+
+/* ── 儲存空間 ─────────────────────────────────────────────────────────────── */
+async function loadStorage() {
+  try {
+    const s = await apiFetch('/api/admin/storage');
+
+    // Usage bar colours
+    const barEl = document.getElementById('bar-trips');
+    if (s.disk_pct >= 90) {
+      barEl.style.background = 'oklch(.55 .18 29)';
+      document.getElementById('st-pct').style.color = 'oklch(.55 .18 29)';
+    } else if (s.disk_pct >= 75) {
+      barEl.style.background = 'oklch(.65 .15 55)';
+      document.getElementById('st-pct').style.color = 'oklch(.62 .14 55)';
+    } else {
+      barEl.style.background = 'var(--accent)';
+      document.getElementById('st-pct').style.color = 'var(--accent)';
+    }
+
+    const tripsPct = s.disk_total > 0 ? s.trips_bytes / s.disk_total * 100 : 0;
+    const otherUsed = Math.max(0, s.disk_used - s.trips_bytes);
+    const otherPct  = s.disk_total > 0 ? otherUsed / s.disk_total * 100 : 0;
+
+    document.getElementById('bar-trips').style.width = tripsPct.toFixed(1) + '%';
+    document.getElementById('bar-other').style.width = otherPct.toFixed(1) + '%';
+
+    document.getElementById('st-used').textContent  = fmtGB(s.disk_used);
+    document.getElementById('st-total').textContent = fmtGB(s.disk_total);
+    document.getElementById('st-pct').textContent   = s.disk_pct + '%';
+    document.getElementById('st-trips').textContent = fmtGB(s.trips_bytes);
+    document.getElementById('st-free').textContent  = fmtGB(s.disk_free);
+    document.getElementById('st-db').textContent    = fmtSize(s.db_bytes);
+    document.getElementById('storage-updated').textContent =
+      t('admin.updatedAt') + new Date().toLocaleTimeString(cfgLocale(), {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  } catch (e) {
+    document.getElementById('storage-updated').textContent = t('common.loadFail');
+  }
+}
+
+function fmtGB(b) {
+  if (b >= 1e12) return (b / 1e12).toFixed(2) + ' TB';
+  if (b >= 1e9)  return (b / 1e9).toFixed(2) + ' GB';
+  if (b >= 1e6)  return (b / 1e6).toFixed(0) + ' MB';
+  return (b / 1e3).toFixed(0) + ' KB';
+}
+function fmtSize(b) {
+  if (b >= 1e9) return (b / 1e9).toFixed(1) + ' GB';
+  if (b >= 1e6) return (b / 1e6).toFixed(1) + ' MB';
+  return (b / 1e3).toFixed(0) + ' KB';
+}
+
+/* ── 即時上傳狀況 ────────────────────────────────────────────────────────── */
+async function loadActiveUploads() {
+  try {
+    const list = await apiFetch('/api/admin/active-uploads');
+    const wrap = document.getElementById('active-uploads-wrap');
+    const container = document.getElementById('active-uploads-list');
+    const countEl = document.getElementById('active-uploads-count');
+
+    if (!list.length) {
+      wrap.style.display = 'none';
+      return;
+    }
+
+    wrap.style.display = 'block';
+    countEl.textContent = t('admin.activeCount', { n: list.length });
+
+    container.innerHTML = list.map(u => {
+      const initial = (u.username[0] || '?').toUpperCase();
+      const avatar = u.gravatar_url
+        ? `<img src="${u.gravatar_url}" alt="${initial}"
+                style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;"
+                onerror="this.outerHTML='<div style=\\'width:36px;height:36px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--accent);flex-shrink:0\\'>${initial}</div>'">`
+        : `<div style="width:36px;height:36px;border-radius:50%;background:var(--accent-soft);
+                 display:flex;align-items:center;justify-content:center;
+                 font-size:14px;font-weight:700;color:var(--accent);flex-shrink:0;">${initial}</div>`;
+
+      const typeLabel = 'SFTP';
+      const typeBg    = 'background:oklch(.92 .06 252);color:oklch(.4 .1 252);';
+
+      const connected = (u.conns || 0) > 0;
+      const statusLabel = u.status === 'processing' ? t('admin.status.processing') : connected ? t('admin.status.uploading') : t('admin.status.waiting');
+      const showSpinner = u.status === 'processing' || connected;
+      const elapsed = fmtElapsed(u.elapsed_sec);
+      const idleTag = u.status === 'active' && !connected && u.idle_sec >= 10
+        ? `<span style="color:oklch(.62 .14 55);margin-left:4px;">${t('admin.idleTag', { s: u.idle_sec })}</span>` : '';
+      // 即時網速(僅在傳輸中且 >0 顯示)
+      const speedTag = (connected && u.speed_bps > 0)
+        ? `&nbsp;·&nbsp;<span style="color:var(--accent);font-weight:600;">${t('admin.speedPrefix')}${fmtSpeed(u.speed_bps)}</span>` : '';
+
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--surface-2);border-radius:8px;">
+        ${avatar}
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-weight:600;font-size:14px;">${escHtml(u.username)}</span>
+            <span style="font-size:11px;padding:1px 7px;border-radius:5px;${typeBg}">${typeLabel}</span>
+          </div>
+          <div style="font-size:12px;color:var(--ink-2);margin-top:2px;">
+            ${u.file_count} ${t('upload.filesUnit')} &nbsp;·&nbsp; ${fmtSize(u.total_bytes)} &nbsp;·&nbsp; ${t('admin.elapsedPrefix')}${elapsed}${idleTag}${speedTag}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);white-space:nowrap;">
+            ${showSpinner ? '<span class="spinner" style="width:13px;height:13px;border-width:2px;"></span>' : ''}
+            ${statusLabel}
+          </div>
+          <button class="btn btn--danger btn--sm" onclick="terminateUpload('${escHtml(u.session_id)}','${escHtml(u.username)}')">${t('admin.terminate')}</button>
+        </div>
+      </div>`;
+    }).join('');
+
+  } catch (e) {
+    // Silent — don't disrupt admin page if this fails
+  }
+}
+
+function fmtElapsed(sec) {
+  if (sec < 60)  return sec + ' ' + t('trip.secUnit');
+  if (sec < 3600) return Math.floor(sec / 60) + ' ' + t('trip.minUnit') + (sec % 60) + ' ' + t('trip.secUnit');
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return h + ' ' + t('trip.hourUnit') + m + ' ' + t('trip.minUnit');
+}
+
+/** 網速格式化(bytes/秒 → MB/s、KB/s)。 */
+function fmtSpeed(bps) {
+  if (bps >= 1e6) return (bps / 1e6).toFixed(1) + ' MB/s';
+  if (bps >= 1e3) return (bps / 1e3).toFixed(0) + ' KB/s';
+  return (bps || 0).toFixed(0) + ' B/s';
+}
+
+/** 管理員中斷任一使用者的上傳工作階段。 */
+async function terminateUpload(sessionId, username) {
+  if (!confirm(t('admin.terminateConfirm', { name: username }))) return;
+  try {
+    await apiFetch('/api/admin/active-uploads/' + encodeURIComponent(sessionId), { method: 'DELETE' });
+    showToast(t('admin.terminated'), 'success');
+    loadActiveUploads();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function loadUsers() {
+  try {
+    const users = await apiFetch('/api/users');
+    renderTable(users);
+  } catch (e) {
+    document.getElementById('user-table-body').innerHTML =
+      `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--ink-3);">${t('common.loadFail')}：${e.message}</td></tr>`;
+  }
+}
+
+let usersCache = [];
+function renderTable(users) {
+  usersCache = users;
+  if (!users.length) {
+    document.getElementById('user-table-body').innerHTML =
+      `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--ink-3);">${t('admin.noUsers')}</td></tr>`;
+    return;
+  }
+  const iAmOwner = !!(currentUser && currentUser.is_owner);
+  document.getElementById('user-table-body').innerHTML = users.map(u => {
+    const roleClass = u.role === 'admin' ? 'admin' : 'viewer';
+    const roleLabel = u.role === 'admin' ? t('common.role.admin') : t('common.role.viewer');
+    const isSelf = currentUser && u.id === currentUser.id;
+    // 總管理員可變更他人角色(除了另一位總管理員本身);其餘顯示靜態徽章。
+    const roleCell = (iAmOwner && !u.is_owner)
+      ? `<select class="form-input form-select role-select" onchange="changeRole(${u.id}, this.value, '${escHtml(u.username)}')">
+           <option value="viewer"${u.role === 'viewer' ? ' selected' : ''}>${t('admin.roleViewer')}</option>
+           <option value="admin"${u.role === 'admin' ? ' selected' : ''}>${t('admin.roleAdmin')}</option>
+         </select>`
+      : `<span class="role-badge ${roleClass}">${roleLabel}</span>${u.is_owner ? ` <span class="role-badge admin" title="${t('admin.owner')}">${t('admin.owner')}</span>` : ''}`;
+    const initial = (u.username[0]||'?').toUpperCase();
+    const avatar = u.gravatar_url
+      ? `<img src="${u.gravatar_url}" alt="${initial}"
+              style="width:30px;height:30px;border-radius:50%;object-fit:cover;"
+              onerror="this.outerHTML='<div style=\\'width:30px;height:30px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--accent)\\'>${initial}</div>'">`
+      : `<div style="width:30px;height:30px;border-radius:50%;background:var(--accent-soft);
+               display:flex;align-items:center;justify-content:center;
+               font-size:13px;font-weight:700;color:var(--accent);">${initial}</div>`;
+    return `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px;">
+          ${avatar}
+          <div>
+            <div style="font-weight:500;">${escHtml(u.display_name || u.username)}</div>
+            ${(u.display_name || u.email) ? `<div style="font-size:12px;color:var(--ink-3);">${escHtml(u.display_name ? u.username : u.email)}</div>` : ''}
+          </div>
+          ${isSelf ? `<span style="font-size:12px;color:var(--ink-3);">${t('admin.self')}</span>` : ''}
+        </div>
+      </td>
+      <td>${roleCell}</td>
+      <td>
+        <button class="btn--link-idle" style="font-size:13px;color:var(--ink-2);background:none;border:none;cursor:pointer;padding:2px 0;text-align:left;"
+                onclick="openIdleModal(${u.id})" title="調整上傳閒置逾時">
+          ${idleLabel(u.upload_idle_sec)} <span style="color:var(--accent);font-size:12px;">調整</span>
+        </button>
+      </td>
+      <td style="text-align:right;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn--ghost btn--sm"
+                  onclick="openPwModal(${u.id}, '${escHtml(u.username)}')">${t('admin.changePwShort')}</button>
+          ${(!isSelf && !u.is_owner) ? `<button class="btn btn--danger btn--sm"
+                  onclick="deleteUser(${u.id}, '${escHtml(u.username)}')">${t('admin.delete')}</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* ── 新增使用者 ──────────────────────────────────────────────────────────── */
+function openCreateModal() {
+  document.getElementById('new-username').value = '';
+  document.getElementById('new-email').value = '';
+  document.getElementById('new-password').value = '';
+  document.getElementById('new-role').value = 'viewer';
+  // 只有總管理員能新增管理員:非總管理員時隱藏 admin 選項。
+  const adminOpt = document.querySelector('#new-role option[value="admin"]');
+  if (adminOpt) adminOpt.hidden = !(currentUser && currentUser.is_owner);
+  document.getElementById('create-error').classList.remove('show');
+  document.getElementById('create-btn').disabled = false;
+  document.getElementById('create-btn').textContent = t('admin.modal.create');
+  document.getElementById('create-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('new-username').focus(), 80);
+}
+
+async function doCreate(e) {
+  e.preventDefault();
+  const btn = document.getElementById('create-btn');
+  const err = document.getElementById('create-error');
+  err.classList.remove('show');
+  btn.disabled = true; btn.textContent = t('auth.setup.submitting');
+
+  const username = document.getElementById('new-username').value.trim();
+  const email    = document.getElementById('new-email').value.trim();
+  const password = document.getElementById('new-password').value;
+  const role     = document.getElementById('new-role').value;
+
+  try {
+    await apiFetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password, role }),
+    });
+    closeModal('create-modal');
+    showToast(t('admin.toast.created', { name: username }), 'success');
+    loadUsers();
+  } catch (ex) {
+    err.textContent = t('admin.toast.createFail') + '：' + ex.message;
+    err.classList.add('show');
+    btn.disabled = false; btn.textContent = t('admin.modal.create');
+  }
+}
+
+/* ── 刪除使用者 ──────────────────────────────────────────────────────────── */
+async function deleteUser(id, username) {
+  if (!confirm(t('admin.toast.deleteConfirm', { name: username }))) return;
+  try {
+    await apiFetch(`/api/users/${id}`, { method: 'DELETE' });
+    showToast(t('admin.toast.deleted', { name: username }), 'success');
+    loadUsers();
+  } catch (e) {
+    showToast(t('admin.toast.deleteFail') + '：' + e.message, 'error');
+  }
+}
+
+/* ── 變更角色(僅總管理員) ──────────────────────────────────────────────── */
+async function changeRole(id, role, username) {
+  try {
+    await apiFetch(`/api/users/${id}/role`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+    showToast(t('admin.toast.roleChanged', { name: username }), 'success');
+    loadUsers();
+  } catch (e) {
+    showToast(t('admin.toast.roleChangeFail') + '：' + e.message, 'error');
+    loadUsers();   // 還原下拉為實際值
+  }
+}
+
+/* ── 更改密碼 ────────────────────────────────────────────────────────────── */
+function openPwModal(id, username) {
+  pwTargetId = id;
+  document.getElementById('pw-username').textContent = username;
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+  document.getElementById('pw-error').classList.remove('show');
+  document.getElementById('pw-btn').disabled = false;
+  document.getElementById('pw-btn').textContent = t('admin.modal.updatePassword');
+  document.getElementById('pw-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('pw-new').focus(), 80);
+}
+
+async function doChangePassword(e) {
+  e.preventDefault();
+  const btn = document.getElementById('pw-btn');
+  const err = document.getElementById('pw-error');
+  err.classList.remove('show');
+
+  const newPw  = document.getElementById('pw-new').value;
+  const confirm = document.getElementById('pw-confirm').value;
+
+  if (newPw !== confirm) {
+    err.textContent = t('admin.toast.pwMismatch');
+    err.classList.add('show'); return;
+  }
+
+  btn.disabled = true; btn.textContent = t('admin.updating');
+  try {
+    await apiFetch(`/api/users/${pwTargetId}/password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: newPw }),
+    });
+    closeModal('pw-modal');
+    showToast(t('admin.toast.pwUpdated'), 'success');
+  } catch (ex) {
+    err.textContent = t('admin.toast.updateFail') + '：' + ex.message;
+    err.classList.add('show');
+    btn.disabled = false; btn.textContent = t('admin.modal.updatePassword');
+  }
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+/* ── 外觀與品牌設定 ──────────────────────────────────────────────────────── */
+const SCALAR_KEYS = ['site_title','footer_text','login_tagline',
+  'locale','units','items_per_page','default_camera','sftp_public_host',
+  'sftp_port','upload_session_idle_sec','default_gap_min','login_bg'];
+let iconDataUrl = '', faviconDataUrl = '';
+
+async function loadSettingsForm() {
+  let s;
+  try { s = await apiFetch('/api/admin/settings'); } catch { return; }
+  for (const k of SCALAR_KEYS) {
+    const el = document.getElementById('cfg-' + k);
+    if (el && s[k] !== undefined && s[k] !== null) el.value = s[k];
+  }
+  // icon 預覽
+  iconDataUrl = s.icon_data_url || '';
+  faviconDataUrl = s.favicon_data_url || '';
+  if (iconDataUrl) document.getElementById('cfg-icon-preview').src = iconDataUrl;
+  if (faviconDataUrl) document.getElementById('cfg-favicon-preview').src = faviconDataUrl;
+  document.getElementById('cfg-icon-file').addEventListener('change', e => pickImage(e, 32, v => {
+    iconDataUrl = v; document.getElementById('cfg-icon-preview').src = v;
+  }));
+  document.getElementById('cfg-favicon-file').addEventListener('change', e => pickImage(e, 64, v => {
+    faviconDataUrl = v; document.getElementById('cfg-favicon-preview').src = v;
+  }));
+  // 連結
+  renderLinks(s.links || []);
+}
+
+function renderLinks(links) {
+  const wrap = document.getElementById('cfg-links');
+  wrap.innerHTML = '';
+  links.forEach(l => addLinkRow(l.label, l.href));
+}
+function addLinkRow(label = '', href = '') {
+  const row = document.createElement('div');
+  row.className = 'links-row';
+  row.innerHTML = `
+    <input class="form-input link-label" type="text" placeholder="標籤" maxlength="60">
+    <input class="form-input link-href" type="text" placeholder="https:// 或 /" maxlength="300">
+    <button type="button" class="btn btn--ghost btn--sm">×</button>`;
+  row.querySelector('.link-label').value = label;
+  row.querySelector('.link-href').value = href;
+  row.querySelector('button').addEventListener('click', () => row.remove());
+  document.getElementById('cfg-links').appendChild(row);
+}
+
+function collectLinks() {
+  return [...document.querySelectorAll('#cfg-links .links-row')].map(r => ({
+    label: r.querySelector('.link-label').value.trim(),
+    href: r.querySelector('.link-href').value.trim(),
+  })).filter(l => l.label && l.href);
+}
+
+/** 讀圖檔 → 驗證尺寸 → data-URL。maxDim 為長/寬上限(SVG 略過尺寸檢查)。 */
+function pickImage(e, maxDim, cb) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result;
+    if (file.type === 'image/svg+xml') { cb(dataUrl); return; }
+    const img = new Image();
+    img.onload = () => {
+      if (img.width > maxDim || img.height > maxDim) {
+        showToast(`圖片尺寸需 ≤ ${maxDim}×${maxDim}（目前 ${img.width}×${img.height}）`, 'error');
+        e.target.value = '';
+        return;
+      }
+      cb(dataUrl);
+    };
+    img.onerror = () => showToast('無法讀取圖片', 'error');
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function saveSettings() {
+  const btn = document.getElementById('cfg-save-btn');
+  const status = document.getElementById('cfg-status');
+  const body = {};
+  for (const k of SCALAR_KEYS) {
+    const el = document.getElementById('cfg-' + k);
+    if (!el) continue;
+    let v = el.value;
+    if (el.type === 'number') v = v === '' ? undefined : parseInt(v, 10);
+    if (v !== undefined) body[k] = v;
+  }
+  body.icon_data_url = iconDataUrl;
+  body.favicon_data_url = faviconDataUrl;
+  body.links = collectLinks();
+
+  btn.disabled = true; status.textContent = '';
+  try {
+    await apiFetch('/api/admin/settings', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    await reloadConfig();           // 即時套用品牌/字串到本頁
+    status.className = 'strings-status ok'; status.textContent = '已儲存';
+    showToast('設定已儲存', 'success');
+  } catch (e) {
+    status.className = 'strings-status err'; status.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ── 上傳時限(逐帳號 idle 覆寫) ─────────────────────────────────────────── */
+function idleLabel(v) {
+  if (v === null || v === undefined) return '角色預設';
+  if (v === 0) return '不限時';
+  if (v % 3600 === 0) return (v / 3600) + ' 小時';
+  if (v % 60 === 0) return (v / 60) + ' 分';
+  return v + ' 秒';
+}
+
+let idleTargetId = null;
+function openIdleModal(id) {
+  const u = usersCache.find(x => x.id === id);
+  if (!u) return;
+  idleTargetId = id;
+  document.getElementById('idle-username').textContent = u.username;
+  const v = u.upload_idle_sec;
+  const mode = document.getElementById('idle-mode');
+  const sec = document.getElementById('idle-seconds');
+  if (v === null || v === undefined) { mode.value = 'default'; sec.value = 600; }
+  else if (v === 0) { mode.value = 'unlimited'; sec.value = 600; }
+  else { mode.value = 'custom'; sec.value = v; }
+  onIdleModeChange();
+  document.getElementById('idle-error').classList.remove('show');
+  document.getElementById('idle-btn').disabled = false;
+  document.getElementById('idle-modal').style.display = 'flex';
+}
+function onIdleModeChange() {
+  const custom = document.getElementById('idle-mode').value === 'custom';
+  document.getElementById('idle-custom-field').style.display = custom ? '' : 'none';
+}
+async function doSaveIdle(e) {
+  e.preventDefault();
+  const btn = document.getElementById('idle-btn');
+  const err = document.getElementById('idle-error');
+  err.classList.remove('show');
+  const mode = document.getElementById('idle-mode').value;
+  let seconds;
+  if (mode === 'default') seconds = null;
+  else if (mode === 'unlimited') seconds = 0;
+  else {
+    seconds = parseInt(document.getElementById('idle-seconds').value, 10);
+    if (!Number.isInteger(seconds) || seconds < 60 || seconds > 86400) {
+      err.textContent = '秒數需為 60–86400'; err.classList.add('show'); return;
+    }
+  }
+  btn.disabled = true;
+  try {
+    await apiFetch(`/api/users/${idleTargetId}/upload-idle`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seconds }),
+    });
+    closeModal('idle-modal');
+    showToast('上傳時限已更新', 'success');
+    loadUsers();
+  } catch (ex) {
+    err.textContent = ex.message; err.classList.add('show');
+    btn.disabled = false;
+  }
+}
+
+/* ── 檔案總管 ────────────────────────────────────────────────────────────── */
+async function openFilesModal() {
+  document.getElementById('files-modal').style.display = 'flex';
+  await loadFiles();
+}
+
+async function loadFiles() {
+  const wrap = document.getElementById('files-list');
+  try {
+    const days = await apiFetch('/api/admin/files');
+    if (!days.length) {
+      wrap.innerHTML = `<div style="text-align:center;padding:28px;color:var(--ink-3);">${t('admin.files.empty')}</div>`;
+      return;
+    }
+    wrap.innerHTML = days.map(renderFileDay).join('');
+  } catch (e) {
+    wrap.innerHTML = `<div style="text-align:center;padding:28px;color:var(--ink-3);">${t('common.loadFail')}：${escHtml(e.message)}</div>`;
+  }
+}
+
+function fmtClock(epoch) {
+  return new Date(epoch * 1000).toLocaleTimeString(cfgLocale(), { hour:'2-digit', minute:'2-digit', hour12:false, timeZone:'UTC' });
+}
+
+function renderFileDay(day) {
+  const dayBytes = day.trips.reduce((s, tr) => s + (tr.bytes || 0), 0);
+  const dateLabel = new Date(day.date).toLocaleDateString(cfgLocale(), { year:'numeric', month:'long', day:'numeric', weekday:'short', timeZone:'UTC' });
+  const trips = day.trips.map(tr => {
+    const seq = String(tr.day_order ?? 0).padStart(2, '0');
+    const owner = tr.owner_username ? `<span style="font-size:11px;color:var(--ink-3);">${escHtml(tr.owner_username)}</span>` : '';
+    const dlFront = tr.has_front
+      ? `<a class="fm-dl" href="/video/${encodeURIComponent(tr.trip_id)}/front" download="${escHtml(tr.trip_id)}-front.mp4">${t('admin.files.download')}·${t('admin.files.downloadFront')}</a>` : '';
+    const dlRear = tr.has_rear
+      ? `<a class="fm-dl" href="/video/${encodeURIComponent(tr.trip_id)}/rear" download="${escHtml(tr.trip_id)}-rear.mp4">${t('admin.files.download')}·${t('admin.files.downloadRear')}</a>` : '';
+    return `<div class="fm-trip" id="fm-${escHtml(tr.trip_id)}">
+      <div class="fm-trip-main">
+        <div class="fm-trip-title">
+          <span>#${seq} · ${fmtClock(tr.start_epoch)}–${fmtClock(tr.end_epoch)}</span>
+          <span style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);">${fmtDuration(tr.duration_sec)} · ${fmtSize(tr.bytes)}</span>
+          ${owner}
+        </div>
+        <div class="fm-trip-path">${escHtml(tr.trip_dir || '—')}</div>
+      </div>
+      <div class="fm-actions">
+        ${dlFront}${dlRear}
+        <button class="btn btn--danger btn--sm" onclick="deleteTripFile('${escHtml(tr.trip_id)}')">${t('admin.files.delete')}</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="fm-day">
+    <div class="fm-day-head">
+      <span class="fm-day-date">${dateLabel}</span>
+      <span class="fm-day-meta">${day.trips.length} ${t('admin.files.tripsUnit')} · ${fmtGB(dayBytes)}</span>
+    </div>
+    ${trips}
+  </div>`;
+}
+
+async function deleteTripFile(tripId) {
+  if (!confirm(t('admin.files.deleteConfirm'))) return;
+  try {
+    await apiFetch('/api/trips/' + encodeURIComponent(tripId), { method: 'DELETE' });
+    document.getElementById('fm-' + tripId)?.remove();
+    showToast(t('admin.files.deleted'), 'success');
+    loadStorage();
+  } catch (e) {
+    showToast(t('admin.files.deleteFail') + '：' + e.message, 'error');
+  }
+}
+</script>
+</body>
+</html>

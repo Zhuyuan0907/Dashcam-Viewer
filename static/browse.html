@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title data-i18n-title="title.browse">瀏覽旅程 — 行車記錄</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* ── 瀏覽旅程 · simple.taipei 風(scoped:全部吃全域 token,不動全域 CSS) ──────── */
+    .browse-grid {
+      display: grid; grid-template-columns: 244px 1fr;
+      gap: clamp(22px, 3vw, 44px); align-items: start;
+    }
+
+    /* 日期軌(左,sticky)。overscroll-behavior:contain 讓軌內捲動不會「外溢」帶動整頁,
+       解決日期軌與頁面雙重捲動互搶的問題。 */
+    .daterail { position: sticky; top: calc(var(--hdr-h) + 16px);
+      max-height: calc(100vh - var(--hdr-h) - 32px); overflow-y: auto; padding-right: 4px;
+      overscroll-behavior: contain;
+      scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+    .daterail::-webkit-scrollbar { width: 7px; }
+    .daterail::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; }
+    .daterail::-webkit-scrollbar-track { background: transparent; }
+
+    /* 觸發鈕(像下拉選單,顯示目前選取日期);桌機隱藏,手機才出現 */
+    .daterail-trigger { display: none; }
+
+    /* 手機:日期軌改成「收合下拉」。面板就地展開(把當日內容往下推),不用絕對定位 →
+       版面不會跑掉;清單一律垂直,日期再多也只是面板內上下捲。選完即收。 */
+    @media (max-width: 760px) {
+      .browse-grid { grid-template-columns: 1fr; gap: 14px; }
+      .daterail { position: static; max-height: none; overflow: visible; padding-right: 0; }
+
+      .daterail-trigger {
+        display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;
+        padding: 13px 15px; margin: 0; font: inherit; font-size: 15px; font-weight: 600; line-height: 1.2;
+        color: var(--ink); background: transparent;
+        border: 1px solid var(--line); border-radius: var(--radius-sm);
+        cursor: pointer; text-align: left;
+        -webkit-tap-highlight-color: transparent; transition: border-color .15s ease, background-color .15s ease;
+      }
+      .daterail-trigger:active { transform: scale(.995); }
+      .daterail.open .daterail-trigger { border-color: var(--accent); }
+      .daterail-trigger-ico { flex: none; color: var(--accent); }
+      .daterail-trigger-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .daterail-trigger-chev { flex: none; color: var(--ink-3); transition: transform .22s ease; }
+      .daterail.open .daterail-trigger-chev { transform: rotate(180deg); }
+
+      /* 面板:收合時隱藏;展開就地下推、自身垂直捲動 */
+      .daterail-panel { display: none; }
+      .daterail.open .daterail-panel {
+        display: block; margin-top: 8px; padding: 8px; box-sizing: border-box;
+        background: var(--surface); border: 1px solid var(--line);
+        border-radius: var(--radius); box-shadow: var(--shadow-md);
+        max-height: min(60vh, 440px); overflow-y: auto;
+        overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+        animation: drail-pop .18s cubic-bezier(.23,1,.32,1);
+      }
+      .daterail-panel .daterail-title { display: none; }
+      .drow { padding: 12px 13px; }
+    }
+    @keyframes drail-pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+    .daterail-title { font-size: 12px; font-weight: 600; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--ink-3); padding: 0 6px 12px; }
+    .daterail ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+
+    .drow { display: block; padding: 11px 13px; border-radius: var(--radius-sm);
+      color: var(--ink-2); cursor: pointer; transition: background-color .15s ease, color .15s ease; }
+    .drow:hover { background: var(--surface-2); color: var(--ink); }
+    .drow.active { background: var(--accent-soft); color: var(--accent); }
+    /* 緊急(紅色)列:hover / active 也要有對應的紅色色彩反應(與藍色一致) */
+    .drow.emer:hover { background: color-mix(in oklch, var(--crit) 10%, var(--surface-2)); }
+    .drow.emer.active { background: color-mix(in oklch, var(--crit) 14%, transparent); color: var(--crit); }
+    .drow.emer.active .drow-date,
+    .drow.emer.active .drow-count { color: var(--crit); }
+    .drow.emer:hover .drow-fill { background: color-mix(in oklch, var(--crit) 80%, white); }
+    .drow-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .drow-date { font-size: 14px; font-weight: 600; color: var(--ink); display: inline-flex; align-items: center; gap: 7px; }
+    .drow.active .drow-date { color: var(--accent); }
+    .drow-emer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--crit); display: inline-block; flex-shrink: 0; }
+    .drow-count { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .drow.active .drow-count { color: var(--accent); }
+    .drow-bar { margin-top: 9px; height: 4px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+    .drow-fill { height: 100%; border-radius: 99px; background: var(--accent-line); min-width: 4px; transition: width .35s ease; }
+    .drow:hover .drow-fill { background: var(--accent); }
+    .drow.active .drow-fill { background: var(--accent); }
+    .drow.emer .drow-fill { background: var(--crit); }
+
+    /* 右側當日標頭 */
+    .day-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .day-head h2 { font-size: clamp(19px, 2.6vw, 25px); font-weight: 700; letter-spacing: -.02em; }
+    .day-meta { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-3); }
+    .day-emer { font-size: 12px; font-weight: 700; color: var(--crit); display: inline-flex; align-items: center; gap: 5px; }
+
+    /* 搖晃標示(以 G 值;EMER 偵測關閉後使用) */
+    .drow-shake-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .drow.shake-warn .drow-shake-dot { background: var(--warn); }
+    .drow.shake-crit .drow-shake-dot { background: var(--crit); }
+    .day-shake { font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
+    .day-shake.warn { color: var(--warn); }
+    .day-shake.crit { color: var(--crit); }
+    .day-shake-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; flex-shrink: 0; }
+
+    /* 使用者(旅程擁有者)選單 —— 沿用全域 .form-input.form-select 外觀,保持一致 */
+    .owner-bar { display: flex; align-items: center; gap: 10px; margin: 4px 0 18px; flex-wrap: wrap; }
+    .owner-bar label { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+    /* 透明底色 + 淡邊框的下拉 */
+    .owner-select { width: auto; min-width: 200px; cursor: pointer; font-weight: 600; color: var(--ink);
+      background-color: transparent; border-color: var(--line);
+      transition: background-color .15s ease, border-color .15s ease; }
+    .owner-select:hover, .owner-select:focus { background-color: var(--surface); border-color: var(--accent); }
+
+    /* 無旅程時:整區置中(隱藏空的日期軌),讓提示 / 選人選單置於正中 */
+    .browse-grid.is-empty { display: flex; align-items: center; justify-content: center; }
+    .browse-grid.is-empty .daterail { display: none; }
+    .browse-grid.is-empty #trip-content { height: auto; overflow: visible; width: 100%; max-width: 560px; padding-right: 0; }
+    /* 空狀態:收起頁面標題區,讓選人選單置於整個頁面的正中央 */
+    #browse-wrap.is-empty-page > .sec-eyebrow,
+    #browse-wrap.is-empty-page > .page-title,
+    #browse-wrap.is-empty-page > .page-sub { display: none; }
+
+    /* 選人選單卡 */
+    .owner-picker { text-align: center; padding: 40px 24px; }
+    .owner-picker .op-icon { width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 16px;
+      background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+    .owner-picker h3 { font-size: 19px; font-weight: 700; margin-bottom: 6px; }
+    .owner-picker p { font-size: 14px; color: var(--ink-3); margin-bottom: 20px; }
+    .op-list { display: flex; flex-direction: column; gap: 8px; max-width: 340px; margin: 0 auto 18px; }
+    .op-item { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box;
+      padding: 12px 14px; font: inherit; text-align: left; cursor: pointer;
+      background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-sm); transition: border-color .15s ease, background-color .15s ease; }
+    .op-item:hover { border-color: var(--accent); background: var(--surface-2); }
+    .op-avatar { width: 32px; height: 32px; flex: none; border-radius: 50%; background: var(--accent-soft);
+      color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+    .op-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .op-go { flex: none; color: var(--ink-3); }
+
+    /* ── 桌機:整頁不需捲動,左右兩欄各自內部捲動;整頁捲動只會露出 footer ── */
+    @media (min-width: 761px) {
+      .page-body { height: 100dvh; box-sizing: border-box; overflow: hidden; }
+      .section-tight { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; }
+      .browse-grid { flex: 1; min-height: 0; }
+      .daterail { position: static; top: auto; max-height: none; height: 100%; min-height: 0; overflow-y: auto; }
+      #trip-content { height: 100%; min-height: 0; overflow-y: auto; padding-right: 6px;
+        scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+      #trip-content::-webkit-scrollbar { width: 7px; }
+      #trip-content::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap hdr-inner">
+    <a class="hdr-brand" href="/">
+      <div class="hdr-brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+      <span class="hdr-brand-text">行車記錄</span>
+    </a>
+    <nav class="hdr-nav">
+      <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
+      <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
+      <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
+      <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
+    </nav>
+    <div class="hdr-ctrls" id="hdr-ctrls"></div>
+  </div>
+</header>
+
+<div class="page-body">
+  <div class="wrap section-tight" id="browse-wrap">
+
+    <div class="eyebrow sec-eyebrow rise"><span class="tick"></span><span data-i18n="nav.browse">瀏覽旅程</span></div>
+    <h1 class="page-title rise rise-2" data-i18n="browse.title">瀏覽旅程</h1>
+    <p class="page-sub rise rise-2" data-i18n="browse.sub">所有已整理的行車紀錄，依日期分類</p>
+
+    <div class="owner-bar rise rise-2" id="owner-bar" style="display:none;">
+      <label for="owner-select" data-i18n="browse.ownerPick">選擇使用者</label>
+      <select class="form-input form-select owner-select" id="owner-select" onchange="onOwnerChange()"></select>
+    </div>
+
+    <div class="browse-grid rise rise-3">
+      <aside class="daterail" id="daterail">
+        <button class="daterail-trigger" id="daterail-trigger" type="button" aria-expanded="false"
+                aria-controls="daterail-panel" onclick="toggleDaterail(event)">
+          <svg class="daterail-trigger-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>
+          <span class="daterail-trigger-label" id="daterail-current" data-i18n="common.loading">載入中…</span>
+          <svg class="daterail-trigger-chev" width="18" height="18" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="daterail-panel" id="daterail-panel">
+          <div class="daterail-title" data-i18n="browse.dateHeading">日期</div>
+          <ul id="date-list">
+            <li><div class="loading-row" style="padding:14px;"><div class="spinner"></div></div></li>
+          </ul>
+        </div>
+      </aside>
+      <main id="trip-content">
+        <div class="loading-row"><div class="spinner"></div><span data-i18n="common.loading">載入中…</span></div>
+      </main>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/app.js"></script>
+<script>
+let allDates = [];
+let currentOwner = null;   // 目前瀏覽的旅程擁有者 id
+let selfId = null;
+let ownersList = [];       // 可瀏覽的旅程擁有者
+
+(async () => {
+  await configReady;
+  const user = await checkAuth();
+  renderHeader(user);
+  selfId = user.id;
+  currentOwner = user.id;
+  await loadOwners();
+  loadDates();
+})();
+
+/** 載入可瀏覽的旅程擁有者,填入選單;只有自己一個時隱藏。 */
+async function loadOwners() {
+  let owners;
+  try { owners = await apiFetch('/api/trip-owners'); } catch { return; }
+  // 確保「我的旅程」永遠可選(即使自己還沒有旅程)
+  if (!owners.some(o => o.is_self)) {
+    owners.unshift({ id: selfId, username: '', name: '', is_self: true });
+  }
+  ownersList = owners;
+  const bar = document.getElementById('owner-bar');
+  const sel = document.getElementById('owner-select');
+  sel.innerHTML = owners.map(o =>
+    `<option value="${o.id}">${o.is_self ? escapeHtml(t('browse.ownerMine')) : escapeHtml(t('browse.ownerOf', { name: o.name || o.username }))}</option>`
+  ).join('');
+  sel.value = String(currentOwner);
+  bar.style.display = owners.length > 1 ? 'flex' : 'none';
+}
+
+/** 其他(非自己)可瀏覽的擁有者。 */
+function otherOwners() { return ownersList.filter(o => !o.is_self); }
+
+function onOwnerChange() {
+  const sel = document.getElementById('owner-select');
+  currentOwner = parseInt(sel.value, 10);
+  location.hash = '';
+  loadDates();
+}
+
+/** 由選單卡點選某位使用者 → 切換並載入。 */
+function selectOwner(id) {
+  currentOwner = id;
+  const sel = document.getElementById('owner-select');
+  if (sel) sel.value = String(id);
+  location.hash = '';
+  loadDates();
+}
+
+/** 目前擁有者沒有旅程:整區置中,優先顯示「選擇使用者」選單(若有他人公開),否則顯示上傳提示。 */
+function renderEmpty() {
+  const grid = document.querySelector('.browse-grid');
+  grid.classList.add('is-empty');
+  document.getElementById('browse-wrap').classList.add('is-empty-page');
+  document.getElementById('date-list').innerHTML = '';
+  const content = document.getElementById('trip-content');
+  const others = otherOwners();
+
+  // 只在瀏覽「自己」且有他人公開旅程時,優先跳出選人選單。
+  if (currentOwner === selfId && others.length) {
+    // 選人選單本身已含所有對象,頂部「選擇使用者」列重複,隱藏之並讓選單上移。
+    document.getElementById('owner-bar').style.display = 'none';
+    const items = others.map(o => {
+      const nm = o.name || o.username;
+      const initial = (nm[0] || '?').toUpperCase();
+      return `<button class="op-item" onclick="selectOwner(${o.id})">
+        <span class="op-avatar">${initial}</span>
+        <span class="op-name">${escapeHtml(nm)}</span>
+        <svg class="op-go" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>`;
+    }).join('');
+    content.innerHTML = `<div class="owner-picker">
+      <div class="op-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+      <h3>${t('browse.pickTitle')}</h3>
+      <p>${t('browse.pickHint')}</p>
+      <div class="op-list">${items}</div>
+      <a class="btn btn--ghost btn--sm" href="/upload">${t('browse.uploadCta')}</a>
+    </div>`;
+    return;
+  }
+
+  // 否則:置中的空狀態(含上傳按鈕);頂部選單維持預設可見性(便於切回其他人)。
+  document.getElementById('owner-bar').style.display = ownersList.length > 1 ? 'flex' : 'none';
+  content.innerHTML = `<div class="empty">
+    <div class="empty-icon">${camIcon()}</div>
+    <h3>${t('browse.emptyTitle')}</h3>
+    <p>${t('browse.emptyHint')}</p>
+    <a class="btn btn--solid btn--sm" href="/upload" style="margin-top:16px;">${t('browse.uploadCta')}</a>
+  </div>`;
+}
+
+/** 攝影機空狀態圖示。 */
+function camIcon(size = 22) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`;
+}
+
+/** 日期短標籤(如「6/24 週二」),清單與手機下拉觸發鈕共用。 */
+function dateShortLabel(date) {
+  return new Date(date).toLocaleDateString(cfgLocale(),
+    { month: 'numeric', day: 'numeric', weekday: 'short', timeZone: 'UTC' });
+}
+
+/* ── 手機:日期下拉浮層開合 ──────────────────────────────────────────────────── */
+function toggleDaterail(e) {
+  if (e) e.stopPropagation();
+  const rail = document.getElementById('daterail');
+  const open = rail.classList.toggle('open');
+  document.getElementById('daterail-trigger').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function closeDaterail() {
+  const rail = document.getElementById('daterail');
+  if (!rail.classList.contains('open')) return;
+  rail.classList.remove('open');
+  document.getElementById('daterail-trigger').setAttribute('aria-expanded', 'false');
+}
+// 點浮層外側 / 按 Esc 收合
+document.addEventListener('click', (e) => {
+  const rail = document.getElementById('daterail');
+  if (rail && rail.classList.contains('open') && !rail.contains(e.target)) closeDaterail();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDaterail(); });
+
+async function loadDates() {
+  const list = document.getElementById('date-list');
+  const grid = document.querySelector('.browse-grid');
+  try {
+    allDates = await apiFetch('/api/trips/dates?owner=' + encodeURIComponent(currentOwner));
+
+    if (!allDates.length) { renderEmpty(); return; }
+    grid.classList.remove('is-empty');
+    document.getElementById('browse-wrap').classList.remove('is-empty-page');
+    // 正常檢視:依可選對象多寡顯示頂部選單。
+    document.getElementById('owner-bar').style.display = ownersList.length > 1 ? 'flex' : 'none';
+
+    // 密度條:當日總時長相對全期最大值;含緊急鎖檔的日期標紅。
+    const maxSec = Math.max(1, ...allDates.map(d => d.total_sec || 0));
+    list.innerHTML = allDates.map(d => {
+      const label = dateShortLabel(d.date);
+      const w = Math.max(5, Math.round((d.total_sec || 0) / maxSec * 100));
+      // EMER 偵測關閉後改以 G 值標示搖晃:強烈(紅)=仍有 EMER 或 ≥2.5g;
+      // 搖晃(琥珀)=分析器標記的高G事件,或最高 G ≥1.8。
+      const gmax = d.max_gforce || 0;
+      const gev = d.gforce_events || 0;
+      const lvl = ((d.emer_count || 0) > 0 || gmax >= 2.5) ? 'shake-crit'
+                : (gev > 0 || gmax >= 1.8) ? 'shake-warn' : '';
+      const dot = lvl ? `<span class="drow-shake-dot" title="最高 ${gmax.toFixed(2)}g${gev ? ` · 高G事件 ${gev}` : ''}"></span>` : '';
+      return `<li><a class="drow${lvl ? ' ' + lvl : ''}" href="#${d.date}" data-date="${d.date}"
+                    onclick="selectDate('${d.date}');return false;">
+        <div class="drow-top">
+          <span class="drow-date">${dot}${label}</span>
+          <span class="drow-count">${d.trip_count} · ${fmtDuration(d.total_sec || 0)}</span>
+        </div>
+        <div class="drow-bar"><div class="drow-fill" style="width:${w}%"></div></div>
+      </a></li>`;
+    }).join('');
+
+    const hash = decodeURIComponent(location.hash.slice(1));
+    selectDate((hash && allDates.find(d => d.date === hash)) ? hash : allDates[0].date);
+  } catch (e) {
+    list.innerHTML = `<li style="padding:12px;color:var(--ink-3);font-size:13px;">${t('common.loadFail')}：${escapeHtml(e.message)}</li>`;
+  }
+}
+
+async function selectDate(date) {
+  location.hash = date;
+  document.querySelectorAll('#date-list .drow').forEach(a =>
+    a.classList.toggle('active', a.dataset.date === date));
+  // 手機下拉:更新觸發鈕顯示的目前日期,並收合浮層
+  const cur = document.getElementById('daterail-current');
+  if (cur) { cur.textContent = dateShortLabel(date); cur.removeAttribute('data-i18n'); }
+  closeDaterail();
+
+  const content = document.getElementById('trip-content');
+  content.innerHTML = `<div class="loading-row"><div class="spinner"></div>${t('common.loading')}</div>`;
+
+  try {
+    const data = await apiFetch(`/api/trips?date=${encodeURIComponent(date)}&owner=${encodeURIComponent(currentOwner)}&limit=100`);
+    const label = new Date(date).toLocaleDateString(cfgLocale(),
+      { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', timeZone: 'UTC' });
+    const totalSec = data.trips.reduce((s, tr) => s + tr.duration_sec, 0);
+    const emerTotal = data.trips.reduce((s, tr) => s + (tr.emer_count || 0), 0);
+    const emerTag = emerTotal > 0
+      ? `<span class="day-emer"><span class="drow-emer-dot"></span>EMER ×${emerTotal}</span>`
+      : '';
+    // 搖晃標示(以 G 值):有高G事件或最高 G ≥1.8 的趟數 + 當日最高 G
+    const gPeak = data.trips.reduce((m, tr) => Math.max(m, tr.peak_gforce || 0), 0);
+    const shakeN = data.trips.filter(tr => (tr.gforce_events || 0) > 0 || (tr.peak_gforce || 0) >= 1.8).length;
+    const shakeTag = shakeN > 0
+      ? `<span class="day-shake ${gPeak >= 2.5 ? 'crit' : 'warn'}"><span class="day-shake-dot"></span>${t('browse.shake')} ×${shakeN} · 最高 ${gPeak.toFixed(2)}g</span>`
+      : '';
+
+    content.innerHTML = `
+      <div class="day-head">
+        <h2>${label}</h2>
+        <span class="day-meta">${data.trips.length} ${t('index.stat.tripsUnit')} · ${fmtDuration(totalSec)}</span>
+        ${emerTag}${shakeTag}
+      </div>
+      <div class="trips-grid">
+        ${data.trips.length
+          ? data.trips.map(renderTripCard).join('')
+          : `<div class="empty"><div class="empty-icon">${camIcon()}</div><h3>${t('browse.noTripThisDay')}</h3></div>`}
+      </div>`;
+  } catch (e) {
+    content.innerHTML = `<div class="empty"><div class="empty-icon">${camIcon()}</div>
+      <h3>${t('common.loadFail')}</h3><p>${escapeHtml(e.message)}</p></div>`;
+  }
+}
+</script>
+</body>
+</html>

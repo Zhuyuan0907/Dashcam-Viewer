@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title data-i18n-title="title.setup">初始設定 — 行車記錄</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="auth-brand">
+        <div class="auth-brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+        <span class="auth-brand-name">行車記錄</span>
+      </div>
+      <h1 class="auth-title" data-i18n="auth.setup.title">建立管理員帳號</h1>
+      <p class="auth-sub" data-i18n="auth.setup.sub">這是此系統的初次設定，請建立一個管理員帳號</p>
+    </div>
+
+    <form id="setup-form" onsubmit="doSetup(event)">
+      <div class="form-field">
+        <label class="form-label" for="username" data-i18n="auth.setup.user">管理員帳號</label>
+        <input class="form-input" id="username" name="username" type="text" autocomplete="username"
+               placeholder="例如：admin" data-i18n-attr="placeholder:auth.setup.userPlaceholder" required minlength="2">
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="email"><span data-i18n="auth.setup.email">Email</span> <span style="color:var(--ink-3);font-weight:400;" data-i18n="auth.setup.emailHint">（選填，用於 Gravatar 頭貼）</span></label>
+        <input class="form-input" id="email" name="email" type="email" autocomplete="email"
+               placeholder="example@example.com" data-i18n-attr="placeholder:auth.setup.emailPlaceholder">
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="password" data-i18n="auth.setup.password">密碼</label>
+        <input class="form-input" id="password" name="password" type="password" autocomplete="new-password"
+               placeholder="至少 8 個字元" data-i18n-attr="placeholder:auth.setup.passwordPlaceholder" required minlength="8">
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="confirm" data-i18n="auth.setup.confirm">確認密碼</label>
+        <input class="form-input" id="confirm" name="confirm" type="password" autocomplete="new-password"
+               placeholder="再次輸入密碼" data-i18n-attr="placeholder:auth.setup.confirmPlaceholder" required>
+      </div>
+      <div class="form-error" id="setup-error"></div>
+      <button class="btn btn--lg" type="submit" id="submit-btn" style="width:100%;margin-top:6px;" data-i18n="auth.setup.submit">建立帳號</button>
+    </form>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+(async () => {
+  await configReady;
+  try { const me = await checkAuth({ redirect: false }); if (me) { location.href = '/'; return; } } catch {}
+})();
+
+async function doSetup(e) {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+  const err = document.getElementById('setup-error');
+  err.classList.remove('show');
+  const username = document.getElementById('username').value.trim();
+  const email    = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const confirm  = document.getElementById('confirm').value;
+  if (password !== confirm) { err.textContent = t('auth.setup.errMismatch'); err.classList.add('show'); return; }
+  if (password.length < 8)  { err.textContent = t('auth.setup.errShort');    err.classList.add('show'); return; }
+  btn.disabled = true;
+  btn.textContent = t('auth.setup.submitting');
+  try {
+    await apiFetch('/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, email, password }) });
+    await apiFetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    location.href = '/';
+  } catch (ex) {
+    const text = ex.message || '';
+    err.textContent = (text.includes('400') || text.includes('already')) ? t('auth.setup.errExists') : t('auth.setup.errFail') + '：' + text;
+    err.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = t('auth.setup.submit');
+  }
+}
+</script>
+</body>
+</html>

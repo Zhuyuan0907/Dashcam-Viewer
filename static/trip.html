@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title data-i18n-title="title.trip">旅程 — 行車記錄</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* ── trip 頁 scoped(只吃全域 token) ─────────────────────────────────────── */
+    /* 行內備註:緊接統計列(最高G)下方的一句話;管理員可點即編 */
+    .note-inline { font-size: 14.5px; line-height: 1.7; color: var(--ink);
+      white-space: pre-wrap; word-break: break-word; }
+    .note-inline.editable { cursor: text; border-radius: var(--radius-sm);
+      padding: 6px 10px; margin: 0 -10px; transition: background-color .15s ease; }
+    .note-inline.editable:hover { background: var(--surface-2); }
+    .note-inline.empty { color: var(--ink-3); }
+    /* 快捷鍵提示:整頁最底、淡色、置中(緊貼影片下方,免捲動即可對照) */
+    .kbd-hint { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+      text-align: center; font-family: var(--font-mono); font-size: 11.5px;
+      color: var(--ink-3); }
+
+    /* ── 標題列:返回鍵 / 標題 / 刪除鍵 三段式,刪除永遠靠右、不再換行掉到下一排 ── */
+    .trip-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+    .trip-head .trip-back { flex: none; }
+    .trip-headings { display: flex; align-items: baseline; gap: 12px;
+      flex: 1; min-width: 0; flex-wrap: wrap; }
+    .trip-headings h1 { font-size: clamp(22px, 3vw, 30px); letter-spacing: -.02em; margin: 0; line-height: 1.05; }
+    .trip-headings .trip-sub { color: var(--ink-3); font-size: 13.5px; font-family: var(--font-mono); }
+    .trip-head .trip-del { flex: none; }
+    @media (max-width: 640px) {
+      .trip-head { gap: 10px; }
+      .trip-headings { gap: 2px 10px; }
+      .trip-headings h1 { font-size: 19px; }
+    }
+
+    /* 控制列分組:左=播放控制、右=工具,中間 seek 撐開 → 不再全擠左邊 */
+    .ctrl-group { display: flex; align-items: center; gap: 8px; flex: none; }
+
+    /* ── 編輯工具卡(可見性 + 裁剪) ─────────────────────────────────────────── */
+    #edit-panel { margin-bottom: 14px; }
+    .edit-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+      box-shadow: var(--shadow-sm); overflow: hidden; }
+    .edit-block { padding: 14px 16px; }
+    .edit-block + .edit-block { border-top: 1px solid var(--line); }
+    .edit-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .edit-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+    .edit-vis { width: auto; min-width: 180px; }
+    .edit-title { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .trimmed-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+      background: var(--accent-soft); color: var(--accent); }
+    .edit-hint { font-size: 12px; color: var(--ink-3); line-height: 1.6; margin: 0 0 12px; }
+    .trim-fields { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .trim-field { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      background: var(--surface-2); border-radius: var(--radius-sm); }
+    .trim-fname { font-size: 12px; color: var(--ink-3); }
+    .trim-fval { font-family: var(--font-mono); font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .trim-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .trim-progress { margin-top: 12px; }
+    .trim-progress .progress-track { margin-bottom: 6px; }
+    .trim-progress-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    /* 可見性:標題列的「可見性」按鈕 + 下拉選單 */
+    .vis-wrap { position: relative; flex: none; }
+    #vis-btn { display: inline-flex; align-items: center; }
+    .vis-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); margin-right: 7px; flex: none; }
+    .vis-dot.pub { background: var(--ok); }
+    .vis-dot.priv { background: var(--ink-3); }
+    .vis-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 50; min-width: 168px;
+      background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-md); padding: 4px; display: none; }
+    .vis-wrap.open .vis-menu { display: block; }
+    .vis-opt { display: flex; align-items: center; width: 100%; box-sizing: border-box; text-align: left;
+      padding: 9px 11px; font: inherit; font-size: 13px; color: var(--ink); background: none; border: 0;
+      border-radius: 6px; cursor: pointer; white-space: nowrap; }
+    .vis-opt:hover { background: var(--surface-2); }
+    .vis-opt.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+    /* ── 行動版觀看台 ─────────────────────────────────────────────────────────
+       觸控提示取代鍵盤提示;控制列在窄螢幕改兩行(進度條獨占一行、按鈕列在下);
+       子母畫面移到右上避開控制列;stage 高度改用 dvh 自適應。 */
+    /* 觸控手勢:完全交由 JS 處理(雙指縮放、單指拖曳平移);pan-y 會讓瀏覽器搶走手勢導致 pinch 不穩。
+       影片區佔最高 64dvh,其餘頁面內容(資訊條、備註)在其下方仍可正常捲動。 */
+    .stage { touch-action: none; }
+    /* 控制列顯隱:桌機 hover 顯示;觸控裝置改由 JS 控制(.show-ctrl)→ 播放中自動淡出、
+       暫停或點擊時喚回。淡出加一點過場。 */
+    .stage .ctrl { transition: opacity .25s ease; }
+    /* 觸控裝置:手機點一下會「黏住 :hover」讓控制列一直亮 → 自動淡出失效。
+       這裡在無 hover 裝置上取消 :hover 常亮,改完全由 JS 的 .show-ctrl 決定;
+       .show-ctrl 規則放後面 → 與 :hover 規則平手時勝出。 */
+    @media (hover: none) {
+      .stage:hover .ctrl { opacity: 0; }
+      .stage.show-ctrl .ctrl { opacity: 1; }
+    }
+    .touch-hint { display: none; }
+    @media (max-width: 760px) {
+      .kbd-hint { display: none; }
+      .touch-hint { display: block; margin-top: 24px; padding-top: 16px;
+        border-top: 1px solid var(--line); text-align: center;
+        font-size: 12.5px; color: var(--ink-3); line-height: 1.7; }
+    }
+    @media (max-width: 640px) {
+      /* seek 獨佔上排;下排兩組用 space-between 撐開:播放控制靠左、工具靠右。
+         壓低上下內距 → 控制列更扁、按鈕更貼近底部(不再覺得太高)。 */
+      .ctrl { flex-wrap: wrap; justify-content: space-between; gap: 7px 8px;
+        padding: 7px 12px calc(8px + var(--safe-bottom));
+        background: linear-gradient(to top, rgba(0,0,0,.82) 0%, rgba(0,0,0,.3) 64%, transparent 100%); }
+      .ctrl-seek { order: -1; flex: 1 0 100%; gap: 8px; }
+      .ctrl-btn { width: 40px; height: 40px; }
+      .ctrl-btn svg { width: 18px; height: 18px; }
+      .pip { width: 38%; min-width: 112px; max-width: 200px; top: 10px; right: 10px; bottom: auto; }
+      .zoom-tag { left: 12px; right: auto; top: 72px; }
+      .stage { min-height: 200px; max-height: 64dvh; }
+    }
+    @media (max-width: 360px) {
+      .ctrl { gap: 6px; }
+      .ctrl-group { gap: 6px; }
+      .ctrl-btn { width: 38px; height: 38px; }
+      .ctrl-btn.wide { padding: 0 9px; }
+    }
+    /* 直式手機(放大填滿、可接受裁切):觀看區改 4:3 較高版面,主畫面 object-fit:cover 填滿、
+       不留黑邊。影片變高 → 控制列(貼在 stage 底)自然落到更低的位置。
+       代價:16:9 在較高版面只能裁掉「左右」各約一成多(保留中央路面),非上下。
+       橫式 / 全螢幕維持原樣(stage:fullscreen 仍 contain 不裁)。 */
+    @media (max-width: 760px) and (orientation: portrait) {
+      .stage { aspect-ratio: 4 / 3; min-height: 0; max-height: 76dvh; }
+      .stage-video { object-fit: cover; }
+    }
+    .stage:fullscreen .stage-video { object-fit: contain; }
+
+    /* ── 行動版資訊條:改 2 欄網格,中間分隔線(｜)上下對齊;列與列也用細線分隔 ─────
+       原本 chip 以 inline 流排、靠 border-left 當「｜」,換行後分隔線無法對齊;
+       改成等寬 2 欄後,左欄右側那條線在每一列同一個 x → 上下一致。 */
+    @media (max-width: 560px) {
+      .info-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+        border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+      .info-strip .chip { padding: 9px 14px; border: 0; border-radius: 0;
+        border-bottom: 1px solid var(--line); align-items: baseline; }
+      .info-strip .chip:first-child { padding-left: 14px; }      /* 蓋掉全域 first-child padding-left:0 */
+      .info-strip .chip:nth-child(odd) { border-right: 1px solid var(--line); }  /* 中線:左欄右側,逐列對齊 */
+      .info-strip .chip:last-child { border-bottom: 0; }
+      .info-strip .chip:nth-last-child(2):nth-child(odd) { border-bottom: 0; }   /* 偶數總數時末列另一格也去底線 */
+      .info-strip .chip:last-child:nth-child(odd) { grid-column: 1 / -1; border-right: 0; }  /* 奇數總數末格跨滿一列 */
+    }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap hdr-inner">
+    <a class="hdr-brand" href="/">
+      <div class="hdr-brand-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+      <span class="hdr-brand-text">行車記錄</span>
+    </a>
+    <nav class="hdr-nav">
+      <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
+      <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
+      <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
+      <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
+    </nav>
+    <div class="hdr-ctrls" id="hdr-ctrls"></div>
+  </div>
+</header>
+
+<div id="loading-state" class="page-body">
+  <div class="loading-row" style="padding:120px;"><div class="spinner spinner-lg"></div><span data-i18n="common.loading">載入中…</span></div>
+</div>
+
+<div id="error-state" class="page-body" style="display:none;">
+  <div class="wrap">
+    <div class="empty" style="padding-top:80px;">
+      <h3 id="err-msg" data-i18n="trip.notFound">找不到此旅程</h3>
+      <a href="/browse" class="btn" style="margin-top:20px;" data-i18n="trip.backLink">← 返回</a>
+    </div>
+  </div>
+</div>
+
+<div id="page-main" class="page-body" style="display:none;">
+  <div class="wrap" style="padding-top:18px;padding-bottom:40px;">
+
+    <!-- 標題列(緊湊):返回 / 標題＋時間 / 刪除 -->
+    <div class="trip-head">
+      <a href="/browse" id="back-link" class="other-chip trip-back" data-i18n="trip.back">← 瀏覽</a>
+      <div class="trip-headings">
+        <h1 id="trip-title">—</h1>
+        <span id="trip-sub" class="trip-sub">—</span>
+      </div>
+      <div class="vis-wrap" id="vis-wrap" style="display:none;">
+        <button class="btn btn--ghost btn--sm" id="vis-btn" type="button" onclick="toggleVisMenu(event)">
+          <span class="vis-dot" id="vis-dot"></span><span data-i18n="trip.visibility">可見性</span>
+        </button>
+        <div class="vis-menu" id="vis-menu">
+          <button class="vis-opt" type="button" data-v="inherit" onclick="pickVis('inherit')" data-i18n="trip.visInherit">跟隨帳號設定</button>
+          <button class="vis-opt" type="button" data-v="public" onclick="pickVis('public')" data-i18n="trip.visPublic">公開</button>
+          <button class="vis-opt" type="button" data-v="private" onclick="pickVis('private')" data-i18n="trip.visPrivate">不公開</button>
+        </div>
+      </div>
+      <button class="btn btn--ghost btn--sm trip-edit" id="edit-btn" style="display:none" onclick="toggleEdit()" data-i18n="trip.edit">剪輯</button>
+      <button class="btn btn--danger btn--sm admin-only trip-del" id="delete-btn" style="display:none" onclick="deleteTrip()" data-i18n="trip.delete">刪除</button>
+    </div>
+
+    <div id="alerts"></div>
+
+    <!-- 裁剪工具(擁有者 / 管理員;預設收合,由「剪輯」開啟) -->
+    <div id="edit-panel" style="display:none;">
+      <div class="edit-card">
+        <div class="edit-block">
+          <div class="edit-title">
+            <span data-i18n="trip.trim.title">裁剪影片</span>
+            <span class="trimmed-badge" id="trimmed-badge" style="display:none;" data-i18n="trip.trimmedBadge">已裁剪</span>
+          </div>
+          <p class="edit-hint" data-i18n="trip.trim.hint">設定要保留的起點與終點,前後鏡頭會一起裁剪(精確重編碼,原始檔保留可還原)。</p>
+          <div class="trim-fields">
+            <div class="trim-field">
+              <span class="trim-fname" data-i18n="trip.trim.start">起點</span>
+              <b class="trim-fval" id="trim-start-val">0:00</b>
+              <button class="btn btn--ghost btn--sm" type="button" onclick="setTrimPoint('start')" data-i18n="trip.trim.setCurrent">設為目前畫面</button>
+            </div>
+            <div class="trim-field">
+              <span class="trim-fname" data-i18n="trip.trim.end">終點</span>
+              <b class="trim-fval" id="trim-end-val">0:00</b>
+              <button class="btn btn--ghost btn--sm" type="button" onclick="setTrimPoint('end')" data-i18n="trip.trim.setCurrent">設為目前畫面</button>
+            </div>
+            <div class="trim-field">
+              <span class="trim-fname" data-i18n="trip.trim.rangeLen">保留長度</span>
+              <b class="trim-fval" id="trim-len-val">0:00</b>
+            </div>
+          </div>
+          <div class="trim-actions">
+            <button class="btn btn--sm" type="button" id="trim-apply" onclick="applyTrim()" data-i18n="trip.trim.apply">套用裁剪</button>
+            <button class="btn btn--ghost btn--sm" type="button" id="restore-btn" style="display:none;" onclick="restoreTrim()" data-i18n="trip.trim.restore">還原原始影片</button>
+          </div>
+          <div class="trim-progress" id="trim-progress" style="display:none;">
+            <div class="progress-track"><div class="progress-fill" id="trim-bar" style="width:0%;"></div></div>
+            <div class="trim-progress-foot">
+              <div class="edit-hint" id="trim-stage" style="margin:0;"></div>
+              <button class="btn btn--ghost btn--sm" type="button" id="trim-cancel" onclick="cancelTrim()" data-i18n="common.cancel">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 觀看台 -->
+    <div class="viewer">
+      <div class="stage" id="stage">
+        <div class="zoom-layer" id="zoom-layer"></div>
+        <div class="cam-tag" id="cam-tag" data-i18n="trip.camFront">前鏡頭</div>
+        <div class="zoom-tag" id="zoom-tag">100%</div>
+        <div class="stage-empty" id="stage-empty" style="display:none;" data-i18n="trip.noVideo">無影片</div>
+
+        <!-- 子母畫面(後鏡頭) -->
+        <div class="pip" id="pip" style="display:none;" title="點擊切換主畫面" data-i18n-attr="title:trip.switchMain">
+          <span class="pip-tag" id="pip-tag" data-i18n="trip.camRear">後鏡頭</span>
+          <span class="pip-swap" data-i18n="trip.switch">⇄ 切換</span>
+        </div>
+
+        <!-- 控制列:左=播放控制組、中=進度、右=工具組 -->
+        <div class="ctrl" id="ctrl">
+          <div class="ctrl-group ctrl-transport">
+            <button class="ctrl-btn" id="btn-play" title="播放/暫停 (空白鍵)">
+              <svg id="ic-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              <svg id="ic-pause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+            </button>
+            <button class="ctrl-btn" id="btn-back" title="上一格 (,)">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 5v14l-9-7zM7 5h2v14H7z"/></svg>
+            </button>
+            <button class="ctrl-btn" id="btn-fwd" title="下一格 (.)">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5l9 7-9 7zM15 5h2v14h-2z"/></svg>
+            </button>
+          </div>
+
+          <div class="ctrl-seek">
+            <span class="ctrl-time" id="t-cur">0:00</span>
+            <div class="ctrl-track" id="track">
+              <div class="ctrl-fill" id="fill"></div>
+              <input type="range" id="seek" min="0" max="100" value="0" step="0.05">
+            </div>
+            <span class="ctrl-time" id="t-tot">0:00</span>
+          </div>
+
+          <div class="ctrl-group ctrl-tools">
+            <button class="ctrl-btn wide" id="btn-speed" title="播放速度">1×</button>
+            <button class="ctrl-btn" id="btn-snap" title="截圖存檔 (s)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </button>
+            <div class="ctrl-vol">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              <input type="range" id="vol" min="0" max="1" step="0.05" value="0.8">
+            </div>
+            <button class="ctrl-btn" id="btn-full" title="全螢幕 (f)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 緊湊資訊條 -->
+      <div class="info-strip" id="info-strip"></div>
+      <!-- 行內備註(緊接統計列;管理員點擊可編輯) -->
+      <div class="note-inline" id="note-inline" style="display:none;"></div>
+      <div class="other-row" id="other-row"></div>
+    </div>
+
+    <!-- 快捷鍵提示(整頁最底、淡色) -->
+    <div class="kbd-hint" data-i18n="trip.shortcuts">
+      滾輪縮放 · 拖曳平移 · 雙擊還原 · 空白鍵播放 · ←/→ 跳 5 秒 · ,/. 逐格 · S 截圖 · F 全螢幕
+    </div>
+    <!-- 觸控提示(窄螢幕取代鍵盤提示) -->
+    <div class="touch-hint" data-i18n="trip.touchHints">
+      雙指縮放 · 單指拖曳平移 · 點兩下還原 · 點子母畫面切換鏡頭
+    </div>
+
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/app.js"></script>
+<script>
+const tt = t;   // 翻譯函式別名(本檔多處用 `const t = trip` 遮蔽全域 t)
+const tripId = decodeURIComponent(location.pathname.replace(/^\/trip\//, ''));
+const FPS = 30;
+let trip = null;
+let videos = {};            // { front: <video>, rear: <video> }
+let mainCam = 'front';
+let cams = [];              // 可用鏡頭
+let dur = 0;
+const zoom = { z: 1, x: 0, y: 0 };
+
+let isAdmin = false;
+let currentUser = null;     // 登入者(供讀取個人偏好:預設鏡頭 / 播放速度)
+(async () => {
+  await configReady;
+  const user = await checkAuth();
+  currentUser = user;
+  isAdmin = !!(user && user.role === 'admin');
+  renderHeader(user);
+  load();
+})();
+
+async function load() {
+  try {
+    trip = await apiFetch(`/api/trips/${encodeURIComponent(tripId)}`);
+    render();
+  } catch (e) {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('error-state').style.display = '';
+    document.getElementById('err-msg').textContent = e.message;
+  }
+}
+
+function render() {
+  const t = trip;
+  const brand = (__cfg.brand && __cfg.brand.title) || '行車記錄';
+  document.title = `${t.date} ${tt('trip.tripOrder', { order: t.day_order })} — ${brand}`;
+  document.getElementById('trip-title').textContent = `${t.date}　第 ${t.day_order} 趟`;
+  document.getElementById('trip-sub').textContent =
+    `${fmtTime(t.start_epoch)}–${fmtTime(t.end_epoch)} · ${fmtDuration(t.duration_sec)}`;
+  // 返回時停在同一個日期(browse 以 hash 還原選取日期)
+  document.getElementById('back-link').href = '/browse#' + encodeURIComponent(t.date);
+
+  // 警告
+  const g = t.peak_gforce || 0;
+  const alerts = document.getElementById('alerts');
+  if (g >= 2.5) alerts.innerHTML += `<div class="alert alert-crit">${tt('trip.alertCrit', { g: g.toFixed(2) })}</div>`;
+  else if (g >= 1.8) alerts.innerHTML += `<div class="alert alert-warn">${tt('trip.alertWarn', { g: g.toFixed(2) })}</div>`;
+  if (t.emer_count > 0) alerts.innerHTML += `<div class="alert alert-crit">${tt('trip.emerLock', { n: t.emer_count })}</div>`;
+
+  // 建立 video 元素
+  if (t.has_front) videos.front = mkVideo('front');
+  if (t.has_rear)  videos.rear  = mkVideo('rear');
+  cams = Object.keys(videos);
+
+  if (!cams.length) {
+    document.getElementById('stage-empty').style.display = 'flex';
+    document.getElementById('ctrl').style.display = 'none';
+  } else {
+    // 預設主鏡頭:個人偏好 > 全域設定 > 前鏡頭(若該鏡頭存在,否則退而求其次)
+    const pref = (currentUser && currentUser.pref_camera)
+      || (__cfg.behavior && __cfg.behavior.defaultCamera) || 'front';
+    mainCam = videos[pref] ? pref : (videos.front ? 'front' : 'rear');
+    layoutCams();
+    initPlayer();
+  }
+
+  // 緊湊資訊條
+  const camLabel = [t.has_front && tt('trip.camFrontShort'), t.has_rear && tt('trip.camRearShort')].filter(Boolean).join('+') + tt('trip.camSuffix');
+  const gChip = g > 0 ? `<span class="chip"><b>${g.toFixed(2)}g</b><span>${tt('trip.chipPeakG')}</span></span>` : '';
+  const emerChip = t.emer_count > 0 ? `<span class="chip"><b>${t.emer_count}</b><span>${tt('trip.chipEmer')}</span></span>` : '';
+  // 記錄器型號:來自登入者個人設定的「使用的行車記錄器」(填了才顯示),放在 G 值旁邊
+  const deviceChip = (currentUser && currentUser.device_note)
+    ? `<span class="chip"><b>${escapeHtml(currentUser.device_note)}</b><span>${tt('trip.chipDevice')}</span></span>`
+    : '';
+  document.getElementById('info-strip').innerHTML = `
+    <span class="chip"><b>${fmtTime(t.start_epoch)}–${fmtTime(t.end_epoch)}</b><span>${tt('trip.chipTime')}</span></span>
+    <span class="chip"><b>${fmtDuration(t.duration_sec)}</b><span>${tt('trip.chipDrive')}</span></span>
+    <span class="chip"><b>${t.segment_count}</b><span>${tt('trip.chipSeg')}</span></span>
+    <span class="chip"><b>${camLabel}</b></span>
+    ${gChip}${deviceChip}${emerChip}`;
+
+  loadOthers(t.date, t.trip_id);
+  renderNote();
+  setupEdit();
+
+  document.getElementById('loading-state').style.display = 'none';
+  document.getElementById('page-main').style.display = '';
+  // 一開始(暫停中)先顯示控制列;播放後由 controlsWake 接手自動淡出
+  document.getElementById('stage').classList.add('show-ctrl');
+  scheduleFit();   // 依實際警告/趟次量測,壓影片高度讓快捷鍵提示免捲動可見
+}
+
+/* ── 觀看台高度自適應 ─────────────────────────────────────────────────────────
+   影片用 16:9 + 固定 max-height 時,警告列(急煞)與同天趟次會把最底的快捷鍵提示
+   擠出視窗、需捲動。改為實測:影片可用高 = 視窗高 − 影片上緣 − 影片下方所有內容,
+   讓「影片＋資訊條＋快捷鍵提示」整包塞進一個視窗。隨警告/趟次/視窗/縮放自動重算。 */
+let fitRaf = null;
+function fitStage() {
+  const stage = document.getElementById('stage');
+  const page = document.getElementById('page-main');
+  if (!stage || !page || page.style.display === 'none') return;
+  if (document.fullscreenElement) return;   // 全螢幕交給 CSS,勿用 inline 上限蓋掉
+  stage.style.maxHeight = '';               // 先還原成 CSS 基準再量(上下內容不受影片高影響)
+  const sRect = stage.getBoundingClientRect();
+  const pRect = page.getBoundingClientRect();
+  const below = pRect.bottom - sRect.bottom; // 影片下方:資訊條+備註+同天趟次+提示+內距
+  const avail = window.innerHeight - sRect.top - below - 10; // 10px 喘息
+  stage.style.maxHeight = Math.max(240, Math.round(avail)) + 'px';
+}
+function scheduleFit() {
+  if (fitRaf) cancelAnimationFrame(fitRaf);
+  fitRaf = requestAnimationFrame(() => { fitRaf = null; fitStage(); });
+}
+window.addEventListener('resize', scheduleFit);
+document.addEventListener('fullscreenchange', () => {
+  const stage = document.getElementById('stage');
+  if (document.fullscreenElement) { if (stage) stage.style.maxHeight = ''; }  // 進全螢幕:清掉 inline 上限
+  else scheduleFit();                                                          // 離開全螢幕:重算
+});
+
+function mkVideo(cam) {
+  const v = document.createElement('video');
+  v.src = `/video/${encodeURIComponent(tripId)}/${cam}`;
+  v.preload = 'metadata';
+  v.playsInline = true;
+  v.muted = cam !== mainCam; // 只有主畫面出聲
+  return v;
+}
+
+/* 把主鏡頭放到 zoom-layer、副鏡頭放到 PiP */
+function layoutCams() {
+  const layer = document.getElementById('zoom-layer');
+  const pip = document.getElementById('pip');
+  const main = videos[mainCam];
+  main.className = 'stage-video';
+  layer.replaceChildren(main);
+  document.getElementById('cam-tag').textContent = mainCam === 'front' ? tt('trip.camFront') : tt('trip.camRear');
+
+  const subCam = cams.find(c => c !== mainCam);
+  if (subCam) {
+    const sub = videos[subCam];
+    pip.style.display = '';
+    document.getElementById('pip-tag').textContent = subCam === 'front' ? tt('trip.camFront') : tt('trip.camRear');
+    // 把 sub video 放進 pip(保留 tag/swap 標籤)
+    [...pip.querySelectorAll('video')].forEach(el => el.remove());
+    pip.insertBefore(sub, pip.firstChild);
+  } else {
+    pip.style.display = 'none';
+  }
+  // 音訊:只有主畫面出聲
+  for (const c of cams) videos[c].muted = (c !== mainCam);
+  applyZoom();
+}
+
+function swapCams() {
+  if (cams.length < 2) return;
+  mainCam = cams.find(c => c !== mainCam);
+  resetZoom();
+  layoutCams();
+}
+
+/* ── 播放器 ───────────────────────────────────────────────────────────────── */
+function initPlayer() {
+  const main = () => videos[mainCam];
+  const others = () => cams.filter(c => c !== mainCam).map(c => videos[c]);
+  const all = () => cams.map(c => videos[c]);
+
+  const stage = document.getElementById('stage');
+  const icPlay = document.getElementById('ic-play');
+  const icPause = document.getElementById('ic-pause');
+  const seek = document.getElementById('seek');
+  const fill = document.getElementById('fill');
+  const tCur = document.getElementById('t-cur');
+  const tTot = document.getElementById('t-tot');
+  const vol = document.getElementById('vol');
+
+  // ── 控制列自動隱藏:播放中靜置約 2.6s 自動淡出;暫停或互動(移動/點擊)時喚回 ──
+  let ctrlHideTimer = null;
+  function controlsWake() {
+    stage.classList.add('show-ctrl');
+    clearTimeout(ctrlHideTimer);
+    if (!main().paused) ctrlHideTimer = setTimeout(() => stage.classList.remove('show-ctrl'), 2600);
+  }
+  function controlsPin() { stage.classList.add('show-ctrl'); clearTimeout(ctrlHideTimer); }
+  stage.addEventListener('pointermove', controlsWake);
+  stage.addEventListener('pointerdown', controlsWake);
+
+  const m0 = main();
+  m0.addEventListener('loadedmetadata', () => {
+    dur = m0.duration || 0;
+    tTot.textContent = fmtSecs(dur);
+  });
+
+  function setPlayIcon(playing) {
+    icPlay.style.display = playing ? 'none' : '';
+    icPause.style.display = playing ? '' : 'none';
+  }
+  function toggle() {
+    const m = main();
+    if (m.paused) { all().forEach(v => v.play().catch(()=>{})); setPlayIcon(true); }
+    else { all().forEach(v => v.pause()); setPlayIcon(false); }
+  }
+  function step(dir) {
+    const m = main();
+    all().forEach(v => v.pause());
+    setPlayIcon(false);
+    const nt = Math.max(0, Math.min(dur || m.duration, m.currentTime + dir / FPS));
+    all().forEach(v => { v.currentTime = nt; });
+  }
+  function seekBy(d) {
+    const m = main();
+    const nt = Math.max(0, Math.min(dur || m.duration, m.currentTime + d));
+    all().forEach(v => { v.currentTime = nt; });
+  }
+
+  document.getElementById('btn-play').onclick = toggle;
+  document.getElementById('btn-back').onclick = () => step(-1);
+  document.getElementById('btn-fwd').onclick = () => step(1);
+  document.getElementById('btn-full').onclick = toggleFull;
+  document.getElementById('btn-snap').onclick = snapshot;
+  document.getElementById('pip').onclick = swapCams;
+
+  const speeds = [1, 1.5, 2];
+  // 預設播放速度:採個人偏好(在清單內才生效),否則 1×
+  let si = Math.max(0, speeds.indexOf(currentUser && currentUser.pref_speed));
+  if (si > 0) {
+    all().forEach(v => { v.playbackRate = speeds[si]; });
+    document.getElementById('btn-speed').textContent = speeds[si] + '×';
+  }
+  document.getElementById('btn-speed').onclick = () => {
+    si = (si + 1) % speeds.length;
+    all().forEach(v => { v.playbackRate = speeds[si]; });
+    document.getElementById('btn-speed').textContent = speeds[si] + '×';
+  };
+
+  // 進度 — 用主畫面驅動,其餘同步
+  function tick() {
+    const m = main();
+    const d = dur || m.duration || 0;
+    if (d) {
+      const pct = m.currentTime / d * 100;
+      fill.style.width = pct + '%';
+      seek.value = pct;
+      tCur.textContent = fmtSecs(m.currentTime);
+    }
+    // 同步其他鏡頭
+    others().forEach(v => {
+      if (Math.abs(v.currentTime - m.currentTime) > 0.25) v.currentTime = m.currentTime;
+    });
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // 因為主畫面會切換,監聽用事件委派在 stage 上
+  cams.forEach(c => {
+    videos[c].addEventListener('play', () => { if (c === mainCam) { setPlayIcon(true); controlsWake(); } });
+    videos[c].addEventListener('pause', () => { if (c === mainCam) { setPlayIcon(false); controlsPin(); } });
+    videos[c].addEventListener('ended', () => { if (c === mainCam) { setPlayIcon(false); all().forEach(v=>{v.pause();v.currentTime=0;}); controlsPin(); } });
+  });
+
+  seek.addEventListener('input', () => {
+    const d = dur || main().duration || 0;
+    const nt = seek.value / 100 * d;
+    all().forEach(v => { v.currentTime = nt; });
+  });
+
+  vol.addEventListener('input', () => { videos[mainCam].volume = parseFloat(vol.value); });
+  videos[mainCam].volume = parseFloat(vol.value);
+
+  // 點影片切換播放;觸控時做單擊/雙擊消歧義,避免「點兩下縮放」誤觸播放/暫停閃動
+  let tapTimer = null;
+  document.getElementById('zoom-layer').addEventListener('click', () => {
+    if (dragMoved) return;
+    if (lastPointerType === 'touch' || lastPointerType === 'pen') {
+      if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; return; }  // 第二擊 → 取消單擊,交給 dblclick 縮放
+      tapTimer = setTimeout(() => { tapTimer = null; toggle(); }, 280);
+      return;
+    }
+    toggle();
+  });
+
+  initZoom(stage);
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    switch (e.key) {
+      case ' ': e.preventDefault(); toggle(); break;
+      case 'ArrowLeft': seekBy(-5); break;
+      case 'ArrowRight': seekBy(5); break;
+      case ',': step(-1); break;
+      case '.': step(1); break;
+      case 'f': case 'F': toggleFull(); break;
+      case 's': case 'S': snapshot(); break;
+      case 'm': case 'M': videos[mainCam].muted = !videos[mainCam].muted; break;
+    }
+  });
+}
+
+/* ── 縮放 / 平移 ──────────────────────────────────────────────────────────── */
+let dragMoved = false;
+let lastPointerType = 'mouse';   // 最近一次指標輸入型態(供單擊/雙擊消歧義)
+function applyZoom() {
+  const layer = document.getElementById('zoom-layer');
+  layer.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`;
+  layer.classList.toggle('zoomed', zoom.z > 1);
+  const tag = document.getElementById('zoom-tag');
+  tag.textContent = Math.round(zoom.z * 100) + '%';
+  tag.classList.toggle('show', zoom.z > 1.01);
+}
+function resetZoom() { zoom.z = 1; zoom.x = 0; zoom.y = 0; applyZoom(); }
+
+function clampPan(stage) {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  const maxX = 0, minX = w - w * zoom.z;
+  const maxY = 0, minY = h - h * zoom.z;
+  zoom.x = Math.min(maxX, Math.max(minX, zoom.x));
+  zoom.y = Math.min(maxY, Math.max(minY, zoom.y));
+}
+
+function initZoom(stage) {
+  const layer = document.getElementById('zoom-layer');
+
+  // 滑鼠滾輪縮放(桌機),以游標為中心
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = stage.getBoundingClientRect();
+    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+    const prev = zoom.z;
+    const next = Math.min(6, Math.max(1, prev * (e.deltaY < 0 ? 1.15 : 1/1.15)));
+    if (next === prev) return;
+    zoom.x = cx - (cx - zoom.x) * (next / prev);
+    zoom.y = cy - (cy - zoom.y) * (next / prev);
+    zoom.z = next;
+    if (zoom.z === 1) { zoom.x = 0; zoom.y = 0; }
+    clampPan(stage);
+    applyZoom();
+  }, { passive: false });
+
+  // 觸控:單指拖曳平移(縮放時)、雙指 pinch 縮放。用 pointer events 同時處理滑鼠/觸控。
+  const pointers = new Map();           // pointerId -> {x, y}
+  let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  let pinch = null;                     // { dist, cx, cy, z0, x0, y0 }
+
+  const midpoint = () => {
+    let x = 0, y = 0; for (const p of pointers.values()) { x += p.x; y += p.y; }
+    const n = pointers.size || 1; return { x: x / n, y: y / n };
+  };
+  const spread = () => {
+    const pts = [...pointers.values()];
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  };
+
+  stage.addEventListener('pointerdown', (e) => {
+    lastPointerType = e.pointerType || 'mouse';
+    if (e.target.closest('.ctrl') || e.target.closest('.pip')) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    stage.setPointerCapture(e.pointerId);
+    if (pointers.size === 2) {
+      dragging = false; dragMoved = true;   // 進入 pinch;標記移動避免結束後誤觸播放切換
+      const rect = stage.getBoundingClientRect();
+      const m = midpoint();
+      pinch = { dist: spread() || 1, cx: m.x - rect.left, cy: m.y - rect.top, z0: zoom.z, x0: zoom.x, y0: zoom.y };
+    } else if (pointers.size === 1 && zoom.z > 1) {
+      dragging = true; dragMoved = false;
+      sx = e.clientX; sy = e.clientY; ox = zoom.x; oy = zoom.y;
+      layer.classList.add('grabbing');
+    }
+  });
+
+  stage.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pinch && pointers.size >= 2) {
+      e.preventDefault();
+      const k = Math.min(6, Math.max(1, pinch.z0 * (spread() / pinch.dist))) / pinch.z0;
+      zoom.z = pinch.z0 * k;
+      zoom.x = pinch.cx - (pinch.cx - pinch.x0) * k;
+      zoom.y = pinch.cy - (pinch.cy - pinch.y0) * k;
+      if (zoom.z <= 1.001) { zoom.z = 1; zoom.x = 0; zoom.y = 0; }
+      clampPan(stage);
+      applyZoom();
+      return;
+    }
+    if (dragging) {
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
+      zoom.x = ox + dx; zoom.y = oy + dy;
+      clampPan(stage);
+      applyZoom();
+    }
+  });
+
+  const release = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    if (pointers.size === 0) {
+      dragging = false; layer.classList.remove('grabbing');
+      setTimeout(() => { dragMoved = false; }, 60);
+    }
+  };
+  stage.addEventListener('pointerup', release);
+  stage.addEventListener('pointercancel', release);
+
+  // 雙擊(桌機)/ 點兩下(觸控)還原或放大到 2.5×
+  stage.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.ctrl') || e.target.closest('.pip')) return;
+    if (zoom.z > 1) resetZoom();
+    else {
+      const rect = stage.getBoundingClientRect();
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+      zoom.z = 2.5;
+      zoom.x = cx - cx * zoom.z; zoom.y = cy - cy * zoom.z;
+      clampPan(stage); applyZoom();
+    }
+  });
+}
+
+/* ── 截圖 ─────────────────────────────────────────────────────────────────── */
+function snapshot() {
+  const v = videos[mainCam];
+  if (!v || !v.videoWidth) return;
+  const c = document.createElement('canvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  c.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = fmtSecs(v.currentTime).replace(':', 'm') + 's';
+    a.href = url;
+    a.download = `${trip.date}_${mainCam}_${ts}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast(tt('trip.screenshotSaved'), 'success');
+  }, 'image/png');
+}
+
+/* ── 全螢幕 ───────────────────────────────────────────────────────────────── */
+function toggleFull() {
+  const stage = document.getElementById('stage');
+  if (document.fullscreenElement) document.exitFullscreen();
+  else stage.requestFullscreen?.();
+}
+
+/* ── 同天其他旅程 ─────────────────────────────────────────────────────────── */
+async function loadOthers(date, currentId) {
+  try {
+    const data = await apiFetch(`/api/trips?date=${date}&limit=50`);
+    if (data.trips.length < 2) return;
+    document.getElementById('other-row').innerHTML =
+      `<span style="font-size:12px;color:var(--ink-3);align-self:center;margin-right:4px;">${tt('trip.sameDay')}</span>` +
+      data.trips.map(t => `
+        <a class="other-chip ${t.trip_id === currentId ? 'current' : ''}"
+           href="/trip/${encodeURIComponent(t.trip_id)}">${tt('trip.tripOrder', { order: t.day_order })} ${fmtTime(t.start_epoch)}</a>`).join('');
+    scheduleFit();   // 同天趟次列(可能換行)改變影片下方高度 → 重算
+  } catch {}
+}
+
+/* ── 刪除 ─────────────────────────────────────────────────────────────────── */
+async function deleteTrip() {
+  if (!confirm(tt('trip.deleteConfirm'))) return;
+  try {
+    await apiFetch(`/api/trips/${encodeURIComponent(tripId)}`, { method: 'DELETE' });
+    showToast(tt('trip.deleted'), 'success');
+    setTimeout(() => { location.href = '/browse'; }, 1000);
+  } catch (e) { showToast(tt('trip.deleteFail') + '：' + e.message, 'error'); }
+}
+
+/* ── 編輯工具:可見性 + 裁剪(擁有者或管理員) ─────────────────────────────── */
+let canEdit = false;
+let trimStart = 0, trimEnd = 0;
+
+function setupEdit() {
+  canEdit = isAdmin || !!(currentUser && trip.owner_id === currentUser.id);
+  if (!canEdit) return;
+  document.getElementById('edit-btn').style.display = '';
+  // 可見性:標題列按鈕 + 下拉選單
+  document.getElementById('vis-wrap').style.display = '';
+  reflectVis(trip.public_override === 1 ? 'public' : trip.public_override === 0 ? 'private' : 'inherit');
+  // 已裁剪 → 顯示徽章與還原鈕
+  const trimmed = !!trip.trimmed;
+  document.getElementById('trimmed-badge').style.display = trimmed ? '' : 'none';
+  document.getElementById('restore-btn').style.display = trimmed ? '' : 'none';
+  // 返回頁面時若裁剪仍在進行(如 F5 後):展開面板、顯示進度並重新掛上 SSE。
+  if (trip.trimming) {
+    document.getElementById('edit-panel').style.display = '';
+    initTrimRange();
+    document.getElementById('trim-apply').disabled = true;
+    document.getElementById('trim-progress').style.display = '';
+    setTrimProg(0, tt('trip.trim.processing'));
+    showCancel(true);
+    listenTrim();
+    scheduleFit();
+  }
+}
+function showCancel(v) {
+  const b = document.getElementById('trim-cancel');
+  b.style.display = v ? '' : 'none';
+  b.disabled = false;
+}
+async function cancelTrim() {
+  const b = document.getElementById('trim-cancel');
+  b.disabled = true;
+  try {
+    await apiFetch('/api/trip-trim-cancel/' + encodeURIComponent(tripId), { method: 'POST' });
+    // 實際結束由 SSE 'cancelled' 事件收尾。
+  } catch (e) { b.disabled = false; showToast(e.message, 'error'); }
+}
+
+function toggleEdit() {
+  const p = document.getElementById('edit-panel');
+  const open = p.style.display === 'none' || !p.style.display;
+  p.style.display = open ? '' : 'none';
+  if (open) initTrimRange();
+  scheduleFit();
+}
+
+function initTrimRange() {
+  const d = dur || trip.duration_sec || 0;
+  trimStart = 0; trimEnd = d;
+  updateTrimLabels();
+}
+function updateTrimLabels() {
+  document.getElementById('trim-start-val').textContent = fmtSecs(trimStart);
+  document.getElementById('trim-end-val').textContent = fmtSecs(trimEnd);
+  document.getElementById('trim-len-val').textContent = fmtSecs(Math.max(0, trimEnd - trimStart));
+}
+function setTrimPoint(which) {
+  const v = videos[mainCam];
+  const cur = v ? v.currentTime : 0;
+  if (which === 'start') trimStart = Math.min(cur, trimEnd);
+  else trimEnd = Math.max(cur, trimStart);
+  updateTrimLabels();
+}
+
+/** 更新按鈕圓點與選單勾選狀態以反映目前值(不打 API)。 */
+function reflectVis(val) {
+  const dot = document.getElementById('vis-dot');
+  dot.className = 'vis-dot' + (val === 'public' ? ' pub' : val === 'private' ? ' priv' : '');
+  document.querySelectorAll('#vis-menu .vis-opt').forEach(o =>
+    o.classList.toggle('active', o.dataset.v === val));
+}
+function toggleVisMenu(e) {
+  if (e) e.stopPropagation();
+  document.getElementById('vis-wrap').classList.toggle('open');
+}
+function closeVisMenu() {
+  document.getElementById('vis-wrap')?.classList.remove('open');
+}
+// 點選單外 / 按 Esc 收合
+document.addEventListener('click', (e) => {
+  const w = document.getElementById('vis-wrap');
+  if (w && w.classList.contains('open') && !w.contains(e.target)) closeVisMenu();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeVisMenu(); });
+
+async function pickVis(val) {
+  closeVisMenu();
+  const override = val === 'public' ? 1 : val === 'private' ? 0 : null;
+  if (override === (trip.public_override ?? null)) return;   // 未變更
+  const prev = trip.public_override ?? null;
+  reflectVis(val);
+  try {
+    await apiFetch('/api/trip-visibility/' + encodeURIComponent(tripId), {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ override }),
+    });
+    trip.public_override = override;
+    showToast(tt('trip.visSaved'), 'success');
+  } catch (e) {
+    reflectVis(prev === 1 ? 'public' : prev === 0 ? 'private' : 'inherit');   // 還原
+    showToast(tt('trip.visFail') + '：' + e.message, 'error');
+  }
+}
+
+async function applyTrim() {
+  if (!(trimEnd - trimStart >= 1)) { showToast(tt('trip.trim.badRange'), 'error'); return; }
+  if (!confirm(tt('trip.trim.confirmApply'))) return;
+  const btn = document.getElementById('trim-apply');
+  btn.disabled = true;
+  document.getElementById('trim-progress').style.display = '';
+  setTrimProg(0, tt('trip.trim.processing'));
+  showCancel(true);
+  try {
+    await apiFetch('/api/trip-trim/' + encodeURIComponent(tripId), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ start: trimStart, end: trimEnd }),
+    });
+    listenTrim();
+  } catch (e) {
+    btn.disabled = false;
+    document.getElementById('trim-progress').style.display = 'none';
+    showCancel(false);
+    showToast(tt('trip.trim.fail') + '：' + e.message, 'error');
+  }
+}
+
+function endTrimUI() {
+  document.getElementById('trim-apply').disabled = false;
+  document.getElementById('trim-progress').style.display = 'none';
+  showCancel(false);
+}
+
+function listenTrim() {
+  const es = new EventSource('/api/trip-trim-events/' + encodeURIComponent(tripId));
+  es.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.stage === 'done') {
+      setTrimProg(100, tt('trip.trim.doneReload'));
+      showCancel(false);
+      es.close();
+      setTimeout(() => location.reload(), 1200);
+      return;
+    }
+    if (d.stage === 'cancelled') {
+      es.close();
+      endTrimUI();
+      showToast(tt('trip.trim.cancelled'), '');
+      return;
+    }
+    if (d.stage === 'error') {
+      es.close();
+      endTrimUI();
+      showToast(tt('trip.trim.fail') + '：' + (d.message || ''), 'error');
+      return;
+    }
+    const pct = d.total ? Math.round((d.done / d.total) * 100) : 0;
+    setTrimProg(pct, tt('trip.trim.processing') + ' ' + pct + '%');
+  };
+  es.onerror = () => es.close();
+}
+function setTrimProg(pct, text) {
+  document.getElementById('trim-bar').style.width = pct + '%';
+  document.getElementById('trim-stage').textContent = text;
+}
+
+async function restoreTrim() {
+  if (!confirm(tt('trip.trim.confirmRestore'))) return;
+  try {
+    await apiFetch('/api/trip-trim/' + encodeURIComponent(tripId), { method: 'DELETE' });
+    showToast(tt('trip.trim.restored'), 'success');
+    setTimeout(() => location.reload(), 800);
+  } catch (e) { showToast(tt('trip.trim.fail') + '：' + e.message, 'error'); }
+}
+
+/* ── 行內備註(緊接統計列;僅管理員可編輯) ──────────────────────────────────── */
+function renderNote() {
+  const el = document.getElementById('note-inline');
+  const note = (trip.note || '').trim();
+  // 訪客且無備註:整段隱藏。管理員:永遠顯示(空狀態給「＋ 新增備註」邀請,點即編)。
+  if (!note && !isAdmin) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.className = 'note-inline' + (isAdmin ? ' editable' : '') + (note ? '' : ' empty');
+  el.onclick = isAdmin ? startNoteEdit : null;
+  el.textContent = note || (isAdmin ? '＋ ' + tt('trip.noteAdd') : '');
+  scheduleFit();   // 備註顯示/隱藏/編輯改變影片下方高度 → 重算
+}
+function startNoteEdit() {
+  const el = document.getElementById('note-inline');
+  el.className = 'note-inline';
+  el.onclick = null;
+  el.innerHTML = `
+    <div class="note-edit">
+      <textarea class="form-input" id="note-textarea" rows="4"></textarea>
+      <div class="note-actions">
+        <button class="btn btn--sm" type="button" onclick="saveNote()">${tt('trip.noteSave')}</button>
+        <button class="btn btn--ghost btn--sm" type="button" onclick="renderNote()">${tt('trip.noteCancel')}</button>
+      </div>
+    </div>`;
+  const ta = document.getElementById('note-textarea');
+  ta.placeholder = tt('trip.notePlaceholder');
+  ta.value = trip.note || '';
+  ta.focus();
+  scheduleFit();   // 編輯框(textarea)較高 → 重算影片高度
+}
+async function saveNote() {
+  const val = document.getElementById('note-textarea').value;
+  try {
+    await apiFetch('/api/trip-note/' + encodeURIComponent(tripId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: val }),
+    });
+    trip.note = val.trim();
+    showToast(tt('trip.noteSaved'), 'success');
+    renderNote();
+  } catch (e) {
+    showToast(tt('trip.noteSaveFail') + '：' + e.message, 'error');
+  }
+}
+</script>
+</body>
+</html>

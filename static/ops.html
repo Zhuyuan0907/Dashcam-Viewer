@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title data-i18n-title="title.ops">維運與善後 — 行車記錄</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .ops-pill { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; font-family:var(--font-mono); letter-spacing:.03em; }
+    .ops-pill.sev-error { background:color-mix(in oklch, var(--crit) 14%, var(--surface)); color:var(--crit); }
+    .ops-pill.sev-warn  { background:color-mix(in oklch, var(--warn) 16%, var(--surface)); color:var(--warn); }
+    .ops-pill.sev-info  { background:var(--surface-3); color:var(--ink-2); }
+    .ops-pill.st-open      { background:color-mix(in oklch, var(--crit) 12%, var(--surface)); color:var(--crit); }
+    .ops-pill.st-resolved  { background:color-mix(in oklch, var(--ok) 16%, var(--surface)); color:var(--ok); }
+    .ops-pill.st-dismissed { background:var(--surface-3); color:var(--ink-3); }
+    .ops-clickrow { cursor:pointer; }
+    .ops-empty { padding:22px 16px; text-align:center; color:var(--ink-3); font-size:14px; }
+    .ops-tabs { display:inline-flex; gap:4px; background:var(--surface-2); border-radius:999px; padding:3px; }
+    .ops-tab { border:none; background:none; padding:5px 14px; border-radius:999px; font-size:13px; font-weight:600; color:var(--ink-2); cursor:pointer; }
+    .ops-tab.active { background:var(--surface); color:var(--accent); box-shadow:var(--shadow-sm); }
+    .ops-pre { background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:11px 13px; font-family:var(--font-mono); font-size:12px; line-height:1.6; color:var(--ink-2); white-space:pre-wrap; word-break:break-word; max-height:240px; overflow:auto; margin:4px 0 0; }
+    .ops-kv { font-size:13px; color:var(--ink-2); margin:10px 0 2px; }
+    .ops-kv b { color:var(--ink); font-weight:600; }
+    .ops-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+    .ops-db-wrap { overflow:auto; max-width:100%; }
+    .ops-db-wrap table { font-size:12.5px; }
+    .ops-db-wrap td { font-family:var(--font-mono); max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ops-pager { display:flex; align-items:center; gap:12px; margin-top:12px; font-size:13px; color:var(--ink-2); }
+    .modal-box.wide { max-width:640px; }
+    /* ── 行動版:事件/健康表水平捲動避免擠壓 ─────────────────────────────── */
+    @media (max-width: 720px) {
+      #incidents-body, #health-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      #incidents-body .data-table, #health-body .data-table { min-width: 460px; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap hdr-inner">
+    <a class="hdr-brand" href="/">
+      <div class="hdr-brand-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+      <span class="hdr-brand-text">行車記錄</span>
+    </a>
+    <nav class="hdr-nav">
+      <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
+      <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
+      <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
+      <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
+    </nav>
+    <div class="hdr-ctrls" id="hdr-ctrls"></div>
+  </div>
+</header>
+
+<div class="page-body">
+  <div class="wrap section-tight">
+
+    <div class="eyebrow sec-eyebrow" style="margin-bottom:12px;">
+      <span class="tick"></span><span data-i18n="ops.eyebrow">管理員</span>
+    </div>
+    <div style="margin-bottom:28px;">
+      <h1 class="page-title" style="margin-bottom:4px;" data-i18n="ops.title">維運與善後</h1>
+      <p class="page-sub" style="margin-bottom:0;" data-i18n="ops.sub">追查處理失敗、執行修復措施、檢視資料庫</p>
+    </div>
+
+    <!-- 事件與善後 -->
+    <div class="info-card">
+      <div class="info-row" style="justify-content:space-between;">
+        <div class="info-card-title" data-i18n="ops.incidents.head">事件與善後</div>
+        <div class="ops-tabs">
+          <button class="ops-tab active" id="tab-open" onclick="setFilter('open')" data-i18n="ops.incidents.filterOpen">待處理</button>
+          <button class="ops-tab" id="tab-all" onclick="setFilter('all')" data-i18n="ops.incidents.filterAll">全部</button>
+        </div>
+      </div>
+      <div id="incidents-body"><div class="ops-empty" data-i18n="common.loading">載入中…</div></div>
+    </div>
+
+    <!-- 旅程健康檢查 -->
+    <div class="info-card">
+      <div class="info-row" style="justify-content:space-between;">
+        <div class="info-card-title" data-i18n="ops.health.head">旅程健康檢查</div>
+        <button class="btn btn--ghost btn--sm" id="health-btn" onclick="runHealth()" data-i18n="ops.health.scan">掃描旅程</button>
+      </div>
+      <div id="health-body"></div>
+    </div>
+
+    <!-- 資料庫檢視 -->
+    <div class="info-card">
+      <div class="info-row" style="justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div class="info-card-title" data-i18n="ops.db.head">資料庫檢視(唯讀)</div>
+        <select class="form-input" id="db-table" style="width:auto;min-width:200px;" onchange="loadRows(0)"></select>
+      </div>
+      <div style="padding:0 16px 16px;">
+        <div class="ops-db-wrap" id="db-rows"></div>
+        <div class="ops-pager" id="db-pager" style="display:none;">
+          <button class="btn btn--ghost btn--sm" id="db-prev" onclick="pageRows(-1)" data-i18n="ops.db.prev">上一頁</button>
+          <span id="db-range"></span>
+          <button class="btn btn--ghost btn--sm" id="db-next" onclick="pageRows(1)" data-i18n="ops.db.next">下一頁</button>
+          <span style="flex:1;"></span>
+          <span style="font-size:11.5px;color:var(--ink-3);" data-i18n="ops.db.redactNote">敏感欄位(密碼、token)已遮蔽</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 維運工具 -->
+    <div class="info-card">
+      <div class="info-row"><div class="info-card-title" data-i18n="ops.tools.head">維運工具</div></div>
+      <div class="info-row">
+        <span data-i18n="ops.tools.rebuild">從磁碟重建資料庫</span>
+        <button class="btn btn--ghost btn--sm" id="rebuild-btn" onclick="doRebuild()" data-i18n="ops.health.rebuild">從磁碟重建</button>
+      </div>
+      <div class="info-row">
+        <span data-i18n="ops.tools.retention">隔離素材保留天數</span>
+        <strong id="retention-days">—</strong>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 事件詳情 modal -->
+<div class="modal-scrim" id="inc-modal" style="display:none;" onclick="closeModal('inc-modal')">
+  <div class="modal-box wide" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h3 data-i18n="ops.detail.title">事件詳情</h3>
+      <button class="modal-close" onclick="closeModal('inc-modal')">×</button>
+    </div>
+    <div class="modal-body" id="inc-modal-body"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+let filter = 'open';
+let curInc = null;
+let dbTable = '', dbOffset = 0, dbLimit = 50, dbTotal = 0;
+let retryES = null;
+
+(async () => {
+  await configReady;
+  const user = await checkAuth({ adminOnly: true });
+  renderHeader(user);
+  loadIncidents();
+  loadTables();
+  loadRetention();
+})();
+
+function closeModal(id){ document.getElementById(id).style.display='none'; if(id==='inc-modal'&&retryES){retryES.close();retryES=null;} }
+function pill(cls, text){ return `<span class="ops-pill ${cls}">${escapeHtml(text)}</span>`; }
+function fmtTime(epoch){ const d=new Date(epoch*1000); return d.toLocaleString(cfgLocaleSafe()); }
+function cfgLocaleSafe(){ try { return (typeof cfgLocale==='function'?cfgLocale():undefined); } catch { return undefined; } }
+
+/* ── 事件清單 ───────────────────────────────────────────── */
+function setFilter(f){
+  filter=f;
+  document.getElementById('tab-open').classList.toggle('active', f==='open');
+  document.getElementById('tab-all').classList.toggle('active', f==='all');
+  loadIncidents();
+}
+
+async function loadIncidents(){
+  const body = document.getElementById('incidents-body');
+  try {
+    const data = await apiFetch(`/api/admin/incidents?status=${filter}&limit=200`);
+    if (!data.incidents.length){
+      body.innerHTML = `<div class="ops-empty">${escapeHtml(t('ops.incidents.empty'))}</div>`;
+      return;
+    }
+    const rows = data.incidents.map(inc => `
+      <tr class="ops-clickrow" onclick="openIncident(${inc.id})">
+        <td style="white-space:nowrap;color:var(--ink-3);font-size:12.5px;">${escapeHtml(fmtTime(inc.created_at))}</td>
+        <td>${pill('sev-'+escapeHtml(inc.severity), t('ops.kind.'+inc.kind))}</td>
+        <td>${escapeHtml(inc.title)}</td>
+        <td>${pill('st-'+escapeHtml(inc.status), t('ops.status.'+inc.status))}</td>
+      </tr>`).join('');
+    body.innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th data-i18n="ops.incidents.colTime">時間</th>
+          <th data-i18n="ops.incidents.colKind">類型</th>
+          <th data-i18n="ops.incidents.colTitle">事件</th>
+          <th data-i18n="ops.incidents.colStatus">狀態</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch(e){
+    body.innerHTML = `<div class="ops-empty">${escapeHtml(t('common.loadFail'))}:${escapeHtml(e.message)}</div>`;
+  }
+}
+
+/* ── 事件詳情 + 動作 ─────────────────────────────────────── */
+async function openIncident(id){
+  const m = document.getElementById('inc-modal');
+  const body = document.getElementById('inc-modal-body');
+  body.innerHTML = `<div class="ops-empty">${escapeHtml(t('common.loading'))}</div>`;
+  m.style.display='flex';
+  try {
+    const inc = await apiFetch(`/api/admin/incidents/${id}`);
+    curInc = inc;
+    body.innerHTML = renderIncidentDetail(inc);
+  } catch(e){
+    body.innerHTML = `<div class="ops-empty">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderIncidentDetail(inc){
+  const canRetry = inc.quarantine_exists;
+  let html = '';
+  html += `<div style="margin-bottom:6px;">${pill('sev-'+inc.severity, t('ops.kind.'+inc.kind))} ${pill('st-'+inc.status, t('ops.status.'+inc.status))}</div>`;
+  html += `<div style="font-size:16px;font-weight:600;margin:6px 0;">${escapeHtml(inc.title)}</div>`;
+  html += `<div class="ops-kv">${escapeHtml(fmtTime(inc.created_at))}${inc.trip_label?' · '+escapeHtml(inc.trip_label):''}</div>`;
+  html += `<div class="ops-kv"><b>${escapeHtml(t('ops.detail.quarantine'))}:</b> ${canRetry ? escapeHtml(t('ops.detail.quarantineYes')) : escapeHtml(t('ops.detail.quarantineNo'))}</div>`;
+  if (inc.detail){ html += `<div class="ops-kv"><b>${escapeHtml(t('ops.detail.reason'))}</b></div><pre class="ops-pre">${escapeHtml(inc.detail)}</pre>`; }
+  if (inc.context && Object.keys(inc.context).length){
+    html += `<div class="ops-kv"><b>${escapeHtml(t('ops.detail.context'))}</b></div><pre class="ops-pre">${escapeHtml(JSON.stringify(inc.context, null, 2))}</pre>`;
+  }
+  html += `<div class="progress-card" id="retry-panel" style="display:none;margin-top:14px;"><div class="progress-stage" id="retry-stage"><div class="spinner"></div><span></span></div><div class="progress-log" id="retry-log"></div></div>`;
+  html += `<div class="ops-actions">`;
+  if (canRetry){
+    html += `<button class="btn btn--sm" onclick="retry(${inc.id},'copy')" data-i18n="ops.action.retry">重新合併</button>`;
+    html += `<button class="btn btn--ghost btn--sm" onclick="retry(${inc.id},'tolerant')" data-i18n="ops.action.retryTolerant">容錯重合</button>`;
+    html += `<button class="btn btn--ghost btn--sm" onclick="discardSource(${inc.id})" data-i18n="ops.action.discard">刪除素材</button>`;
+  }
+  if (inc.status==='open'){
+    html += `<button class="btn btn--ghost btn--sm" onclick="resolveInc(${inc.id},'resolved')" data-i18n="ops.action.resolve">標記已解決</button>`;
+    html += `<button class="btn btn--ghost btn--sm" onclick="resolveInc(${inc.id},'dismissed')" data-i18n="ops.action.dismiss">忽略</button>`;
+  }
+  html += `<span style="flex:1;"></span>`;
+  html += `<button class="btn btn--danger btn--sm" onclick="deleteInc(${inc.id})" data-i18n="ops.action.delete">刪除事件</button>`;
+  html += `</div>`;
+  return html;
+}
+
+function retry(id, mode){
+  const panel = document.getElementById('retry-panel');
+  const log = document.getElementById('retry-log');
+  const stageSpan = document.querySelector('#retry-stage span');
+  panel.style.display='block'; log.innerHTML=''; stageSpan.textContent=t('ops.retry.running');
+  apiFetch(`/api/admin/incidents/${id}/retry?mode=${mode}`, { method:'POST' })
+    .then(() => {
+      showToast(t('ops.retry.started'));
+      if (retryES) retryES.close();
+      retryES = new EventSource(`/api/admin/incidents/${id}/events`);
+      retryES.onmessage = e => {
+        const d = JSON.parse(e.data);
+        if (d.stage==='done'){
+          retryES.close(); retryES=null;
+          document.querySelector('#retry-stage .spinner')?.remove();
+          stageSpan.textContent = d.message || t('upload.done');
+          if (d.message) logLine(d.message);
+          loadIncidents();
+          setTimeout(()=>openIncident(id), 600);
+          return;
+        }
+        if (d.stage==='error'){ logLine('× '+d.message); retryES.close(); retryES=null; return; }
+        if (d.message) logLine(d.message);
+      };
+      retryES.onerror = () => { if(retryES){retryES.close();retryES=null;} };
+    })
+    .catch(e => { showToast(t('ops.toast.fail')+'：'+e.message, 'error'); panel.style.display='none'; });
+}
+function logLine(msg){ const log=document.getElementById('retry-log'); if(!log)return; const p=document.createElement('p'); p.textContent=msg; log.appendChild(p); log.scrollTop=log.scrollHeight; }
+
+async function resolveInc(id, status){
+  try { await apiFetch(`/api/admin/incidents/${id}/resolve`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status}) });
+    showToast(t('ops.toast.resolved'), 'success'); closeModal('inc-modal'); loadIncidents();
+  } catch(e){ showToast(t('ops.toast.fail')+'：'+e.message, 'error'); }
+}
+async function discardSource(id){
+  if (!confirm(t('ops.confirm.discard'))) return;
+  try { await apiFetch(`/api/admin/incidents/${id}/discard-source`, { method:'POST' });
+    showToast(t('ops.toast.deleted'), 'success'); openIncident(id);
+  } catch(e){ showToast(t('ops.toast.fail')+'：'+e.message, 'error'); }
+}
+async function deleteInc(id){
+  if (!confirm(t('ops.confirm.delete'))) return;
+  try { await apiFetch(`/api/admin/incidents/${id}`, { method:'DELETE' });
+    showToast(t('ops.toast.deleted'), 'success'); closeModal('inc-modal'); loadIncidents();
+  } catch(e){ showToast(t('ops.toast.fail')+'：'+e.message, 'error'); }
+}
+
+/* ── 旅程健康檢查 ───────────────────────────────────────── */
+async function runHealth(){
+  const btn=document.getElementById('health-btn'); const body=document.getElementById('health-body');
+  btn.disabled=true; btn.textContent=t('ops.health.scanning');
+  try {
+    const r = await apiFetch('/api/admin/health/trips');
+    if (!r.problems.length){ body.innerHTML=`<div class="ops-empty">${escapeHtml(t('ops.health.ok'))}</div>`; }
+    else {
+      const rows = r.problems.map(p => `
+        <tr>
+          <td>${escapeHtml(p.date)}</td>
+          <td style="font-family:var(--font-mono);font-size:12px;">${escapeHtml(p.trip_id)}</td>
+          <td>${escapeHtml(p.issue==='no_video'?t('ops.health.issueNoVideo'):t('ops.health.issuePartial'))}</td>
+          <td><button class="btn btn--danger btn--sm" onclick="deleteTrip('${encodeURIComponent(p.trip_id)}')" data-i18n="ops.health.deleteTrip">刪除該趟</button></td>
+        </tr>`).join('');
+      body.innerHTML = `<div style="padding:0 16px 8px;color:var(--ink-2);font-size:13px;">${escapeHtml(t('ops.health.result',{checked:r.checked,n:r.problems.length}))}</div>
+        <table class="data-table"><tbody>${rows}</tbody></table>`;
+    }
+  } catch(e){ body.innerHTML=`<div class="ops-empty">${escapeHtml(e.message)}</div>`; }
+  finally { btn.disabled=false; btn.textContent=t('ops.health.scan'); }
+}
+async function deleteTrip(encId){
+  try { await apiFetch('/api/trips/'+encId, { method:'DELETE' }); showToast(t('ops.toast.deleted'),'success'); runHealth(); }
+  catch(e){ showToast(t('ops.toast.fail')+'：'+e.message,'error'); }
+}
+
+/* ── 資料庫檢視 ─────────────────────────────────────────── */
+async function loadTables(){
+  try {
+    const r = await apiFetch('/api/admin/db/tables');
+    const sel = document.getElementById('db-table');
+    sel.innerHTML = r.tables.map(tb => `<option value="${escapeHtml(tb.name)}">${escapeHtml(tb.name)} (${tb.count} ${escapeHtml(t('ops.db.rows'))})</option>`).join('');
+    if (r.tables.length){ dbTable=r.tables[0].name; loadRows(0); }
+  } catch(e){ /* 忽略 */ }
+}
+async function loadRows(offset){
+  dbTable = document.getElementById('db-table').value || dbTable;
+  dbOffset = offset;
+  const wrap = document.getElementById('db-rows');
+  try {
+    const r = await apiFetch(`/api/admin/db/rows?table=${encodeURIComponent(dbTable)}&limit=${dbLimit}&offset=${dbOffset}`);
+    dbTotal = r.total;
+    const head = r.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('');
+    const rows = r.rows.map(row => `<tr>${r.columns.map(c => `<td title="${escapeHtml(String(row[c]??''))}">${escapeHtml(String(row[c]??''))}</td>`).join('')}</tr>`).join('');
+    wrap.innerHTML = `<table class="data-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+    const pager = document.getElementById('db-pager'); pager.style.display='flex';
+    document.getElementById('db-range').textContent = `${dbTotal? dbOffset+1:0}–${Math.min(dbOffset+dbLimit,dbTotal)} / ${dbTotal}`;
+    document.getElementById('db-prev').disabled = dbOffset<=0;
+    document.getElementById('db-next').disabled = dbOffset+dbLimit>=dbTotal;
+  } catch(e){ wrap.innerHTML = `<div class="ops-empty">${escapeHtml(e.message)}</div>`; }
+}
+function pageRows(dir){ const next=dbOffset+dir*dbLimit; if(next<0||next>=dbTotal)return; loadRows(next); }
+
+/* ── 維運工具 ───────────────────────────────────────────── */
+async function loadRetention(){
+  try { const s = await apiFetch('/api/admin/settings'); document.getElementById('retention-days').textContent = s.quarantine_retention_days ?? '—'; } catch {}
+}
+async function doRebuild(){
+  const btn=document.getElementById('rebuild-btn'); btn.disabled=true; btn.textContent=t('ops.tools.rebuilding');
+  try { const r = await apiFetch('/api/rebuild-db', { method:'POST' }); showToast(t('ops.tools.rebuilt',{n:r.imported}),'success'); }
+  catch(e){ showToast(t('ops.toast.fail')+'：'+e.message,'error'); }
+  finally { btn.disabled=false; btn.textContent=t('ops.health.rebuild'); }
+}
+</script>
+</body>
+</html>
