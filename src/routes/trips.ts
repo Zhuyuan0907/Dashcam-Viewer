@@ -26,6 +26,8 @@ import type { DB } from "../db.js";
 import { clampInt } from "../util/num.js";
 import { makeRequireUser, makeRequireAdmin, type AppContext } from "../context.js";
 import { readTimeline } from '../media/timeline.js';
+import { inspectMedia } from '../media/inspect.js';
+import { withinTrips } from '../util/paths.js';
 
 /**
  * 對外旅程 DTO。資料層刻意保留完整路徑供影片、裁剪與刪除流程使用，
@@ -121,6 +123,16 @@ export function registerTrips(app: FastifyInstance, ctx: AppContext): void {
   }
 
   // 可瀏覽的旅程擁有者清單(browse 使用者選單)。
+  app.get<{Params:{'*':string}}>('/api/trip-media/*',{preHandler:requireUser,config:{rateLimit:{max:20,timeWindow:'1 minute'}}},async(req,reply)=>{
+    const row=getTrip(db,req.params['*']);
+    if(!row || !canViewTrip(db,req.user!,row))return reply.code(404).send({detail:'旅程不存在'});
+    const result:Record<string,unknown>={};
+    for(const camera of ['front','rear'] as const) {
+      const file=row[`${camera}_path`];
+      if(file && withinTrips(file)) result[camera]=await inspectMedia(file).catch(()=>null);
+    }
+    return result;
+  });
   app.get("/api/trip-owners", { preHandler: requireUser }, async (req) =>
     listOwners(db, req.user!),
   );

@@ -293,14 +293,24 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
   );
 
   // ── 列出檢視者可管理的全部片段(片段頁用)──────────────────────────────────────
-  app.get("/api/clips", { preHandler: requireUser }, async (req) => {
-    return listClipsForViewer(db, req.user!).map((c: ClipWithTrip) => ({
+  app.get<{Querystring:{limit?:string;offset?:string;q?:string;clip_id?:string}}>("/api/clips", { preHandler: requireUser }, async (req) => {
+    const integer = (value:string|undefined, fallback:number) => Math.max(0,Math.min(1e7,Number.parseInt(value??'',10)||fallback));
+    return listClipsForViewer(db, req.user!, {limit:integer(req.query.limit,50),offset:integer(req.query.offset,0),search:String(req.query.q??'').slice(0,120),id:integer(req.query.clip_id,0)}).map((c: ClipWithTrip) => ({
       ...publicClip(c),
       trip_id: c.trip_id,
       date: c.date,
       day_order: c.day_order,
       trip_start_epoch: c.trip_start_epoch,
     }));
+  });
+
+  app.patch<{Params:{clipId:string};Body:{label?:unknown}}>('/api/trip-clip/:clipId', {preHandler:requireUser}, async(req,reply)=>{
+    const clip = getClip(db,Number(req.params.clipId));
+    const trip = clip && getTrip(db,clip.trip_id);
+    if (!clip || !trip || !canEditTrip(db,req.user!,trip)) return reply.code(404).send({detail:'片段不存在'});
+    if(typeof req.body?.label !== 'string' || req.body.label.trim().length > 120) return reply.code(400).send({detail:'名稱須為 120 字以內的文字'});
+    db.prepare('UPDATE trip_clips SET label=? WHERE id=?').run(req.body.label.trim(),clip.id);
+    return publicClip(getClip(db,clip.id)!);
   });
 
   // ── 檢舉資料草稿:儲存車牌/地點/違規事實等,並可標記「已檢舉」──────────────────

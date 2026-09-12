@@ -133,11 +133,28 @@
 (async () => {
   await configReady;
   const user = await checkAuth();
+  if(!user)return;
+  clipUserId=user.id;
   renderHeader(user);
+  const toolbar = document.createElement('form');
+  toolbar.className = 'editor-tools';
+  toolbar.innerHTML = '<label>搜尋片段 <input name="q" aria-label="片段名稱或日期" placeholder="名稱或 YYYY-MM-DD" maxlength="120"></label><button class="btn" type="submit">搜尋</button>';
+  document.getElementById('clips-body').before(toolbar);
+  toolbar.onsubmit = e => {e.preventDefault();clipSearch=toolbar.elements.q.value;load();};
+  const more = document.createElement('button'); more.id='clips-more'; more.className='btn'; more.textContent='載入更多';
+  more.onclick = ()=>load(true); document.getElementById('clips-body').after(more);
   await load();
   // 深連結:/clips#report-<id>(旅程頁匯出完成的「產生檢舉資料」CTA 會帶著跳過來)
   const m = /^#report-(\d+)$/.exec(location.hash);
-  if (m) openReport(parseInt(m[1], 10));
+  const target = m || /^#clip-(\d+)$/.exec(location.hash);
+  if (target) {
+    const id=Number(target[1]);
+    if(!clipsCache.some(c=>c.id===id)) {
+      const found=await apiFetch('/api/clips?clip_id='+id); clipsCache.push(...found);render(clipsCache);
+    }
+    if(m) openReport(id);
+    else { const card=document.getElementById('clip-card-'+id);card?.scrollIntoView();if(card)playClip(id,card.querySelector('.clip-frame')); }
+  }
 })();
 
 function tFb(key, fb) { const s = t(key); return s === key ? fb : s; }
@@ -148,17 +165,24 @@ function layoutLabel(layout) {
 }
 
 let clipsCache = [];   // 供檢舉對話框以 id 查找
+let clipSearch='', clipOffset=0, clipUserId=null;
 
-async function load() {
+async function load(append=false) {
   const body = document.getElementById('clips-body');
   let clips;
   try {
-    clips = await apiFetch('/api/clips');
+    if(!append)clipOffset=0;
+    document.getElementById('clips-more').disabled=true;
+    clips = await apiFetch('/api/clips?limit=50&offset='+clipOffset+'&q='+encodeURIComponent(clipSearch));
   } catch (e) {
     body.innerHTML = `<div class="empty clips-empty"><h3>${tFb('clips.loadFail','載入片段失敗')}</h3><p>${escapeHtml(e.message)}</p></div>`;
+    document.getElementById('clips-more').disabled=false;
     return;
   }
-  clipsCache = clips || [];
+  clipOffset += clips.length;
+  clipsCache = append ? [...clipsCache,...clips.filter(c=>!clipsCache.some(old=>old.id===c.id))] : clips || [];
+  document.getElementById('clips-more').disabled=false;
+  document.getElementById('clips-more').hidden=clips.length<50;
   render(clipsCache);
 }
 
@@ -207,10 +231,20 @@ function cardHtml(c) {
         <div class="clip-card-actions">
           <a class="btn btn--solid btn--sm" href="/api/trip-clip-download/${c.id}" download>${tFb('clips.download','下載')}</a>
           <button class="btn btn--ghost btn--sm" type="button" onclick="openReport(${c.id})">⚑ ${tFb('clips.report','檢舉')}</button>
+          <button class="btn btn--ghost btn--sm" type="button" onclick="renameClip(${c.id})">重新命名</button>
           <button class="btn btn--ghost btn--sm" type="button" onclick="delClip(${c.id})">${tFb('clips.delete','刪除')}</button>
         </div>
       </div>
     </article>`;
+}
+
+async function renameClip(id) {
+  const clip=clipsCache.find(c=>c.id===id);
+  const label=prompt('片段名稱（最多 120 字）',clip?.label||'');if(label===null)return;
+  try {
+    await apiFetch('/api/trip-clip/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+    clip.label=label.trim();render(clipsCache);
+  } catch(e) {showToast(e.message,'error');}
 }
 
 /* ── 檢舉輔助對話框 ───────────────────────────────────────────────────────────
@@ -251,7 +285,8 @@ function openReport(id) {
   const c = clipsCache.find(x => x.id === id);
   if (!c) return;
   reportClipId = id;
-  const r = c.report || {};
+  let r = c.report || {};
+  try {r=JSON.parse(localStorage.getItem(`dc.report:${clipUserId}:${id}`)||'null')||r;} catch {}
   const tm = clipAbsTime(c);
   const cfgReport = (window.__cfg && __cfg.report) || {};
   let lastLoc = '';
@@ -332,6 +367,12 @@ function openReport(id) {
     document.getElementById('rp-go-hint').style.display = '';
   }
   document.getElementById('rp-reported').addEventListener('change', saveReport);
+  const draftStatus=document.createElement('p');draftStatus.setAttribute('role','status');draftStatus.textContent='輸入會保存在此瀏覽器；按儲存後才同步伺服器。';
+  scrim.querySelector('.modal-body').append(draftStatus);
+  scrim.addEventListener('input',()=>{
+    try {localStorage.setItem(`dc.report:${clipUserId}:${id}`,JSON.stringify(collectReport()));draftStatus.textContent='已保存本機草稿（尚未同步）';}
+    catch {draftStatus.textContent='無法保存本機草稿，請使用儲存按鈕';}
+  });
   document.getElementById('rp-plate').focus();
 }
 
@@ -356,6 +397,7 @@ async function saveReport() {
     });
     const c = clipsCache.find(x => x.id === id);
     if (c) { c.report = updated.report; c.reported_at = updated.reported_at; }
+    try {localStorage.removeItem(`dc.report:${clipUserId}:${id}`);} catch {}
     return true;
   } catch (e) {
     showToast(tFb('clips.report.saveFail','儲存失敗') + '：' + e.message, 'error');

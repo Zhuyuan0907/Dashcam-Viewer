@@ -206,7 +206,7 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
         if (ingest.rawProfiles.length > 1) {
           sessions.setStatus(s.id, "active");
           return reply.code(400).send({
-            detail: "同一工作階段不可混合 MiVue 與 Polaroid 原始片段，請分批上傳",
+            detail: "同一工作階段不可混合不同命名格式的原始片段，請分批上傳",
             profiles: ingest.rawProfiles,
           });
         }

@@ -14,7 +14,7 @@ function renderJobs(){
     for(const [action,label,allowed] of [['cancel','取消工作',j.can_cancel],['retry','重新執行',j.can_retry]])if(allowed){
       const button=node('button',label,'btn btn--ghost');button.onclick=async()=>{button.disabled=true;try{await apiFetch(`/api/jobs/${j.id}/${action}`,{method:'POST'});await loadJobs();}catch(e){showToast(e.message,'error');button.disabled=false;}};actions.append(button);
     }
-    if(j.result?.clip?.id){const link=node('a','查看片段','btn');link.href='/clips#report-'+j.result.clip.id;actions.append(link);}
+    if(j.result?.clip?.id){const link=node('a','查看片段','btn');link.href='/clips#clip-'+j.result.clip.id;actions.append(link);}
     else if(j.type!=='import'){const link=node('a','回到旅程','btn');link.href='/trip/'+encodeURIComponent(j.target);actions.append(link);}
     else if(j.status==='succeeded'||j.status==='partial'){const link=node('a','瀏覽旅程','btn');link.href='/browse';actions.append(link);}
     card.append(actions);list.append(card);

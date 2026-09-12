@@ -12,6 +12,7 @@ import path from "node:path";
 import { UPLOAD_DIR, PREBUILT_DIR } from "../config.js";
 import { safeJoin } from "../util/paths.js";
 import { describeUpload, type UploadProfile } from "./routing.js";
+import { fileHash } from '../util/file-hash.js';
 
 export interface IngestResult {
   accepted: number;
@@ -78,14 +79,14 @@ export async function ingestFlatFolder(sid: string): Promise<IngestResult> {
     if (path.resolve(abs) !== path.resolve(dst)) {
       try {
         const [src, exist] = await Promise.all([fs.stat(abs), fs.stat(dst)]);
-        if (src.size !== exist.size) {
+        if (src.size !== exist.size || await fileHash(abs) !== await fileHash(dst)) {
           rejected.push(`${name}(同名但內容不同,已保留原檔)`);
           return false;
         }
-        await fs.rm(abs, { force: true }); // 同名同大小:視為重複上傳
+        await fs.rm(abs, { force: true }); // Only discard byte-identical duplicate input.
         return true;
-      } catch {
-        /* 目標不存在 → 正常搬移 */
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }
     }
     await moveFile(abs, dst);

@@ -616,7 +616,7 @@
 <script>
 const tt = t;   // 翻譯函式別名(本檔多處用 `const t = trip` 遮蔽全域 t)
 const tripId = decodeURIComponent(location.pathname.replace(/^\/trip\//, ''));
-const FPS = 30;
+let mediaInfo = {};
 let trip = null;
 let videos = {};            // { front: <video>, rear: <video> }
 let mainCam = 'front';
@@ -639,6 +639,7 @@ async function load() {
   try {
     trip = await apiFetch(`/api/trips/${encodeURIComponent(tripId)}`);
     render();
+    apiFetch('/api/trip-media/'+encodeURIComponent(tripId)).then(info=>{mediaInfo=info;}).catch(()=>{});
   } catch (e) {
     document.getElementById('loading-state').style.display = 'none';
     document.getElementById('error-state').style.display = '';
@@ -870,7 +871,7 @@ function initPlayer() {
     if (!Number.isFinite(total) || total <= 0) return;   // metadata 未載入:currentTime=NaN 會拋例外
     all().forEach(v => v.pause());
     setPlayIcon(false);
-    const nt = Math.max(0, Math.min(total, m.currentTime + dir / FPS));
+    const nt = Math.max(0, Math.min(total, m.currentTime + dir / (mediaInfo[mainCam]?.fps || 30)));
     all().forEach(v => { v.currentTime = nt; });
   }
   function seekBy(d) {

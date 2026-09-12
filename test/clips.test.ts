@@ -236,6 +236,13 @@ test("list / download / delete + 路由排序不互撞", async () => {
     )
     .run(filePath, now);
   const clipId = Number(info.lastInsertRowid);
+  const rename = (auth:string,label:unknown)=>app.inject({method:'PATCH',url:`/api/trip-clip/${clipId}`,headers:{cookie:auth},payload:{label}});
+  assert.equal((await rename(bob.cookie,'not yours')).statusCode,404);
+  assert.equal((await rename(cookie,'x'.repeat(121))).statusCode,400);
+  assert.equal((await rename(cookie,'New label')).statusCode,200);
+  const search = await app.inject({method:'GET',url:'/api/clips?q=New&limit=1',headers:{cookie}});
+  assert.equal(search.json()[0].label,'New label');
+  assert.equal((await app.inject({method:'GET',url:'/api/clips?offset=1',headers:{cookie}})).json().length,0);
 
   // 列表回傳該片段,但不外洩絕對 file_path
   const list = await app.inject({ method: "GET", url: "/api/trip-clips/c1", headers: { cookie } });

@@ -95,16 +95,19 @@ export interface ClipWithTrip extends ClipRow {
 export function listClipsForViewer(
   db: DB,
   viewer: { id: number; role: string },
+  options: {limit?: number; offset?: number; search?: string; id?: number} = {},
 ): ClipWithTrip[] {
   const base = `
     SELECT c.*, t.date AS date, t.day_order AS day_order, t.start_epoch AS trip_start_epoch
       FROM trip_clips c
       JOIN trips t ON t.trip_id = c.trip_id`;
-  const order = " ORDER BY c.created_at DESC, c.id DESC";
-  if (viewer.role === "admin") {
-    return db.prepare(base + order).all() as ClipWithTrip[];
-  }
-  return db.prepare(base + " WHERE t.owner_id = ?" + order).all(viewer.id) as ClipWithTrip[];
+  const where: string[] = [], args: (string|number)[] = [];
+  if (viewer.role !== 'admin') {where.push('t.owner_id = ?');args.push(viewer.id);}
+  if (options.search) {where.push('(instr(lower(c.label), lower(?)) > 0 OR t.date = ?)');args.push(options.search,options.search);}
+  if (options.id) {where.push('c.id = ?');args.push(options.id);}
+  args.push(Math.max(1,Math.min(100,options.limit ?? 100)), Math.max(0,options.offset ?? 0));
+  return db.prepare(base + (where.length ? ' WHERE '+where.join(' AND ') : '') +
+    ' ORDER BY c.created_at DESC, c.id DESC LIMIT ? OFFSET ?').all(...args) as ClipWithTrip[];
 }
 
 /** 刪除片段列(檔案由呼叫端負責移除)。 */

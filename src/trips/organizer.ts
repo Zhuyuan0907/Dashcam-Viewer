@@ -11,6 +11,8 @@ import { probeDuration, probeReadable, concatCopy, FALLBACK_DURATION } from "../
 import type { TripInfo } from "./repo.js";
 import type { DashcamDeviceSnapshot } from "../devices/repo.js";
 import type { Span } from '../media/timeline.js';
+import { parseGenericFilename } from '../dashcams/generic.js';
+import { inspectMedia } from '../media/inspect.js';
 import {
   findPolaroidMs279wgRear,
   parsePolaroidMs279wgFilename,
@@ -129,7 +131,7 @@ export async function scanSegments(frontDir: string, rearDir?: string): Promise<
   try {
     names = await fs.readdir(frontDir);
   } catch {
-    return [];
+    names = [];
   }
   let rearNames: string[] = [];
   if (rearDir) {
@@ -148,6 +150,13 @@ export async function scanSegments(frontDir: string, rearDir?: string): Promise<
   const usedPolaroidRears = new Set<string>();
   const segments: Segment[] = [];
   for (const name of names) {
+    const generic = parseGenericFilename(name);
+    if (generic?.camera === 'F') {
+      segments.push({base:generic.base,prefix:'FILE',epoch:generic.epoch,seq:generic.sequence,
+        duration:FALLBACK_DURATION,isEmergency:false,frontFilename:name,
+        rearFilename:rearNames.find(n=>n.toLowerCase() === generic.peer.toLowerCase()),sourceProfile:'generic'});
+      continue;
+    }
     const m = FILENAME_RE.exec(name);
     if (m) {
       const [, prefix, yymmdd, hhmmss, seqStr, camera] = m;
@@ -181,6 +190,25 @@ export async function scanSegments(frontDir: string, rearDir?: string): Promise<
       rearEpoch: rear?.epoch,
       sourceProfile: polaroid.profile,
     });
+  }
+  // Rear-only recordings are independent segments, not silently discarded for lacking a front peer.
+  const paired = new Set(segments.map(s => sourceFilename(s, 'R').toLowerCase()));
+  for (const name of rearNames) {
+    if (paired.has(name.toLowerCase())) continue;
+    const generic = parseGenericFilename(name);
+    const polaroid = parsePolaroidMs279wgFilename(name);
+    const m = FILENAME_RE.exec(name);
+    if (generic?.camera === 'R') {
+      segments.push({base:generic.base,prefix:'FILE',epoch:generic.epoch,seq:generic.sequence,
+        duration:FALLBACK_DURATION,isEmergency:false,rearFilename:name,sourceProfile:'generic'});
+    } else if (polaroid?.camera === 'R') {
+      segments.push({base:polaroid.segmentId,prefix:'FILE',epoch:polaroid.epoch,seq:polaroid.sequence,
+        duration:FALLBACK_DURATION,isEmergency:false,rearFilename:name,rearEpoch:polaroid.epoch,sourceProfile:polaroid.profile});
+    } else if (m?.[5]?.toUpperCase() === 'R') {
+      const epoch = parseEpoch(m[2]!, m[3]!);
+      if (epoch !== null) segments.push({base:`${m[1]}${m[2]}-${m[3]}-${m[4]}`,prefix:m[1]!,epoch,
+        seq:Number(m[4]),duration:FALLBACK_DURATION,isEmergency:m[1]!.toUpperCase()==='EMER',rearFilename:name});
+    }
   }
   segments.sort((a, b) => a.epoch - b.epoch || a.seq - b.seq);
   return segments;
@@ -292,7 +320,7 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
   if (segments.length === 0) {
     yield {
       stage: "error",
-      message: "在 F/ 資料夾中找不到符合命名規則的影片",
+      message: "在 F/、R/ 資料夾中找不到符合命名規則的影片",
       incident: {
         kind: "processing_error",
         severity: "warn",
@@ -305,7 +333,7 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
     };
     return;
   }
-  yield { stage: "scan", message: `找到 ${segments.length} 個前鏡頭片段` };
+  yield { stage: "scan", message: `找到 ${segments.length} 組拍攝片段` };
 
   // Step 2: 取時長(ffprobe,非阻塞)。以小批併發(每個 probe 各 spawn 一個獨立子程序、
   // 彼此無依賴),避免大批上傳時逐段串行讓時長階段耗時線性放大。
@@ -318,6 +346,7 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
       chunk.map(async (seg) => {
         const f = path.join(frontDir, sourceFilename(seg, "F"));
         if (await fileExists(f)) seg.duration = await probeDuration(f);
+        else seg.duration = await probeDuration(path.join(rearDir, sourceFilename(seg, 'R')));
       }),
     );
     probed += chunk.length;
@@ -521,6 +550,19 @@ async function* mergeCameraEvents(
   }
 
   yield { stage: "merge", message: `  ${label} 合併中… (${entries.length} 段)` };
+  try {
+    let signature: string | undefined;
+    for (const entry of entries) {
+      const media = await inspectMedia(entry);
+      const current = JSON.stringify([media.codec,media.width,media.height,Math.round(media.fps*100),media.audio]);
+      if (signature && signature !== current) throw Error('來源的編碼、解析度、幀率或音軌不同，請分批匯入或先轉為一致格式');
+      signature = current;
+    }
+  } catch(error) {
+    result.ok=false;result.error=error instanceof Error?error.message:String(error);
+    yield {stage:'merge',message:`${label} 無法安全合併：${result.error}`};
+    return;
+  }
   const r = await concatCopy(entries, outPath);
   const sizeBytes = r.sizeBytes ?? 0;
   if (r.ok && sizeBytes > 0) {

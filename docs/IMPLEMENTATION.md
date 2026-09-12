@@ -19,7 +19,11 @@ Seven ordered releases, one commit per stage. No production database or media is
    source switching, reconnecting export progress and mobile editor access. Shared semantic
    palettes (harbor/terracotta/slate) replace binary theme switching; no remote font dependency.
    Browser regressions exercise mobile editing, draft recovery and every palette.
-5. Device compatibility and personal media management — pending.
+5. Device compatibility and personal media management — implemented: explicit generic interchange
+   filenames (MP4/MOV/TS), rear-only scanning for all profiles, safe stream compatibility checks,
+   measured frame-rate stepping, SHA-256 duplicate identity, paged/searchable clips, rename and
+   paged daily journeys. Unknown filenames are rejected; arbitrary camera metadata guessing and
+   automatic incompatible-codec transcoding are intentionally not enabled. 26 scoped tests pass.
 6. Self-hosted installation, diagnostics, backup and recovery — pending.
 7. Integration verification, cleanup and release documentation — pending.
 

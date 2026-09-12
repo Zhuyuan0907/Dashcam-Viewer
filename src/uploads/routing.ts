@@ -10,6 +10,7 @@
 import { FILENAME_RE, NMEA_RE } from "../trips/organizer.js";
 import { DATE_FOLDER_RE, PREBUILT_NAMES } from "../trips/prebuilt.js";
 import { parsePolaroidMs279wgFilename } from "../dashcams/polaroid-ms279wg.js";
+import { parseGenericFilename } from '../dashcams/generic.js';
 
 export type UploadDecision =
   | { action: "skip" } // macOS sidecar / 感測器數據,靜默略過
@@ -17,7 +18,7 @@ export type UploadDecision =
   | { action: "prebuilt"; relative: string } // 寫到 prebuilt 暫存區(relative 已驗證安全)
   | { action: "raw"; subdir: "F" | "R" | "NMEA"; basename: string };
 
-export type UploadProfile = "mivue-mp20" | "polaroid-ms279wg" | "prebuilt";
+export type UploadProfile = "mivue-mp20" | "polaroid-ms279wg" | "generic" | "prebuilt";
 
 /** 供預檢與 ingest 顯示來源格式；分類本身仍維持精簡且向後相容。 */
 export function describeUpload(rawPath: string): {
@@ -29,6 +30,9 @@ export function describeUpload(rawPath: string): {
   const decision = classifyUpload(rawPath);
   const basename = basenameOf(rawPath);
   const polaroid = parsePolaroidMs279wgFilename(basename);
+  if (decision.action === 'raw' && parseGenericFilename(basename)) {
+    return {decision, profile:'generic', camera:decision.subdir === 'F' ? 'front' : 'rear', reason:null};
+  }
   if (decision.action === "raw" && polaroid) {
     return {
       decision,
@@ -61,6 +65,8 @@ function basenameOf(p: string): string {
 
 export function classifyUpload(rawPath: string): UploadDecision {
   const basename = basenameOf(rawPath);
+  const generic = parseGenericFilename(basename);
+  if (generic) return {action:'raw',subdir:generic.camera,basename};
 
   if (basename.startsWith("._") || rawPath.includes("感測器數據")) {
     return { action: "skip" };

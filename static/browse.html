@@ -389,7 +389,7 @@ async function loadDates() {
 
 let selectSeq = 0;   // 請求序號:快速連點日期/切換使用者時,慢的舊回應不可覆蓋新內容
 
-async function selectDate(date) {
+async function selectDate(date, offset=0) {
   const seq = ++selectSeq;
   location.hash = date;
   document.querySelectorAll('#date-list .drow').forEach(a =>
@@ -403,7 +403,7 @@ async function selectDate(date) {
   content.innerHTML = `<div class="loading-row"><div class="spinner"></div>${t('common.loading')}</div>`;
 
   try {
-    const data = await apiFetch(`/api/trips?date=${encodeURIComponent(date)}&owner=${encodeURIComponent(currentOwner)}&limit=100`);
+    const data = await apiFetch(`/api/trips?date=${encodeURIComponent(date)}&owner=${encodeURIComponent(currentOwner)}&limit=100&offset=${offset}`);
     if (seq !== selectSeq) return;   // 已有更新的選取,丟棄本回應
     const label = new Date(date).toLocaleDateString(cfgLocale(),
       { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', timeZone: 'UTC' });
@@ -422,7 +422,7 @@ async function selectDate(date) {
     content.innerHTML = `
       <div class="day-head">
         <h2>${label}</h2>
-        <span class="day-meta">${data.trips.length} ${t('index.stat.tripsUnit')} · ${fmtDuration(totalSec)}</span>
+        <span class="day-meta">${data.total>100 ? '本頁 ' : ''}${data.trips.length} ${t('index.stat.tripsUnit')} · ${fmtDuration(totalSec)}</span>
         ${emerTag}${shakeTag}
       </div>
       <div class="trips-grid">
@@ -430,6 +430,14 @@ async function selectDate(date) {
           ? data.trips.map(renderTripCard).join('')
           : `<div class="empty"><div class="empty-icon">${camIcon()}</div><h3>${t('browse.noTripThisDay')}</h3></div>`}
       </div>`;
+    if(data.total>100) {
+      const pagination=document.createElement('div');pagination.className='editor-tools';
+      for(const [label,next,disabled] of [['上一頁',Math.max(0,offset-100),offset===0],['下一頁',offset+100,offset+100>=data.total]]) {
+        const button=document.createElement('button');button.className='btn';button.textContent=label;button.disabled=disabled;
+        button.onclick=()=>selectDate(date,next);pagination.append(button);
+      }
+      const status=document.createElement('span');status.textContent=`${offset+1}–${offset+data.trips.length} / ${data.total}`;pagination.append(status);content.append(pagination);
+    }
   } catch (e) {
     if (seq !== selectSeq) return;
     content.innerHTML = `<div class="empty"><div class="empty-icon">${camIcon()}</div>
