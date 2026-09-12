@@ -4,14 +4,22 @@
  * 動機:整趟裁剪的 AbortController 原本鎖在 routes/edit.ts 的閉包、匯出的鎖在
  * routes/clips.ts 的閉包,彼此與其他 route(如刪除旅程)看不到對方。刪除一趟旅程時
  * 若有裁剪/匯出正在對它的檔案跑 ffmpeg,ffmpeg 會對著已 unlink 的檔案空轉。
- * 這裡把「trip → 進行中工作」集中,讓任何 route 都能查詢/中止某趟的所有工作。
+ * 這裡集中「trip → 進行中工作」，刪除操作必須等待工作結束，不能先刪檔再取消。
  */
 export class JobRegistry {
   private readonly committing = new Set<string>();
-  beginCommit(tripId: string): void { this.committing.add(tripId); }
-  isCommitting(tripId: string): boolean { return this.committing.has(tripId); }
-  hasClips(tripId: string): boolean { return [...this.clips.values()].some(c => c.tripId === tripId); }
-  busy(tripId: string): boolean { return this.hasTrim(tripId) || this.hasClips(tripId); }
+  beginCommit(tripId: string): void {
+    this.committing.add(tripId);
+  }
+  isCommitting(tripId: string): boolean {
+    return this.committing.has(tripId);
+  }
+  hasClips(tripId: string): boolean {
+    return [...this.clips.values()].some((c) => c.tripId === tripId);
+  }
+  busy(tripId: string): boolean {
+    return this.hasTrim(tripId) || this.hasClips(tripId);
+  }
   /** tripId → 整趟裁剪的 controller(一趟同時只允許一個)。 */
   private readonly trims = new Map<string, AbortController>();
   /** jobId → { tripId, controller };匯出片段(同一趟可並行多個)。 */
@@ -47,31 +55,6 @@ export class JobRegistry {
   unregisterClip(jobId: string): void {
     this.clips.delete(jobId);
   }
-  /** 目前進行中的匯出數(供併發上限判斷)。 */
-  clipCount(): number {
-    return this.clips.size;
-  }
-
-  /**
-   * 中止某趟旅程的所有進行中工作(裁剪 + 匯出)。刪除旅程前呼叫,避免 ffmpeg 對
-   * 已刪除的檔案繼續空轉。回傳被中止的工作數。
-   */
-  abortTripJobs(tripId: string): number {
-    let n = 0;
-    const trim = this.trims.get(tripId);
-    if (trim) {
-      trim.abort();
-      n++;
-    }
-    for (const { tripId: t, controller } of this.clips.values()) {
-      if (t === tripId) {
-        controller.abort();
-        n++;
-      }
-    }
-    return n;
-  }
-
   registerOwnerProcess(ownerId: number): void {
     this.ownerProcesses.set(ownerId, (this.ownerProcesses.get(ownerId) ?? 0) + 1);
   }

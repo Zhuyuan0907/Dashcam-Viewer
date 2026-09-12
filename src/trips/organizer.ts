@@ -10,9 +10,11 @@ import path from "node:path";
 import { probeDuration, probeReadable, concatCopy, FALLBACK_DURATION } from "../media/ffmpeg.js";
 import type { TripInfo } from "./repo.js";
 import type { DashcamDeviceSnapshot } from "../devices/repo.js";
-import type { Span } from '../media/timeline.js';
-import { parseGenericFilename } from '../dashcams/generic.js';
-import { inspectMedia } from '../media/inspect.js';
+import type { Span } from "../media/timeline.js";
+import { parseGenericFilename } from "../dashcams/generic.js";
+import { inspectMedia } from "../media/inspect.js";
+import { reserveSpace } from "../media/space.js";
+import { createHash } from "node:crypto";
 import {
   findPolaroidMs279wgRear,
   parsePolaroidMs279wgFilename,
@@ -92,7 +94,8 @@ export function parseEpoch(yymmdd: string, hhmmss: string): number | null {
   // 與伺服器/瀏覽器時區無關(避免雙重時區偏移)。
   const d = new Date(Date.UTC(year, month - 1, day, hh, mm, ss));
   // 驗證沒有溢位(例如 02/30 會被 JS 自動進位)
-  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day)
+    return null;
   return Math.floor(d.getTime() / 1000);
 }
 
@@ -144,17 +147,24 @@ export async function scanSegments(frontDir: string, rearDir?: string): Promise<
   const polaroidRears = rearNames
     .map(parsePolaroidMs279wgFilename)
     .filter(
-      (f): f is NonNullable<ReturnType<typeof parsePolaroidMs279wgFilename>> =>
-        f?.camera === "R",
+      (f): f is NonNullable<ReturnType<typeof parsePolaroidMs279wgFilename>> => f?.camera === "R",
     );
   const usedPolaroidRears = new Set<string>();
   const segments: Segment[] = [];
   for (const name of names) {
     const generic = parseGenericFilename(name);
-    if (generic?.camera === 'F') {
-      segments.push({base:generic.base,prefix:'FILE',epoch:generic.epoch,seq:generic.sequence,
-        duration:FALLBACK_DURATION,isEmergency:false,frontFilename:name,
-        rearFilename:rearNames.find(n=>n.toLowerCase() === generic.peer.toLowerCase()),sourceProfile:'generic'});
+    if (generic?.camera === "F") {
+      segments.push({
+        base: generic.base,
+        prefix: "FILE",
+        epoch: generic.epoch,
+        seq: generic.sequence,
+        duration: FALLBACK_DURATION,
+        isEmergency: false,
+        frontFilename: name,
+        rearFilename: rearNames.find((n) => n.toLowerCase() === generic.peer.toLowerCase()),
+        sourceProfile: "generic",
+      });
       continue;
     }
     const m = FILENAME_RE.exec(name);
@@ -192,22 +202,47 @@ export async function scanSegments(frontDir: string, rearDir?: string): Promise<
     });
   }
   // Rear-only recordings are independent segments, not silently discarded for lacking a front peer.
-  const paired = new Set(segments.map(s => sourceFilename(s, 'R').toLowerCase()));
+  const paired = new Set(segments.map((s) => sourceFilename(s, "R").toLowerCase()));
   for (const name of rearNames) {
     if (paired.has(name.toLowerCase())) continue;
     const generic = parseGenericFilename(name);
     const polaroid = parsePolaroidMs279wgFilename(name);
     const m = FILENAME_RE.exec(name);
-    if (generic?.camera === 'R') {
-      segments.push({base:generic.base,prefix:'FILE',epoch:generic.epoch,seq:generic.sequence,
-        duration:FALLBACK_DURATION,isEmergency:false,rearFilename:name,sourceProfile:'generic'});
-    } else if (polaroid?.camera === 'R') {
-      segments.push({base:polaroid.segmentId,prefix:'FILE',epoch:polaroid.epoch,seq:polaroid.sequence,
-        duration:FALLBACK_DURATION,isEmergency:false,rearFilename:name,rearEpoch:polaroid.epoch,sourceProfile:polaroid.profile});
-    } else if (m?.[5]?.toUpperCase() === 'R') {
+    if (generic?.camera === "R") {
+      segments.push({
+        base: generic.base,
+        prefix: "FILE",
+        epoch: generic.epoch,
+        seq: generic.sequence,
+        duration: FALLBACK_DURATION,
+        isEmergency: false,
+        rearFilename: name,
+        sourceProfile: "generic",
+      });
+    } else if (polaroid?.camera === "R") {
+      segments.push({
+        base: polaroid.segmentId,
+        prefix: "FILE",
+        epoch: polaroid.epoch,
+        seq: polaroid.sequence,
+        duration: FALLBACK_DURATION,
+        isEmergency: false,
+        rearFilename: name,
+        rearEpoch: polaroid.epoch,
+        sourceProfile: polaroid.profile,
+      });
+    } else if (m?.[5]?.toUpperCase() === "R") {
       const epoch = parseEpoch(m[2]!, m[3]!);
-      if (epoch !== null) segments.push({base:`${m[1]}${m[2]}-${m[3]}-${m[4]}`,prefix:m[1]!,epoch,
-        seq:Number(m[4]),duration:FALLBACK_DURATION,isEmergency:m[1]!.toUpperCase()==='EMER',rearFilename:name});
+      if (epoch !== null)
+        segments.push({
+          base: `${m[1]}${m[2]}-${m[3]}-${m[4]}`,
+          prefix: m[1]!,
+          epoch,
+          seq: Number(m[4]),
+          duration: FALLBACK_DURATION,
+          isEmergency: m[1]!.toUpperCase() === "EMER",
+          rearFilename: name,
+        });
     }
   }
   segments.sort((a, b) => a.epoch - b.epoch || a.seq - b.seq);
@@ -240,7 +275,13 @@ function makeTrip(segments: Segment[]): Trip {
   const start = segments[0]!.epoch;
   const last = segments[segments.length - 1]!;
   const end = last.epoch + last.duration;
-  return { date: dateStr(start), dayOrder: 0, startEpoch: start, endEpoch: end, segments: [...segments] };
+  return {
+    date: dateStr(start),
+    dayOrder: 0,
+    startEpoch: start,
+    endEpoch: end,
+    segments: [...segments],
+  };
 }
 
 function assignDayOrders(trips: Trip[]): void {
@@ -346,7 +387,7 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
       chunk.map(async (seg) => {
         const f = path.join(frontDir, sourceFilename(seg, "F"));
         if (await fileExists(f)) seg.duration = await probeDuration(f);
-        else seg.duration = await probeDuration(path.join(rearDir, sourceFilename(seg, 'R')));
+        else seg.duration = await probeDuration(path.join(rearDir, sourceFilename(seg, "R")));
       }),
     );
     probed += chunk.length;
@@ -359,7 +400,10 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
 
   // Step 3: 偵測旅程
   const trips = detectTrips(segments, gapSec);
-  yield { stage: "detect", message: `偵測到 ${trips.length} 趟旅程(間隔閾值 ${Math.floor(gapSec / 60)} 分鐘)` };
+  yield {
+    stage: "detect",
+    message: `偵測到 ${trips.length} 趟旅程(間隔閾值 ${Math.floor(gapSec / 60)} 分鐘)`,
+  };
 
   const effectiveTripId = (t: Trip): string =>
     opts.idNamespace ? `${opts.idNamespace}|${tripId(t)}` : tripId(t);
@@ -389,8 +433,16 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
       trip_total: toProcess.length,
     };
 
-    const tripDir = path.join(opts.tripsDir, trip.date, folderName(trip));
-    await fs.mkdir(tripDir, { recursive: true });
+    let tripDir = path.join(opts.tripsDir, trip.date, folderName(trip));
+    // Display names round to minutes; distinct trips must never overwrite one another.
+    if (await dirExists(tripDir)) {
+      const suffix = createHash("sha256").update(effectiveTripId(trip)).digest("hex").slice(0, 12);
+      tripDir += `-${suffix}`;
+      if (await dirExists(tripDir))
+        throw Error(`旅程目錄已存在，為避免覆寫請先由管理員檢查：${tripDir}`);
+    }
+    await fs.mkdir(path.dirname(tripDir), { recursive: true });
+    await fs.mkdir(tripDir); // Exclusive directory admission also rejects concurrent collisions.
     const bases = trip.segments.map((s) => s.base);
 
     const frontOut = path.join(tripDir, "前鏡頭.mp4");
@@ -399,10 +451,26 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
 
     // 合併前後鏡頭(成功與否以實際合併結果為準,而非檔案是否存在)。
     const frontRes: MergeResult = { ok: false, found: 0, dropped: 0 };
-    for await (const ev of mergeCameraEvents(trip.segments, frontDir, "F", frontOut, frontRes, tolerant)) yield ev;
+    for await (const ev of mergeCameraEvents(
+      trip.segments,
+      frontDir,
+      "F",
+      frontOut,
+      frontRes,
+      tolerant,
+    ))
+      yield ev;
     const frontOk = frontRes.ok;
     const rearRes: MergeResult = { ok: false, found: 0, dropped: 0 };
-    for await (const ev of mergeCameraEvents(trip.segments, rearDir, "R", rearOut, rearRes, tolerant)) yield ev;
+    for await (const ev of mergeCameraEvents(
+      trip.segments,
+      rearDir,
+      "R",
+      rearOut,
+      rearRes,
+      tolerant,
+    ))
+      yield ev;
     const rearOk = rearRes.ok;
 
     // 前後鏡頭都沒合成出有效影片:不寫入空旅程(否則介面會出現無法播放的項目),
@@ -458,8 +526,11 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
       day_order: trip.dayOrder,
       start_epoch: trip.startEpoch,
       end_epoch: trip.endEpoch,
-      duration_sec: (frontRes.timeline ?? rearRes.timeline ?? []).reduce((n,s)=>n+s.duration,0),
-      timeline: {front:frontRes.timeline ?? [],rear:rearRes.timeline ?? []},
+      duration_sec: (frontRes.timeline ?? rearRes.timeline ?? []).reduce(
+        (n, s) => n + s.duration,
+        0,
+      ),
+      timeline: { front: frontRes.timeline ?? [], rear: rearRes.timeline ?? [] },
       segment_count: trip.segments.length,
       emer_count: trip.segments.filter((s) => s.isEmergency).length,
       has_front: frontOk,
@@ -512,10 +583,13 @@ async function* mergeCameraEvents(
 ): AsyncGenerator<ProgressEvent> {
   const label = camera === "F" ? "前鏡頭" : "後鏡頭";
   let entries: string[] = [];
-  const epochs = new Map<string,number>();
+  const epochs = new Map<string, number>();
   for (const seg of segments) {
     const src = path.join(srcDir, sourceFilename(seg, camera));
-    if (await fileExists(src)) { entries.push(src); epochs.set(src,camera === 'R' ? seg.rearEpoch ?? seg.epoch : seg.epoch); }
+    if (await fileExists(src)) {
+      entries.push(src);
+      epochs.set(src, camera === "R" ? (seg.rearEpoch ?? seg.epoch) : seg.epoch);
+    }
   }
   result.found = entries.length;
   if (entries.length === 0) {
@@ -554,23 +628,36 @@ async function* mergeCameraEvents(
     let signature: string | undefined;
     for (const entry of entries) {
       const media = await inspectMedia(entry);
-      const current = JSON.stringify([media.codec,media.width,media.height,Math.round(media.fps*100),media.audio]);
-      if (signature && signature !== current) throw Error('來源的編碼、解析度、幀率或音軌不同，請分批匯入或先轉為一致格式');
+      const current = JSON.stringify([media.stream_signature, Math.round(media.fps * 100)]);
+      if (signature && signature !== current)
+        throw Error("來源的編碼、解析度、幀率或音軌不同，請分批匯入或先轉為一致格式");
       signature = current;
     }
-  } catch(error) {
-    result.ok=false;result.error=error instanceof Error?error.message:String(error);
-    yield {stage:'merge',message:`${label} 無法安全合併：${result.error}`};
+  } catch (error) {
+    result.ok = false;
+    result.error = error instanceof Error ? error.message : String(error);
+    yield { stage: "merge", message: `${label} 無法安全合併：${result.error}` };
     return;
   }
-  const r = await concatCopy(entries, outPath);
+  let release = () => {};
+  let r: Awaited<ReturnType<typeof concatCopy>>;
+  try {
+    const sizes = await Promise.all(entries.map((file) => fs.stat(file).then((s) => s.size)));
+    release = await reserveSpace(
+      Math.ceil(sizes.reduce((a, b) => a + b, 0) * 1.1),
+      path.dirname(outPath),
+    );
+    r = await concatCopy(entries, outPath);
+  } finally {
+    release();
+  }
   const sizeBytes = r.sizeBytes ?? 0;
   if (r.ok && sizeBytes > 0) {
     result.timeline = [];
     let cursor = 0;
     for (const file of entries) {
       const duration = await probeDuration(file);
-      result.timeline.push({start:cursor,duration,epoch:epochs.get(file)!});
+      result.timeline.push({ start: cursor, duration, epoch: epochs.get(file)! });
       cursor += duration;
     }
     result.ok = true;
@@ -579,7 +666,7 @@ async function* mergeCameraEvents(
     result.ok = false;
     // 清掉失敗殘留(0-byte 或半成品),避免後續被當成有效影片。
     await fs.rm(outPath, { force: true }).catch(() => {});
-    result.error = r.ok ? "輸出為空(0 bytes)" : r.error ?? "未知錯誤";
+    result.error = r.ok ? "輸出為空(0 bytes)" : (r.error ?? "未知錯誤");
     yield { stage: "merge", message: `  ${label} 失敗:${result.error}` };
   }
 }

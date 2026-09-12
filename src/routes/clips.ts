@@ -34,12 +34,12 @@ import {
 import { exportClip, extractFrame } from "../media/ffmpeg.js";
 import { sendRange } from "./video.js";
 import { withinTrips } from "../util/paths.js";
-import { TRIM_THREADS, CLIP_MAX_SEC, CLIP_CONCURRENCY } from "../config.js";
+import { TRIM_THREADS, CLIP_MAX_SEC } from "../config.js";
 import { makeRequireUser, type AppContext } from "../context.js";
 import type { DB } from "../db.js";
-import { inspectMedia } from '../media/inspect.js';
-import { readTimeline, continuous, timeAt } from '../media/timeline.js';
-import { reserveForMedia } from '../media/space.js';
+import { inspectMedia } from "../media/inspect.js";
+import { readTimeline, continuous, timeAt } from "../media/timeline.js";
+import { reserveForMedia } from "../media/space.js";
 
 /**
  * 啟動時清理孤兒片段檔(供 server.ts 呼叫):掃描各旅程 <trip_dir>/clips/ 下的檔案,
@@ -89,7 +89,10 @@ const clipKey = (jobId: string): string => `clip:${jobId}`;
 
 /** 片段縮圖檔路徑:與片段檔同資料夾、同檔名但副檔名改 .jpg(<jobId>.jpg)。 */
 function clipThumbPath(filePath: string): string {
-  return path.join(path.dirname(filePath), `${path.basename(filePath, path.extname(filePath))}.jpg`);
+  return path.join(
+    path.dirname(filePath),
+    `${path.basename(filePath, path.extname(filePath))}.jpg`,
+  );
 }
 
 /** 秒 → m:ss(供下載檔名)。 */
@@ -103,7 +106,8 @@ function publicClip(c: ClipRow): Record<string, unknown> {
   let report: ClipReport = {};
   try {
     const parsed = JSON.parse(c.report_json || "{}") as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) report = parsed as ClipReport;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+      report = parsed as ClipReport;
   } catch {
     /* 損壞的草稿視為空 */
   }
@@ -138,16 +142,37 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
   // ── 開始匯出 ─────────────────────────────────────────────────────────────────
   app.post<{
     Params: { "*": string };
-    Body: { start?: number; end?: number; layout?: string; quality?: string; label?: string; main?: string };
+    Body: {
+      start?: number;
+      end?: number;
+      layout?: string;
+      quality?: string;
+      label?: string;
+      main?: string;
+      expected_version?: string;
+    };
   }>("/api/trip-clips/*", { preHandler: requireUser }, async (req, reply) => {
     const tripId = req.params["*"];
     const row = getTrip(db, tripId);
     if (!row) return reply.code(404).send({ detail: "旅程不存在" });
     if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權編輯此旅程" });
+    if (
+      req.body?.expected_version &&
+      req.body.expected_version !== `${row.start_epoch}:${row.duration_sec}`
+    )
+      return reply.code(409).send({ detail: "來源已修改，請重新選取剪輯範圍" });
 
     const start = Number(req.body?.start);
     const end = Number(req.body?.end);
-    const baseDur = row.duration_sec; // 從「目前播放檔」裁切(使用者看到的),非 orig。
+    const sourceCamera =
+      req.body?.layout === "rear" || (req.body?.layout === "pip" && req.body?.main === "rear")
+        ? "rear"
+        : "front";
+    const baseDur =
+      readTimeline(row)[sourceCamera].reduce(
+        (duration, span) => Math.max(duration, span.start + span.duration),
+        0,
+      ) || row.duration_sec;
     if (
       !Number.isFinite(start) ||
       !Number.isFinite(end) ||
@@ -156,7 +181,9 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
       end > baseDur + 0.5 ||
       end - start < 1
     ) {
-      return reply.code(400).send({ detail: "片段範圍無效(需 0 ≤ 起點 < 終點 ≤ 影片長度,且至少 1 秒)" });
+      return reply
+        .code(400)
+        .send({ detail: "片段範圍無效(需 0 ≤ 起點 < 終點 ≤ 影片長度,且至少 1 秒)" });
     }
     if (end - start > CLIP_MAX_SEC) {
       return reply.code(400).send({ detail: `單一片段最長 ${Math.round(CLIP_MAX_SEC / 60)} 分鐘` });
@@ -191,10 +218,19 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
     }
     if (!mainPath) return reply.code(400).send({ detail: "找不到來源鏡頭影片" });
     const timeline = readTimeline(row);
-    const spans = layout === 'rear' || (layout === 'pip' && mainCam === 'rear') ? timeline.rear : timeline.front;
-    if (!continuous(spans,start,end)) return reply.code(400).send({detail:'選取跨越錄影空檔或超過此鏡頭長度，請分段匯出'});
-    if (layout === 'pip' && (!continuous(timeline.front,start,end) || !continuous(timeline.rear,start,end) || Math.abs(timeAt(timeline.front,start)!-timeAt(timeline.rear,start)!)>0.1)) {
-      return reply.code(400).send({detail:'此範圍前後鏡頭時間不一致，請使用單鏡頭匯出'});
+    const spans =
+      layout === "rear" || (layout === "pip" && mainCam === "rear")
+        ? timeline.rear
+        : timeline.front;
+    if (!continuous(spans, start, end))
+      return reply.code(400).send({ detail: "選取跨越錄影空檔或超過此鏡頭長度，請分段匯出" });
+    if (
+      layout === "pip" &&
+      (!continuous(timeline.front, start, end) ||
+        !continuous(timeline.rear, start, end) ||
+        Math.abs(timeAt(timeline.front, start)! - timeAt(timeline.rear, start)!) > 0.1)
+    ) {
+      return reply.code(400).send({ detail: "此範圍前後鏡頭時間不一致，請使用單鏡頭匯出" });
     }
     if (!withinTrips(mainPath) || (pipPath && !withinTrips(pipPath))) {
       return reply.code(400).send({ detail: "影片路徑不合法" });
@@ -217,12 +253,29 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
 
     // The row was read before async access checks. Recheck after them to reject stale coordinates.
     const current = getTrip(db, tripId);
-    if (!current || current.start_epoch !== row.start_epoch || current.duration_sec !== row.duration_sec) {
-      return reply.code(409).send({ detail: '影片已更新，請重新載入選取範圍' });
+    if (
+      !current ||
+      current.start_epoch !== row.start_epoch ||
+      current.duration_sec !== row.duration_sec
+    ) {
+      return reply.code(409).send({ detail: "影片已更新，請重新載入選取範圍" });
     }
     const label = (typeof req.body?.label === "string" ? req.body.label : "").trim().slice(0, 100);
-    const duplicate=ctx.tasks?.findActive({type:'clip',owner:req.user!.id,target:tripId,payload:{start,end,layout,quality,label,main:mainCam}});
-    if(duplicate)return {status:'started',job_id:duplicate.channel_key.slice(5)};
+    const duplicate = ctx.tasks?.findActive({
+      type: "clip",
+      owner: req.user!.id,
+      target: tripId,
+      payload: {
+        start,
+        end,
+        layout,
+        quality,
+        label,
+        main: mainCam,
+        expected_version: `${row.start_epoch}:${row.duration_sec}`,
+      },
+    });
+    if (duplicate) return { status: "started", job_id: duplicate.channel_key.slice(5) };
     const jobId = startExport({
       row,
       start,
@@ -287,36 +340,59 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
       const tripId = req.params["*"];
       const row = getTrip(db, tripId);
       if (!row) return reply.code(404).send({ detail: "旅程不存在" });
-      if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權編輯此旅程" });
+      if (!canEditTrip(db, req.user!, row))
+        return reply.code(403).send({ detail: "無權編輯此旅程" });
       return listClipsForTrip(db, tripId).map(publicClip);
     },
   );
 
   // ── 列出檢視者可管理的全部片段(片段頁用)──────────────────────────────────────
-  app.get<{Querystring:{limit?:string;offset?:string;q?:string;clip_id?:string}}>("/api/clips", { preHandler: requireUser }, async (req) => {
-    const integer = (value:string|undefined, fallback:number) => Math.max(0,Math.min(1e7,Number.parseInt(value??'',10)||fallback));
-    return listClipsForViewer(db, req.user!, {limit:integer(req.query.limit,50),offset:integer(req.query.offset,0),search:String(req.query.q??'').slice(0,120),id:integer(req.query.clip_id,0)}).map((c: ClipWithTrip) => ({
-      ...publicClip(c),
-      trip_id: c.trip_id,
-      date: c.date,
-      day_order: c.day_order,
-      trip_start_epoch: c.trip_start_epoch,
-    }));
-  });
+  app.get<{ Querystring: { limit?: string; offset?: string; q?: string; clip_id?: string } }>(
+    "/api/clips",
+    { preHandler: requireUser },
+    async (req) => {
+      const integer = (value: string | undefined, fallback: number) =>
+        Math.max(0, Math.min(1e7, Number.parseInt(value ?? "", 10) || fallback));
+      return listClipsForViewer(db, req.user!, {
+        limit: integer(req.query.limit, 50),
+        offset: integer(req.query.offset, 0),
+        search: String(req.query.q ?? "").slice(0, 120),
+        id: integer(req.query.clip_id, 0),
+      }).map((c: ClipWithTrip) => ({
+        ...publicClip(c),
+        trip_id: c.trip_id,
+        date: c.date,
+        day_order: c.day_order,
+        trip_start_epoch: c.trip_start_epoch,
+      }));
+    },
+  );
 
-  app.patch<{Params:{clipId:string};Body:{label?:unknown}}>('/api/trip-clip/:clipId', {preHandler:requireUser}, async(req,reply)=>{
-    const clip = getClip(db,Number(req.params.clipId));
-    const trip = clip && getTrip(db,clip.trip_id);
-    if (!clip || !trip || !canEditTrip(db,req.user!,trip)) return reply.code(404).send({detail:'片段不存在'});
-    if(typeof req.body?.label !== 'string' || req.body.label.trim().length > 120) return reply.code(400).send({detail:'名稱須為 120 字以內的文字'});
-    db.prepare('UPDATE trip_clips SET label=? WHERE id=?').run(req.body.label.trim(),clip.id);
-    return publicClip(getClip(db,clip.id)!);
-  });
+  app.patch<{ Params: { clipId: string }; Body: { label?: unknown } }>(
+    "/api/trip-clip/:clipId",
+    { preHandler: requireUser },
+    async (req, reply) => {
+      const clip = getClip(db, Number(req.params.clipId));
+      const trip = clip && getTrip(db, clip.trip_id);
+      if (!clip || !trip || !canEditTrip(db, req.user!, trip))
+        return reply.code(404).send({ detail: "片段不存在" });
+      if (typeof req.body?.label !== "string" || req.body.label.trim().length > 120)
+        return reply.code(400).send({ detail: "名稱須為 120 字以內的文字" });
+      db.prepare("UPDATE trip_clips SET label=? WHERE id=?").run(req.body.label.trim(), clip.id);
+      return publicClip(getClip(db, clip.id)!);
+    },
+  );
 
   // ── 檢舉資料草稿:儲存車牌/地點/違規事實等,並可標記「已檢舉」──────────────────
   app.put<{
     Params: { clipId: string };
-    Body: { plate?: string; location?: string; violation?: string; desc?: string; reported?: boolean };
+    Body: {
+      plate?: string;
+      location?: string;
+      violation?: string;
+      desc?: string;
+      reported?: boolean;
+    };
   }>("/api/trip-clip-report/:clipId", { preHandler: requireUser }, async (req, reply) => {
     const id = Number(req.params.clipId);
     if (!Number.isInteger(id)) return reply.code(404).send({ detail: "片段不存在" });
@@ -355,7 +431,8 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
       if (!clip) return reply.code(404).send({ detail: "片段不存在" });
       const row = getTrip(db, clip.trip_id);
       if (!row) return reply.code(404).send({ detail: "片段不存在" });
-      if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權存取此片段" });
+      if (!canEditTrip(db, req.user!, row))
+        return reply.code(403).send({ detail: "無權存取此片段" });
       if (!withinTrips(clip.file_path)) return reply.code(404).send({ detail: "片段檔案不存在" });
       try {
         await fsp.access(clip.file_path, fs.constants.R_OK);
@@ -377,7 +454,8 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
       if (!clip) return reply.code(404).send({ detail: "片段不存在" });
       const row = getTrip(db, clip.trip_id);
       if (!row) return reply.code(404).send({ detail: "片段不存在" });
-      if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權存取此片段" });
+      if (!canEditTrip(db, req.user!, row))
+        return reply.code(403).send({ detail: "無權存取此片段" });
       if (!withinTrips(clip.file_path)) return reply.code(404).send({ detail: "片段檔案不存在" });
 
       const thumbPath = clipThumbPath(clip.file_path);
@@ -423,7 +501,8 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
       if (!clip) return reply.code(404).send({ detail: "片段不存在" });
       const row = getTrip(db, clip.trip_id);
       if (!row) return reply.code(404).send({ detail: "片段不存在" });
-      if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權存取此片段" });
+      if (!canEditTrip(db, req.user!, row))
+        return reply.code(403).send({ detail: "無權存取此片段" });
       if (!withinTrips(clip.file_path)) return reply.code(404).send({ detail: "片段檔案不存在" });
       let size: number;
       try {
@@ -431,7 +510,9 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
       } catch {
         return reply.code(404).send({ detail: "片段檔案不存在" });
       }
-      const stem = clip.label || `${row.date}_第${row.day_order}趟_${clip.layout}_${mmss(clip.start_sec)}-${mmss(clip.end_sec)}`;
+      const stem =
+        clip.label ||
+        `${row.date}_第${row.day_order}趟_${clip.layout}_${mmss(clip.start_sec)}-${mmss(clip.end_sec)}`;
       const fname = `${stem}.mp4`;
       reply
         .header("Content-Type", "video/mp4")
@@ -455,7 +536,8 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
       if (!clip) return reply.code(404).send({ detail: "片段不存在" });
       const row = getTrip(db, clip.trip_id);
       if (!row) return reply.code(404).send({ detail: "片段不存在" });
-      if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權刪除此片段" });
+      if (!canEditTrip(db, req.user!, row))
+        return reply.code(403).send({ detail: "無權刪除此片段" });
       if (withinTrips(clip.file_path)) {
         await fsp.rm(clip.file_path, { force: true }).catch(() => {});
         await fsp.rm(clipThumbPath(clip.file_path), { force: true }).catch(() => {});
@@ -475,7 +557,8 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
       if (!tripId) return reply.code(404).send({ detail: "沒有進行中的匯出" });
       const row = getTrip(db, tripId);
       if (!row) return reply.code(404).send({ detail: "沒有進行中的匯出" });
-      if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權操作此匯出" });
+      if (!canEditTrip(db, req.user!, row))
+        return reply.code(403).send({ detail: "無權操作此匯出" });
       const controller = running.get(jobId);
       if (!controller) return reply.code(404).send({ detail: "沒有進行中的匯出" });
       controller.abort();
@@ -512,15 +595,40 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
     const outPath = path.join(clipsDir, `${jobId}.mp4`);
     const dur = p.end - p.start;
 
-    if (ctx.tasks) ctx.tasks.enqueue({type:'clip',owner:p.ownerId,target:p.row.trip_id,payload:{start:p.start,end:p.end,layout:p.layout,quality:p.quality,label:p.label,main:p.mainCam},key:clipKey(jobId)},channel,run,()=>{controller.abort();return true;});
+    if (ctx.tasks)
+      ctx.tasks.enqueue(
+        {
+          type: "clip",
+          owner: p.ownerId,
+          target: p.row.trip_id,
+          payload: {
+            start: p.start,
+            end: p.end,
+            layout: p.layout,
+            quality: p.quality,
+            label: p.label,
+            main: p.mainCam,
+            expected_version: `${p.row.start_epoch}:${p.row.duration_sec}`,
+          },
+          key: clipKey(jobId),
+        },
+        channel,
+        run,
+        () => {
+          if (jobs.isCommitting(p.row.trip_id)) return false;
+          controller.abort();
+          return true;
+        },
+        () => jobs.isCommitting(p.row.trip_id),
+      );
     else void run();
     return jobId;
 
     async function run(): Promise<void> {
-      let release=()=>{};
+      let release = () => {};
       try {
         controller.signal.throwIfAborted();
-        release=await reserveForMedia([p.mainPath,...(p.pipPath?[p.pipPath]:[])],2);
+        release = await reserveForMedia([p.mainPath, ...(p.pipPath ? [p.pipPath] : [])], 2);
         await fsp.mkdir(clipsDir, { recursive: true });
         channel.push({ stage: "encode", done: 0, total: 100, message: "匯出中… 0%" });
         const r = await exportClip({
@@ -557,7 +665,12 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
         }
         const actual = await inspectMedia(outPath);
         controller.signal.throwIfAborted();
-        if (size <= 0) throw new Error('輸出檔案為空');
+        if (size <= 0) throw new Error("輸出檔案為空");
+        if (
+          p.quality === "precise" &&
+          Math.abs(actual.duration - dur) > Math.max(0.25, 2 / actual.fps)
+        )
+          throw Error("輸出長度與選取不符，未發布片段");
         const clip = insertClip(db, {
           trip_id: p.row.trip_id,
           owner_id: p.ownerId,
@@ -570,8 +683,14 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
           file_path: outPath,
           size_bytes: size,
           duration_sec: actual.duration,
-          source_start_epoch: timeAt(readTimeline(p.row)[p.layout === 'rear' || p.mainCam === 'rear' ? 'rear' : 'front'],p.start),
-          source_end_epoch: timeAt(readTimeline(p.row)[p.layout === 'rear' || p.mainCam === 'rear' ? 'rear' : 'front'],p.end),
+          source_start_epoch: timeAt(
+            readTimeline(p.row)[p.layout === "rear" || p.mainCam === "rear" ? "rear" : "front"],
+            p.start,
+          ),
+          source_end_epoch: timeAt(
+            readTimeline(p.row)[p.layout === "rear" || p.mainCam === "rear" ? "rear" : "front"],
+            p.end,
+          ),
           source_version: `${p.row.start_epoch}:${p.row.duration_sec}`,
         });
         channel.push({ stage: "done", message: "匯出完成", clip: publicClip(clip) });

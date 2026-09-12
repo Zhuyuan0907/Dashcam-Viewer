@@ -58,24 +58,6 @@
   --font-display: "Hanken Grotesk", "Noto Sans TC", system-ui, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
 }
-/* 深色主題(由管理頁設定 data-theme="dark" 切換) */
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg:          oklch(.205 .012 262);
-  --surface:     oklch(.250 .012 262);
-  --surface-2:   oklch(.290 .012 262);
-  --surface-3:   oklch(.320 .012 262);
-  --ink:         oklch(.960 .010 262);
-  --ink-2:       oklch(.780 .012 262);
-  --ink-3:       oklch(.625 .012 262);
-  --line:        oklch(.360 .012 262);
-  --line-2:      oklch(.420 .012 262);
-  --shadow-color: 230 30% 4%;
-  --accent-soft: oklch(.320 .055 252);
-  --accent-line: oklch(.460 .070 252);
-}
-
-/* ── 重置 ─────────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 body {

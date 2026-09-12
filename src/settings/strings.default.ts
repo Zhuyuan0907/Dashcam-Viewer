@@ -306,7 +306,7 @@ export const STRINGS_DEFAULT: Record<string, string> = {
   "trip.clip.processed": "已處理",
   "trip.clip.sourceRange": "來源",
   "trip.clip.reportCta": "⚑ 產生檢舉資料",
-  "trip.clip.reportHint": "檢舉用途建議:前鏡頭＋快速(無損)——受理單位要求原始畫面,無損模式不重新壓縮。",
+  "trip.clip.reportHint": "快速模式可能包含選取外影格，精確模式會重編碼。請保留原始素材，送出前確認實際輸出及受理規範。",
   "trip.clipConnLost": "連線中斷,匯出仍在背景進行,請稍後重新整理片段頁查看結果",
   "trip.trimConnLost": "連線中斷,裁剪仍在背景進行,請稍後重新整理查看結果",
   "trip.copyLink": "複製連結(含目前時間)",

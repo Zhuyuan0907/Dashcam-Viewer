@@ -119,7 +119,7 @@ HEVC 等來源能否在瀏覽器播放仍取決於瀏覽器及裝置，尚無自
 | `DASHCAM_SFTP_ENABLED` / `DASHCAM_SFTP_PORT` | true / 2022 | 範例與 Compose 預設關閉 SFTP |
 | `DASHCAM_SFTP_PUBLIC_HOST` | localhost | 提供給使用者的連線主機 |
 | `DASHCAM_JOB_CONCURRENCY` / `DASHCAM_JOBS_PER_USER` | 2 / 1 | 全站／每人背景併發 |
-| `DASHCAM_TRIM_THREADS` | 核心數一半、至少 1 | 編碼執行緒；小主機建议 2 |
+| `DASHCAM_TRIM_THREADS` | 核心數一半、至少 1 | 編碼執行緒；小主機建議 2 |
 | `DASHCAM_MAX_SESSION_BYTES` | 0（不限） | 範例限制 50 GiB |
 | `DASHCAM_MIN_FREE_DISK_BYTES` | 512 MiB | 安全磁碟保留量 |
 | `DASHCAM_CLIP_MAX_SEC` | 1200 | 每段匯出上限 |
@@ -143,6 +143,8 @@ npm run backup -- verify /srv/backups/dashcam-2026-09-12
 
 ```bash
 npm run typecheck
+npm run build
+npm run format:check
 npm test
 npx playwright install chromium
 npm run test:ui
@@ -153,10 +155,13 @@ npm run test:ui
 已整理旅程 CLI：`npm run import -- <來源目錄> --dry-run`，確認後移除 dry-run；
 `--move` 會搬走來源，請謹慎使用。
 
-七階段實作與驗證紀錄见 [IMPLEMENTATION.md](docs/IMPLEMENTATION.md)。
+七階段實作與驗證紀錄見 [IMPLEMENTATION.md](docs/IMPLEMENTATION.md)，
+升級摘要見 [CHANGELOG.md](CHANGELOG.md)，協作規範見 [CONTRIBUTING.md](CONTRIBUTING.md)。
+GitHub Actions 的 [Verify 工作流程](https://github.com/Zhuyuan0907/Dashcam-Viewer/actions/workflows/verify.yml) 會驗證測試與 Compose 啟動；
+瀏覽器測試同時載入多支影片，建議在有足夠剩餘記憶體的開發機執行。
 Python 舊版留在 `legacy-python/` 供歷史參考，不再作為目前伺服器入口。
 此工作區沒有 Docker，容器建置需於具有 Docker 的環境另行驗證。
 
 ## 授權
 
-[MIT](LICENSE)。欢迎提交可重現問題、測試與支援新記錄器格式的 Pull Request。
+[MIT](LICENSE)。歡迎提交可重現問題、測試與支援新記錄器格式的 Pull Request。

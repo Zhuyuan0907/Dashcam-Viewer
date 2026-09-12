@@ -22,18 +22,23 @@ import { registerClips } from "./routes/clips.js";
 import { registerConfig } from "./routes/config.js";
 import { registerOps } from "./routes/ops.js";
 import { registerShares } from "./routes/shares.js";
-import { BackgroundTasks } from './background.js';
-import { registerBackground } from './routes/background.js';
-import { registerResumable } from './uploads/resumable.js';
-import { diagnostics } from './diagnostics.js';
-import { makeRequireAdmin } from './context.js';
+import { BackgroundTasks } from "./background.js";
+import { registerBackground } from "./routes/background.js";
+import { registerResumable } from "./uploads/resumable.js";
+import { diagnostics } from "./diagnostics.js";
+import { makeRequireAdmin } from "./context.js";
+import { clampInt } from "./util/num.js";
 
 export interface BuildOptions {
   logger?: boolean;
 }
 
 export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promise<FastifyInstance> {
-  ctx.tasks ??= new BackgroundTasks(ctx.db, Math.max(1,Number(process.env.DASHCAM_JOB_CONCURRENCY)||2),Math.max(1,Number(process.env.DASHCAM_JOBS_PER_USER)||1));
+  ctx.tasks ??= new BackgroundTasks(
+    ctx.db,
+    clampInt(process.env.DASHCAM_JOB_CONCURRENCY, 2, 1, 16),
+    clampInt(process.env.DASHCAM_JOBS_PER_USER, 1, 1, 16),
+  );
   const app = Fastify({
     logger: opts.logger ?? false,
     bodyLimit: 1 * 1024 * 1024, // JSON body 上限 1MB(檔案走 multipart 串流,不受此限)
@@ -60,8 +65,8 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
         scriptSrc: ["'self'", "'unsafe-inline'"],
         // 既有前端用 inline onclick 事件處理器,需允許(否則按鈕全失效)
         scriptSrcAttr: ["'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        fontSrc: ["'self'"],
         imgSrc: ["'self'", "https://www.gravatar.com", "data:"],
         mediaSrc: ["'self'", "blob:"],
         connectSrc: ["'self'"],
@@ -76,11 +81,22 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
   });
   await app.register(rateLimit, { global: false });
   await app.register(fastifyStatic, { root: STATIC_DIR, prefix: "/static/" });
-  app.get('/healthz',async(_req,reply)=>{
-    try {ctx.db.prepare('SELECT 1').get();return {status:'ok'};}
-    catch {return reply.code(503).send({status:'unavailable'});}
+  app.get("/healthz", async (_req, reply) => {
+    try {
+      ctx.db.prepare("SELECT 1").get();
+      return { status: "ok" };
+    } catch {
+      return reply.code(503).send({ status: "unavailable" });
+    }
   });
-  app.get('/api/admin/diagnostics',{preHandler:makeRequireAdmin(ctx),config:{rateLimit:{max:6,timeWindow:'1 minute'}}},()=>diagnostics(ctx.db));
+  app.get(
+    "/api/admin/diagnostics",
+    {
+      preHandler: makeRequireAdmin(ctx),
+      config: { rateLimit: { max: 6, timeWindow: "1 minute" } },
+    },
+    () => diagnostics(ctx.db),
+  );
 
   registerPages(app, ctx);
   registerAuth(app, ctx);

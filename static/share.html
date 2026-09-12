@@ -126,7 +126,7 @@
       .ctrl-btn.wide { padding: 0 9px; }
     }
   </style>
-</head>
+<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css"><script src="/static/timeline.js"></script></head>
 <body>
   <header class="share-head">
     <div class="share-brand wrap">
@@ -432,9 +432,7 @@
         video.addEventListener('playing', () => {
           if (camera === mainCamera) return;
           const primary = mainVideo();
-          if (primary && Math.abs(video.currentTime - primary.currentTime) > 0.15) {
-            video.currentTime = primary.currentTime;
-          }
+          if (primary) DashcamTimeline.sync(tripData?.timeline,mainCamera,camera,primary,video,true);
         });
         video.addEventListener('pause', () => {
           if (camera !== mainCamera) return;
@@ -514,7 +512,8 @@
         const total = duration || mainVideo()?.duration;
         if (!Number.isFinite(total) || total <= 0) return;
         const next = Math.max(0, Math.min(total, seconds));
-        for (const video of allVideos()) video.currentTime = next;
+        mainVideo().currentTime=next;
+        for (const video of otherVideos()) DashcamTimeline.sync(tripData?.timeline,mainCamera,video.dataset.camera,mainVideo(),video,true);
       }
 
       function stepFrame(direction) {
@@ -648,9 +647,7 @@
             seekControl.render(percentage);
             if (!seekControl.seeking) setText('t-cur', fmtSecs(primary.currentTime));
             for (const video of otherVideos()) {
-              if (Math.abs(video.currentTime - primary.currentTime) > 0.25) {
-                video.currentTime = primary.currentTime;
-              }
+              DashcamTimeline.sync(tripData?.timeline,mainCamera,video.dataset.camera,primary,video);
             }
           }
         }

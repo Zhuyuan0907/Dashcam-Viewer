@@ -52,9 +52,12 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
     "/api/admin/incidents",
     { preHandler: requireAdmin },
     async (req) => {
-      const status = req.query.status === "all" || req.query.status === "resolved" || req.query.status === "dismissed"
-        ? req.query.status
-        : "open";
+      const status =
+        req.query.status === "all" ||
+        req.query.status === "resolved" ||
+        req.query.status === "dismissed"
+          ? req.query.status
+          : "open";
       const limit = clampInt(req.query.limit, 100, 1, 500);
       const offset = clampInt(req.query.offset, 0, 0, Number.MAX_SAFE_INTEGER);
       const { total, rows } = listIncidents(db, { status: status as never, limit, offset });
@@ -124,7 +127,9 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
         await fs.rm(inc.quarantine_dir, { recursive: true, force: true }).catch(() => {});
         // 隔離夾刪不掉就別刪事件列,否則目錄變成無人引用的孤兒、永久佔用磁碟。
         if (await pathExists(inc.quarantine_dir)) {
-          return reply.code(500).send({ detail: "刪除隔離素材失敗(檔案系統錯誤),事件已保留,請稍後再試" });
+          return reply
+            .code(500)
+            .send({ detail: "刪除隔離素材失敗(檔案系統錯誤),事件已保留,請稍後再試" });
         }
       }
       db.prepare("DELETE FROM incidents WHERE id = ?").run(id);
@@ -160,11 +165,16 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
         const ctxObj = JSON.parse(inc.context_json) as Record<string, unknown>;
         if (typeof ctxObj.gap_min === "number" && ctxObj.gap_min > 0) gapMin = ctxObj.gap_min;
         if (
-          typeof ctxObj.owner_id === "number" && Number.isInteger(ctxObj.owner_id) &&
-          typeof ctxObj.owner_username === "string" && ctxObj.owner_username.length > 0
+          typeof ctxObj.owner_id === "number" &&
+          Number.isInteger(ctxObj.owner_id) &&
+          typeof ctxObj.owner_username === "string" &&
+          ctxObj.owner_username.length > 0
         ) {
-          const matched = db.prepare("SELECT id, username FROM users WHERE id = ? AND username = ?")
-            .get(ctxObj.owner_id, ctxObj.owner_username) as { id: number; username: string } | undefined;
+          const matched = db
+            .prepare("SELECT id, username FROM users WHERE id = ? AND username = ?")
+            .get(ctxObj.owner_id, ctxObj.owner_username) as
+            | { id: number; username: string }
+            | undefined;
           if (matched) {
             ownerId = matched.id;
             ownerUsername = matched.username;
@@ -183,11 +193,13 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
       }
       if (!restoredOwner) idNamespace = undefined;
       if (deviceId !== null) {
-        const ownedDevice = db.prepare("SELECT 1 FROM dashcam_devices WHERE id = ? AND user_id = ?")
+        const ownedDevice = db
+          .prepare("SELECT 1 FROM dashcam_devices WHERE id = ? AND user_id = ?")
           .get(deviceId, ownerId);
         if (!ownedDevice) deviceId = null;
       }
-      const ownerStillExists = db.prepare("SELECT 1 FROM users WHERE id = ? AND username = ?")
+      const ownerStillExists = db
+        .prepare("SELECT 1 FROM users WHERE id = ? AND username = ?")
         .get(ownerId, ownerUsername);
       if (!ownerStillExists) {
         return reply.code(409).send({ detail: "旅程擁有者帳號已不存在，無法啟動重試" });
@@ -200,8 +212,15 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
       jobs.registerOwnerProcess(ownerId);
       try {
         startRetry(
-          id, inc.quarantine_dir, tolerant, gapMin, ownerId, ownerUsername,
-          deviceId, device, idNamespace,
+          id,
+          inc.quarantine_dir,
+          tolerant,
+          gapMin,
+          ownerId,
+          ownerUsername,
+          deviceId,
+          device,
+          idNamespace,
         );
       } catch (error) {
         jobs.unregisterOwnerProcess(ownerId);
@@ -243,7 +262,9 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
   // ── 旅程健康檢查:找出影片缺失或 0-byte 的旅程 ──
   app.get("/api/admin/health/trips", { preHandler: requireAdmin }, async () => {
     const rows = db
-      .prepare("SELECT trip_id, date, has_front, has_rear, front_path, rear_path, trip_dir FROM trips ORDER BY date DESC")
+      .prepare(
+        "SELECT trip_id, date, has_front, has_rear, front_path, rear_path, trip_dir FROM trips ORDER BY date DESC",
+      )
       .all() as Array<{
       trip_id: string;
       date: string;
@@ -280,9 +301,9 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
     return {
       tables: names.map((name) => {
         const count = (db.prepare(`SELECT COUNT(*) AS c FROM "${name}"`).get() as { c: number }).c;
-        const cols = (db.prepare(`PRAGMA table_info("${name}")`).all() as Array<{ name: string }>).map(
-          (c) => c.name,
-        );
+        const cols = (
+          db.prepare(`PRAGMA table_info("${name}")`).all() as Array<{ name: string }>
+        ).map((c) => c.name);
         return { name, count, columns: cols, redacted: [...(SENSITIVE[name] ?? [])] };
       }),
     };
@@ -301,12 +322,12 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
       const limit = clampInt(req.query.limit, 50, 1, 200);
       const offset = clampInt(req.query.offset, 0, 0, Number.MAX_SAFE_INTEGER);
       const total = (db.prepare(`SELECT COUNT(*) AS c FROM "${table}"`).get() as { c: number }).c;
-      const cols = (db.prepare(`PRAGMA table_info("${table}")`).all() as Array<{ name: string }>).map(
-        (c) => c.name,
-      );
-      const rows = db.prepare(`SELECT * FROM "${table}" LIMIT ? OFFSET ?`).all(limit, offset) as Array<
-        Record<string, unknown>
-      >;
+      const cols = (
+        db.prepare(`PRAGMA table_info("${table}")`).all() as Array<{ name: string }>
+      ).map((c) => c.name);
+      const rows = db
+        .prepare(`SELECT * FROM "${table}" LIMIT ? OFFSET ?`)
+        .all(limit, offset) as Array<Record<string, unknown>>;
       const redact = SENSITIVE[table];
       if (redact) {
         for (const row of rows) {
@@ -333,14 +354,16 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
   ): void {
     const key = `inc${id}`;
     const channel = sse.create(key);
-    void (async () => {
+    const run = async () => {
       let produced = 0;
       let failures = 0;
       const touchedDates = new Set<string>();
       try {
         channel.push({ stage: "scan", message: tolerant ? "容錯重合開始…" : "重新合併開始…" });
         const doneIds = new Set(
-          (db.prepare("SELECT trip_id FROM trips").all() as Array<{ trip_id: string }>).map((r) => r.trip_id),
+          (db.prepare("SELECT trip_id FROM trips").all() as Array<{ trip_id: string }>).map(
+            (r) => r.trip_id,
+          ),
         );
         const tripsDir = idNamespace
           ? path.join(TRIPS_DIR, "by-user", String(ownerId), "by-device", String(deviceId ?? 0))
@@ -365,7 +388,7 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
           }
           if (ev.incident) failures++;
           const { tripInfo: _t, incident: _i, ...wire } = ev;
-          channel.push(wire);
+          channel.push({ ...wire, stage: wire.stage === "done" ? "finalizing" : wire.stage });
         }
         for (const d of touchedDates) {
           try {
@@ -377,23 +400,29 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
         if (produced > 0 && failures === 0) {
           // 全部成功才刪素材;部分成功時素材必須保留(失敗趟次的原始片段還在裡面,
           // 刪了就永久遺失、無法用容錯模式再試)。
-          await fs.rm(quarantineDir, { recursive: true, force: true }).catch(() => {});
+          await fs.rm(quarantineDir, { recursive: true, force: true });
           resolveIncident(db, id, {
             status: "resolved",
             resolution: `重試成功,產生 ${produced} 趟旅程${tolerant ? "(容錯模式)" : ""}`,
           });
           clearQuarantine(db, id);
-          channel.push({ stage: "done", message: `重試完成,產生 ${produced} 趟旅程`, done: 1, total: 1 });
+          channel.push({
+            stage: "done",
+            message: `重試完成,產生 ${produced} 趟旅程`,
+            done: 1,
+            total: 1,
+          });
         } else if (produced > 0) {
           channel.push({
             stage: "done",
             message: `重試部分成功:產生 ${produced} 趟,仍有 ${failures} 趟失敗;素材已保留,可改用容錯模式再試`,
+            incidents: failures,
             done: 1,
             total: 1,
           });
         } else {
           channel.push({
-            stage: "done",
+            stage: "error",
             message: "重試未產生有效旅程,原始素材已保留供再次嘗試",
             done: 1,
             total: 1,
@@ -405,7 +434,20 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
         jobs.unregisterOwnerProcess(ownerId);
         channel.close();
       }
-    })();
+    };
+    if (ctx.tasks)
+      ctx.tasks.enqueue(
+        {
+          type: "import",
+          owner: ownerId,
+          target: `incident:${id}`,
+          payload: { incident_id: id },
+          key,
+        },
+        channel,
+        run,
+      );
+    else void run();
   }
 }
 
@@ -430,7 +472,9 @@ function decorateIncident(inc: IncidentRow): DecoratedIncident {
 function listTableNames(db: AppContext["db"]): string[] {
   return (
     db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      )
       .all() as Array<{ name: string }>
   ).map((r) => r.name);
 }

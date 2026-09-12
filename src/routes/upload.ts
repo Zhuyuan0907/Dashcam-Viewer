@@ -51,9 +51,9 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
    * 規則:users.upload_idle_sec(非 null,0=不限)→ 否則 admin ⇒ 不限(0)→ 否則全域預設。
    */
   function effectiveIdle(user: { id: number; role: string }): number {
-    const row = db
-      .prepare("SELECT upload_idle_sec FROM users WHERE id = ?")
-      .get(user.id) as { upload_idle_sec: number | null } | undefined;
+    const row = db.prepare("SELECT upload_idle_sec FROM users WHERE id = ?").get(user.id) as
+      | { upload_idle_sec: number | null }
+      | undefined;
     if (row && row.upload_idle_sec !== null) return row.upload_idle_sec;
     return user.role === "admin" ? 0 : settings.uploadIdleSec();
   }
@@ -92,31 +92,36 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
     };
   }
 
-  app.post<{ Body: { device_id?: number | null } }>("/api/upload-sessions", { preHandler: requireUser }, async (req, reply) => {
-    const user = req.user!;
-    const rawId = req.body?.device_id;
-    let device = rawId === undefined || rawId === null
-      ? defaultDevice(db, user.id)
-      : Number.isInteger(rawId)
-        ? getDevice(db, user.id, rawId)
-        : null;
-    if (rawId !== undefined && rawId !== null && !device) {
-      return reply.code(404).send({ detail: "找不到此行車記錄器" });
-    }
-    try {
-      const s = sessions.create(
-        { id: user.id, username: user.username },
-        effectiveIdle(user),
-        device ? { id: device.id, snapshot: snapshotDevice(device) } : null,
-      );
-      return present(s);
-    } catch (error) {
-      if (error instanceof UploadSessionCreationBlockedError) {
-        return reply.code(409).send({ detail: error.message });
+  app.post<{ Body: { device_id?: number | null } }>(
+    "/api/upload-sessions",
+    { preHandler: requireUser },
+    async (req, reply) => {
+      const user = req.user!;
+      const rawId = req.body?.device_id;
+      let device =
+        rawId === undefined || rawId === null
+          ? defaultDevice(db, user.id)
+          : Number.isInteger(rawId)
+            ? getDevice(db, user.id, rawId)
+            : null;
+      if (rawId !== undefined && rawId !== null && !device) {
+        return reply.code(404).send({ detail: "找不到此行車記錄器" });
       }
-      throw error;
-    }
-  });
+      try {
+        const s = sessions.create(
+          { id: user.id, username: user.username },
+          effectiveIdle(user),
+          device ? { id: device.id, snapshot: snapshotDevice(device) } : null,
+        );
+        return present(s);
+      } catch (error) {
+        if (error instanceof UploadSessionCreationBlockedError) {
+          return reply.code(409).send({ detail: error.message });
+        }
+        throw error;
+      }
+    },
+  );
 
   app.get("/api/upload-sessions", { preHandler: requireUser }, async (req) => {
     const user = req.user!;
@@ -174,8 +179,10 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
       if (s.status !== "active") {
         return reply.code(400).send({ detail: "此工作階段已在處理中" });
       }
-      if (db.prepare('SELECT 1 FROM upload_files WHERE session_id=? AND complete=0 LIMIT 1').get(s.id)) {
-        return reply.code(409).send({detail:'檔案尚未收齊，請重新選取相同檔案續傳'});
+      if (
+        db.prepare("SELECT 1 FROM upload_files WHERE session_id=? AND complete=0 LIMIT 1").get(s.id)
+      ) {
+        return reply.code(409).send({ detail: "檔案尚未收齊，請重新選取相同檔案續傳" });
       }
       if (s.conns > 0) {
         return reply.code(409).send({ detail: "仍有 SFTP 連線在傳輸,請先中斷連線再確認" });
@@ -195,6 +202,15 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
           Math.max(1, Number.parseInt(req.query.gap_min ?? String(gapDefault), 10) || gapDefault),
         );
         const ingest = await ingestFlatFolder(s.id);
+        if (ingest.rejected.length) {
+          sessions.setStatus(s.id, "active");
+          return reply
+            .code(400)
+            .send({
+              detail: "有無法辨識或同名衝突的檔案，已保留全部素材；請檢查後分批重傳",
+              rejected: ingest.rejected,
+            });
+        }
         if (ingest.accepted === 0) {
           // 沒有可處理檔案 → 解鎖,讓使用者補傳後可再次確認。
           sessions.setStatus(s.id, "active");
@@ -212,7 +228,9 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
         }
         const actualProfile = ingest.rawProfiles[0];
         if (
-          actualProfile && s.deviceSnapshot && s.deviceSnapshot.profile_key !== "custom" &&
+          actualProfile &&
+          s.deviceSnapshot &&
+          s.deviceSnapshot.profile_key !== "custom" &&
           actualProfile !== s.deviceSnapshot.profile_key
         ) {
           sessions.setStatus(s.id, "active");
@@ -243,9 +261,10 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
   // ── 瀏覽器直傳(HTTP) ─────────────────────────────────────────────────────────
 
   /** 取出屬於請求者、且仍可收檔的 session;否則以 reply 短路。 */
-  function activeSessionOf(
-    req: { params: { id: string }; user?: { id: number } },
-  ): SftpSession | null {
+  function activeSessionOf(req: {
+    params: { id: string };
+    user?: { id: number };
+  }): SftpSession | null {
     const s = sessions.get(req.params.id);
     if (!s || s.userId !== req.user!.id) return null;
     return s;
@@ -327,7 +346,8 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
 
       const rel = cleanRelPath(req.params["*"]);
       if (!rel) return reply.code(400).send({ detail: "檔名不合法" });
-      if(db.prepare('SELECT 1 FROM upload_manifests WHERE session_id=?').get(s.id))return reply.code(409).send({detail:'此階段使用續傳模式，請透過分塊端點上傳'});
+      if (db.prepare("SELECT 1 FROM upload_manifests WHERE session_id=?").get(s.id))
+        return reply.code(409).send({ detail: "此階段使用續傳模式，請透過分塊端點上傳" });
       const root = sessions.rootDir(s.id);
       let dst: string;
       try {

@@ -28,7 +28,7 @@ async function hasVideoFiles(dir: string): Promise<boolean> {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
       if (await hasVideoFiles(full)) return true;
-    } else if (e.name.toLowerCase().endsWith(".mp4")) {
+    } else if (/\.(mp4|mov|ts)$/i.test(e.name)) {
       return true;
     }
   }
@@ -86,7 +86,18 @@ export function startProcessing(
   // 本次寫入旅程涉及的日期(結束後重新編號 day_order,避免同日分批的重複「第N趟」)。
   const touchedDates = new Set<string>();
 
-  if (ctx.tasks) ctx.tasks.enqueue({type:'import',owner:ownerId,target:sessionId,payload:{gapMin,uploadType},key:sessionId},channel,runSession);
+  if (ctx.tasks)
+    ctx.tasks.enqueue(
+      {
+        type: "import",
+        owner: ownerId,
+        target: sessionId,
+        payload: { gapMin, uploadType },
+        key: sessionId,
+      },
+      channel,
+      runSession,
+    );
   else void runSession();
 
   async function forward(ev: ProgressEvent): Promise<void> {
@@ -97,11 +108,11 @@ export function startProcessing(
     if (ev.incident) incidents.push(ev.incident);
     const { tripInfo: _omitT, incident: _omitI, ...wire } = ev;
     // A child pipeline finishing is a step result, not the batch terminal event.
-    channel.push({...wire,stage:wire.stage==='done'?'finalizing':wire.stage});
+    channel.push({ ...wire, stage: wire.stage === "done" ? "finalizing" : wire.stage });
   }
 
   async function runSession(): Promise<void> {
-    let finalEvent: Record<string,unknown> = {stage:'done',message:'完成',incidents:0};
+    let finalEvent: Record<string, unknown> = { stage: "done", message: "完成", incidents: 0 };
     let prebuiltCount = 0;
     let quarantined: string | null = null;
     // 任何一段素材該隔離卻隔離失敗(磁碟滿等)且仍留在 session 區:結束時不可 remove session。
@@ -148,7 +159,8 @@ export function startProcessing(
               kind: "processing_error",
               severity: "error",
               title: "未匯入的已整理旅程素材隔離失敗,仍留在上傳暫存區",
-              detail: "移動素材到隔離區失敗(可能磁碟空間不足)。工作階段已保留,請釋放空間後再確認一次。",
+              detail:
+                "移動素材到隔離區失敗(可能磁碟空間不足)。工作階段已保留,請釋放空間後再確認一次。",
               context: { sessionId, prebuiltSrc },
             });
           }

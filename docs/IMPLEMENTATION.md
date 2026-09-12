@@ -30,7 +30,21 @@ Seven ordered releases, one commit per stage. No production database or media is
    that refuses overwrite or path relocation, and deployment/upgrade/recovery documentation.
    Native build and bundle round-trip tests run locally; Docker is unavailable in this workspace,
    so container execution remains a CI/deployer verification item, not a claimed local result.
-7. Integration verification, cleanup and release documentation — pending.
+7. Integration verification, cleanup and release documentation — implemented. Fixed stale edit
+   retries, cancelling before expensive copies, incomplete terminal events, legacy trim offsets,
+   output directory collisions, rejected-upload preservation and mobile box sizing. Shared camera
+   mapping now serves both authenticated and anonymous players; removed duplicate theme bootstrap
+   code and unused helpers/job APIs. Bounded metadata probes and encoder logs, stopped owned media
+   processes during shutdown, enabled unused-symbol checks and added focused formatting checks.
+   Release 2.1.0 includes CI, a changelog and contributing guidance. Native build/format checks and
+   all 163 unit/integration tests pass. Production dependency audit reports zero known findings.
+   All five local single-page browser regressions pass, covering mobile layout, editing/drafts,
+   palettes and closing
+   an accepted export page before downloading its completed output. Multi-page share tests timed
+   out under severe memory pressure on this shared 2 GB host; full verification and Docker startup run in the
+   [Verify workflow](https://github.com/Zhuyuan0907/Dashcam-Viewer/actions/workflows/verify.yml).
+   Check that workflow's result for the exact commit before deploying; local browser timeouts are
+   not counted as passes, and no live deployment or real media was modified.
 
 The remote repository originally lacked clips, devices and shares. Stage 1 integrates the audited
 local application baseline, retains upstream history/license, then adds regression fixes.

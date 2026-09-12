@@ -339,6 +339,7 @@ test("fragment 兌換 HttpOnly cookie 後才可讀 metadata、Range 影片與縮
     start_epoch: 1000,
     end_epoch: 1600,
     duration_sec: 600,
+    timeline: {front:[{start:0,duration:600,epoch:1000}],rear:[{start:0,duration:600,epoch:1000}]},
     segment_count: 4,
     emer_count: 1,
     has_front: 1,

@@ -17,22 +17,16 @@
 import fsp from "node:fs/promises";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
-import {
-  getTrip,
-  canEditTrip,
-  applyTrim,
-  clearTrim,
-  type TripRow,
-} from "../trips/repo.js";
+import { getTrip, canEditTrip, applyTrim, clearTrim, type TripRow } from "../trips/repo.js";
 import { trimReencode } from "../media/ffmpeg.js";
 import { TRIM_THREADS } from "../config.js";
 import { pathExists as exists } from "../util/fsx.js";
 import { makeRequireUser, type AppContext } from "../context.js";
 import type { DB } from "../db.js";
-import { commitMedia, recoverMediaCommits } from '../media/commit.js';
-import { inspectMedia } from '../media/inspect.js';
-import { readTimeline, continuous, timeAt } from '../media/timeline.js';
-import { reserveForMedia } from '../media/space.js';
+import { commitMedia, recoverMediaCommits } from "../media/commit.js";
+import { inspectMedia } from "../media/inspect.js";
+import { readTimeline, continuous, timeAt } from "../media/timeline.js";
+import { reserveForMedia } from "../media/space.js";
 
 /** 前鏡頭.mp4 → 前鏡頭.orig.mp4(同目錄的原始備份路徑)。 */
 function origPath(p: string): string {
@@ -70,7 +64,10 @@ export interface TrimPlan {
 }
 
 export function computeTrimPlan(
-  row: Pick<TripRow, "start_epoch" | "end_epoch" | "duration_sec" | "orig_start_epoch" | "trim_offset_sec">,
+  row: Pick<
+    TripRow,
+    "start_epoch" | "end_epoch" | "duration_sec" | "orig_start_epoch" | "trim_offset_sec"
+  >,
   start: number,
   end: number,
 ): TrimPlan {
@@ -101,9 +98,9 @@ export function computeTrimPlan(
  */
 export async function recoverInterruptedTrims(db: DB): Promise<number> {
   await recoverMediaCommits(db);
-  const rows = db.prepare(
-    "SELECT front_path, rear_path, orig_duration_sec FROM trips",
-  ).all() as Array<{
+  const rows = db
+    .prepare("SELECT front_path, rear_path, orig_duration_sec FROM trips")
+    .all() as Array<{
     front_path: string | null;
     rear_path: string | null;
     orig_duration_sec: number | null;
@@ -140,44 +137,53 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
   const requireUser = makeRequireUser(ctx);
   const trimKey = (id: string): string => `trim:${id}`;
 
-  app.post<{ Params: { "*": string }; Body: { start?: number; end?: number } }>(
-    "/api/trip-trim/*",
-    { preHandler: requireUser },
-    async (req, reply) => {
-      const tripId = req.params["*"];
-      const row = getTrip(db, tripId);
-      if (!row) return reply.code(404).send({ detail: "旅程不存在" });
-      if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權編輯此旅程" });
+  app.post<{
+    Params: { "*": string };
+    Body: { start?: number; end?: number; expected_version?: string };
+  }>("/api/trip-trim/*", { preHandler: requireUser }, async (req, reply) => {
+    const tripId = req.params["*"];
+    const row = getTrip(db, tripId);
+    if (!row) return reply.code(404).send({ detail: "旅程不存在" });
+    if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權編輯此旅程" });
 
-      const start = Number(req.body?.start);
-      const end = Number(req.body?.end);
-      // 範圍以「目前播放檔」長度(duration_sec)為準 —— 前端選取的是使用者看到的檔;
-      // 用 orig_duration_sec 會允許超出目前檔長度、對 .orig 換算後越界。
-      const baseDur = row.duration_sec;
-      if (
-        !Number.isFinite(start) ||
-        !Number.isFinite(end) ||
-        start < 0 ||
-        end <= start ||
-        end > baseDur + 0.5 ||
-        end - start < 1
-      ) {
-        return reply.code(400).send({ detail: "裁剪範圍無效(需 0 ≤ 起點 < 終點 ≤ 影片長度,且至少 1 秒)" });
-      }
-      // 以「實際進行中」判斷(jobs registry),而非 SSE channel 是否存在 —— 已完成的 channel
-      // 會保留數分鐘供重連,用 sse.has 會把「剛裁完」誤判為「裁剪中」而擋下再次裁剪/還原。
-      if (jobs.busy(tripId)) {
-        return reply.code(409).send({ detail: "此旅程正在裁剪中,請稍候" });
-      }
-      const timeline = readTimeline(row);
-      const available = [timeline.front,timeline.rear].filter(s => s.length);
-      if (available.some(s => !continuous(s,start,end)) || available.some(s => Math.abs(timeAt(s,start)!-timeAt(available[0]!,start)!)>0.1)) {
-        return reply.code(400).send({detail:'選取包含錄影空檔或鏡頭時間差，請先匯出單鏡頭片段'});
-      }
-      startTrim(row, start, end, req.user!.id);
-      return { status: "started", trip_id: tripId };
-    },
-  );
+    if (
+      req.body?.expected_version &&
+      req.body.expected_version !== `${row.start_epoch}:${row.duration_sec}`
+    )
+      return reply.code(409).send({ detail: "來源已修改，請重新選取剪輯範圍" });
+    const start = Number(req.body?.start);
+    const end = Number(req.body?.end);
+    // 範圍以「目前播放檔」長度(duration_sec)為準 —— 前端選取的是使用者看到的檔;
+    // 用 orig_duration_sec 會允許超出目前檔長度、對 .orig 換算後越界。
+    const baseDur = row.duration_sec;
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      start < 0 ||
+      end <= start ||
+      end > baseDur + 0.5 ||
+      end - start < 1
+    ) {
+      return reply
+        .code(400)
+        .send({ detail: "裁剪範圍無效(需 0 ≤ 起點 < 終點 ≤ 影片長度,且至少 1 秒)" });
+    }
+    // 以「實際進行中」判斷(jobs registry),而非 SSE channel 是否存在 —— 已完成的 channel
+    // 會保留數分鐘供重連,用 sse.has 會把「剛裁完」誤判為「裁剪中」而擋下再次裁剪/還原。
+    if (jobs.busy(tripId)) {
+      return reply.code(409).send({ detail: "此旅程正在裁剪中,請稍候" });
+    }
+    const timeline = readTimeline(row);
+    const available = [timeline.front, timeline.rear].filter((s) => s.length);
+    if (
+      available.some((s) => !continuous(s, start, end)) ||
+      available.some((s) => Math.abs(timeAt(s, start)! - timeAt(available[0]!, start)!) > 0.1)
+    ) {
+      return reply.code(400).send({ detail: "選取包含錄影空檔或鏡頭時間差，請先匯出單鏡頭片段" });
+    }
+    startTrim(row, start, end, req.user!.id);
+    return { status: "started", trip_id: tripId };
+  });
 
   app.get<{ Params: { "*": string } }>(
     "/api/trip-trim-events/*",
@@ -219,34 +225,76 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
       const tripId = req.params["*"];
       const row = getTrip(db, tripId);
       if (!row) return reply.code(404).send({ detail: "旅程不存在" });
-      if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權編輯此旅程" });
+      if (!canEditTrip(db, req.user!, row))
+        return reply.code(403).send({ detail: "無權編輯此旅程" });
       if (row.orig_duration_sec === null) return reply.code(400).send({ detail: "此旅程尚未裁剪" });
       if (jobs.busy(tripId)) return reply.code(409).send({ detail: "此旅程仍有工作進行中" });
       const controller = new AbortController();
       jobs.registerTrim(tripId, controller);
-      const channel=sse.create(`restore:${tripId}`,req.user!.id);
-      const restore=async()=>{try {
-        const cams = [row.front_path, row.rear_path].filter((p): p is string => !!p);
-        for (const p of cams) await inspectMedia(origPath(p));
-        for (const p of cams) await fsp.copyFile(origPath(p), tmpPath(p));
-        controller.signal.throwIfAborted();
-        jobs.beginCommit(tripId);
-        await commitMedia(db, tripId, cams.map(p => ({ target:p, staged:tmpPath(p) })), () => clearTrim(db, tripId, {
-        start: row.orig_start_epoch ?? row.start_epoch,
-        end: row.orig_end_epoch ?? row.end_epoch,
-        dur: row.orig_duration_sec ?? row.duration_sec,
-        }));
-        channel.push({stage:'done',message:'還原完成'});
-      } catch (error) {
-        channel.push({stage:'error',message:'還原未完成，原始備份已保留'});
-        throw error;
-      } finally { jobs.unregisterTrim(tripId);channel.close(); }};
+      const channel = sse.create(`restore:${tripId}`, req.user!.id);
+      let releaseRestore = () => {};
+      const restore = async () => {
+        try {
+          const cams = [row.front_path, row.rear_path].filter((p): p is string => !!p);
+          for (const p of cams) await inspectMedia(origPath(p));
+          releaseRestore = await reserveForMedia(cams.map(origPath));
+          for (const p of cams) await fsp.copyFile(origPath(p), tmpPath(p));
+          controller.signal.throwIfAborted();
+          jobs.beginCommit(tripId);
+          await commitMedia(
+            db,
+            tripId,
+            cams.map((p) => ({ target: p, staged: tmpPath(p) })),
+            () =>
+              clearTrim(db, tripId, {
+                start: row.orig_start_epoch ?? row.start_epoch,
+                end: row.orig_end_epoch ?? row.end_epoch,
+                dur: row.orig_duration_sec ?? row.duration_sec,
+              }),
+          );
+          channel.push({ stage: "done", message: "還原完成" });
+        } catch (error) {
+          channel.push({ stage: "error", message: "還原未完成，原始備份已保留" });
+          throw error;
+        } finally {
+          releaseRestore();
+          jobs.unregisterTrim(tripId);
+          channel.close();
+        }
+      };
       try {
-        if(ctx.tasks) await new Promise<void>((resolve,reject)=>{
-          ctx.tasks!.enqueue({type:'restore',owner:req.user!.id,target:tripId,payload:{},key:`restore:${tripId}`},channel,async()=>{try{await restore();resolve();}catch(e){reject(e);throw e;}},()=>jobs.abortTrim(tripId),()=>jobs.isCommitting(tripId));
-        }); else await restore();
-      } catch(error) {return reply.code(409).send({detail:`還原未完成，備份已保留：${error instanceof Error?error.message:error}`});}
-      if (row.trip_dir) await fsp.rm(path.join(row.trip_dir, "thumb.jpg"), { force: true }).catch(() => {});
+        if (ctx.tasks)
+          await new Promise<void>((resolve, reject) => {
+            ctx.tasks!.enqueue(
+              {
+                type: "restore",
+                owner: req.user!.id,
+                target: tripId,
+                payload: {},
+                key: `restore:${tripId}`,
+              },
+              channel,
+              async () => {
+                try {
+                  await restore();
+                  resolve();
+                } catch (e) {
+                  reject(e);
+                  throw e;
+                }
+              },
+              () => jobs.abortTrim(tripId),
+              () => jobs.isCommitting(tripId),
+            );
+          });
+        else await restore();
+      } catch (error) {
+        return reply.code(409).send({
+          detail: `還原未完成，備份已保留：${error instanceof Error ? error.message : error}`,
+        });
+      }
+      if (row.trip_dir)
+        await fsp.rm(path.join(row.trip_dir, "thumb.jpg"), { force: true }).catch(() => {});
       return { status: "ok" };
     },
   );
@@ -259,8 +307,9 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
       const tripId = req.params["*"];
       const row = getTrip(db, tripId);
       if (!row) return reply.code(404).send({ detail: "旅程不存在" });
-      if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權編輯此旅程" });
-      // 只中止裁剪本身;同趟並行的「匯出片段」工作不受影響(abortTripJobs 會連坐,僅供刪除旅程用)。
+      if (!canEditTrip(db, req.user!, row))
+        return reply.code(403).send({ detail: "無權編輯此旅程" });
+      // 只中止裁剪本身；提交檔案期間由 registry 拒絕取消。
       if (!jobs.abortTrim(tripId)) return reply.code(404).send({ detail: "沒有進行中的裁剪" });
       return { status: "ok" };
     },
@@ -276,17 +325,31 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
     jobs.registerTrim(row.trip_id, controller);
     const channel = sse.create(trimKey(row.trip_id));
     const wasFirstTrim = row.orig_duration_sec === null;
-    if (ctx.tasks) ctx.tasks.enqueue({type:'trim',owner:actor,target:row.trip_id,payload:{start,end},key:trimKey(row.trip_id)},channel,run,()=>jobs.abortTrim(row.trip_id),()=>jobs.isCommitting(row.trip_id));
+    if (ctx.tasks)
+      ctx.tasks.enqueue(
+        {
+          type: "trim",
+          owner: actor,
+          target: row.trip_id,
+          payload: { start, end, expected_version: `${row.start_epoch}:${row.duration_sec}` },
+          key: trimKey(row.trip_id),
+        },
+        channel,
+        run,
+        () => jobs.abortTrim(row.trip_id),
+        () => jobs.isCommitting(row.trip_id),
+      );
     else void run();
 
     async function run(): Promise<void> {
       const cams = [row.front_path, row.rear_path].filter((p): p is string => !!p);
       const plan = computeTrimPlan(row, start, end);
       const timeline = readTimeline(row);
-      plan.newStart = timeAt(timeline.front.length ? timeline.front : timeline.rear,start) ?? plan.newStart;
+      plan.newStart =
+        timeAt(timeline.front.length ? timeline.front : timeline.rear, start) ?? plan.newStart;
       plan.newEnd = plan.newStart + plan.dur;
       const prog: Record<string, number> = {};
-      let release=()=>{};
+      let release = () => {};
       const emit = (): void => {
         const total = cams.reduce((a, p) => a + (prog[p] ?? 0), 0);
         const pct = Math.round((total / cams.length) * 100);
@@ -294,7 +357,8 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
       };
       try {
         // 1) 確保每個鏡頭都有 .orig 備份(首次裁剪用 copy,不動播放檔 → 崩潰不 404)。
-        release=await reserveForMedia(cams);
+        controller.signal.throwIfAborted();
+        release = await reserveForMedia(cams);
         for (const p of cams) {
           const orig = origPath(p);
           if (!(await exists(orig))) await fsp.copyFile(p, orig);
@@ -312,22 +376,29 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
           });
           if (!r.ok) throw new Error(r.error || "ffmpeg 失敗");
           const media = await inspectMedia(tmpPath(p));
-          if (Math.abs(media.duration - plan.dur) > Math.max(0.25, 2 / media.fps)) throw new Error('裁剪結果長度與選取不符');
+          if (Math.abs(media.duration - plan.dur) > Math.max(0.25, 2 / media.fps))
+            throw new Error("裁剪結果長度與選取不符");
           prog[p] = 1;
           emit();
         }
         // 3) 全部成功 → 逐鏡頭以 tmp 覆蓋播放檔(連續 rename,窗口極小且不會出現遺失檔)。
         controller.signal.throwIfAborted();
         jobs.beginCommit(row.trip_id);
-        await commitMedia(db, row.trip_id, cams.map(p => ({ target:p, staged:tmpPath(p) })), () => applyTrim(db, row.trip_id, {
-          prevStart: plan.prevStart,
-          prevEnd: plan.prevEnd,
-          prevDur: plan.prevDur,
-          newStart: plan.newStart,
-          newEnd: plan.newEnd,
-          newDur: plan.newDur,
-          offset: start,
-        }));
+        await commitMedia(
+          db,
+          row.trip_id,
+          cams.map((p) => ({ target: p, staged: tmpPath(p) })),
+          () =>
+            applyTrim(db, row.trip_id, {
+              prevStart: plan.prevStart,
+              prevEnd: plan.prevEnd,
+              prevDur: plan.prevDur,
+              newStart: plan.newStart,
+              newEnd: plan.newEnd,
+              newDur: plan.newDur,
+              offset: start,
+            }),
+        );
 
         if (row.trip_dir) {
           await fsp.rm(path.join(row.trip_dir, "thumb.jpg"), { force: true }).catch(() => {});
@@ -338,7 +409,10 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
         // 清掉半成品暫存(播放檔全程未動,無需 rollback 播放檔)。
         for (const p of cams) await fsp.rm(tmpPath(p), { force: true }).catch(() => {});
         // 首次裁剪失敗/取消:刪掉剛建立的 .orig 備份,回到「未裁剪」狀態(避免殘留誤導)。
-        if (wasFirstTrim && !db.prepare('SELECT 1 FROM media_commits WHERE trip_id=?').get(row.trip_id)) {
+        if (
+          wasFirstTrim &&
+          !db.prepare("SELECT 1 FROM media_commits WHERE trip_id=?").get(row.trip_id)
+        ) {
           for (const p of cams) await fsp.rm(origPath(p), { force: true }).catch(() => {});
         }
         channel.push({

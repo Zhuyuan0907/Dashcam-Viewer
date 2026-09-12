@@ -39,7 +39,10 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
-  expect(overflow).toBeLessThanOrEqual(1);
+  const overflowing = overflow > 1 ? await page.evaluate(() => [...document.querySelectorAll('*')].filter(el=>{
+    const rect=el.getBoundingClientRect();return rect.width>0 && rect.right>document.documentElement.clientWidth+1;
+  }).map(el=>({tag:el.tagName,cls:el.className,width:el.getBoundingClientRect().width,right:el.getBoundingClientRect().right}))) : [];
+  expect(overflow,JSON.stringify(overflowing)).toBeLessThanOrEqual(1);
 }
 
 async function expectDeviceCountAnchored(page: Page): Promise<void> {

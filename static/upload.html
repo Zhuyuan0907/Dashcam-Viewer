@@ -2,7 +2,6 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title data-i18n-title="title.upload">上傳影片 — 行車記錄</title>
   <link rel="stylesheet" href="/static/style.css">
@@ -85,7 +84,7 @@
     @media (max-width: 560px) {
       .sftp-actions { flex-wrap:wrap; }
       .gap-field { width:100%; box-sizing:border-box; justify-content:space-between; }
-      .gap-range { flex:1; }
+      .gap-range { flex:1; min-width:0; width:auto; }
       .create-row, .create-actions { width:100%; }
       .create-actions { display:grid; grid-template-columns:minmax(0, 1.6fr) minmax(0, 1fr); }
       .create-actions .btn { width:100%; padding-inline:10px; }
@@ -98,7 +97,7 @@
     .sftp-adv summary:hover { color:var(--accent); }
     .sftp-adv[open] summary { margin-bottom:10px; }
   </style>
-</head>
+<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css"></head>
 <body>
 
 <header class="hdr">
@@ -323,10 +322,7 @@ async function loadSessions() {
   document.getElementById('how-card').style.display = hasSessions ? 'none' : '';
   document.getElementById('upload-intro').style.display = hasSessions ? 'none' : '';
 
-  // F5/重開頁面時若有工作階段仍在處理中:直接回到進度檢視重接 SSE(事件會重播),
-  // 而不是留在清單頁看一顆永遠「處理中」的膠囊。
-  const proc = list.find(s => s.status === 'processing');
-  if (proc) { enterProcessingView(proc.id); return; }
+  // Keep other upload batches accessible; persistent progress lives in the job center.
 
   const seen = new Set();
   for (const s of list) {
@@ -379,7 +375,7 @@ function buildCard(s) {
     </div>
 
     <!-- 瀏覽器直傳:拖放/選檔 -->
-    <p><label><input type="checkbox" data-auto-process checked> 整批傳完後自動整理</label></p>
+    <p><label><input type="checkbox" data-auto-process checked> 整批傳完後自動整理</label> · <a href="/jobs">背景作業與結果 ↗</a></p>
     <p class="dz-hint">支援分塊續傳。離頁前請等候「伺服器已接手」；重開頁面可重新選取相同檔案接續傳輸。</p>
     <div class="drop-zone" data-dz tabindex="0" role="button" aria-label="選擇要上傳的行車記錄器檔案">
       <span>${t('upload.dropTitle')}</span>
@@ -591,8 +587,8 @@ function wireDropZone(card, sid) {
   });
   card.querySelector('[data-act="retry-fail"]').addEventListener('click', () => {
     const q = card._q; if (!q) return;
-    for (const it of q.items) if (it.status === 'error') { it.status = 'waiting'; it.pct = 0; }
-    renderQueue(card); pump(card, sid);
+    const failed = q.items.filter(it => it.status === 'error').map(it => ({file: it.file, rel: it.rel}));
+    void enqueue(card, sid, failed);
   });
 }
 
@@ -636,12 +632,12 @@ async function enqueue(card, sid, picked) {
     if (!rel) continue;
     const existing = q.items.find(i => i.rel === rel);
     if (existing) {
-      if (existing.status === 'error') { existing.file = p.file; existing.status = 'waiting'; existing.pct = 0; existing.err = null; }
+      if (existing.status === 'error') { existing.file = p.file; existing.status = 'waiting'; existing.pct = 0; existing.err = null; existing.fingerprint=null; }
       continue;
     }
     if (!known.has(rel)) { known.add(rel); fresh.push({ file: p.file, rel }); }
   }
-  if (!fresh.length) { renderQueue(card); pump(card, sid); return; }
+  if (!fresh.length && !q.items.some(i=>i.status==='waiting')) { renderQueue(card); return; }
 
   // 預檢:上傳前就標示會被拒絕/略過的檔案(省流量、給明確原因)
   let checks = null;
@@ -665,10 +661,12 @@ async function enqueue(card, sid, picked) {
   }
   try {
     const items=q.items.filter(i=>i.status!=='rejected');
+    if(!items.length){renderQueue(card);return;}
     for(const it of items)it.fingerprint ||= await uploadFingerprint(it.file);
     const manifest=await apiFetch('/api/upload-sessions/'+sid+'/manifest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({files:items.map(it=>({name:it.rel,size:it.file.size,fingerprint:it.fingerprint})),auto_process:card.querySelector('[data-auto-process]').checked,gap_min:gapBySession.get(sid)??defaultGap()})});
     for(const it of items){const f=manifest.files.find(f=>f.name===it.rel);if(f?.complete){it.status='done';it.pct=100;}}
     renderQueue(card);pump(card,sid);
+    if(items.every(it=>it.status==='done')&&card.querySelector('[data-auto-process]').checked)await confirmSession(sid);
   } catch(e){for(const it of q.items)if(it.status==='waiting'){it.status='error';it.err=e.message;}renderQueue(card);showToast(e.message,'error');}
 }
 
@@ -707,7 +705,7 @@ async function uploadOne(card, sid, it) {
         xhr.onerror=()=>reject(Error('連線中斷，可重新選取檔案續傳'));xhr.onabort=()=>reject(Error('傳輸已中斷'));xhr.send(chunk);
       });
       offset=result.received;complete=result.complete;
-      if(result.processing)showToast('伺服器已接手，可以關閉網頁','success');
+      if(result.processing){card._handedOff=true;showToast('伺服器已接手，可以關閉網頁','success');}
       else if(result.detail)showToast(result.detail,'error');
     }
     it.status='done';it.pct=100;
@@ -723,7 +721,7 @@ function settle(card, sid) {
     loadSessions();   // 伺服器端計數立即校正
     const fails = q.items.filter(i => i.status === 'error').length;
     if (fails) showToast(t('upload.qSomeFail', { n: fails }), 'error');
-    else if (q.items.some(i => i.status === 'done')) showToast(t('upload.qDoneToast'), 'success');
+    else if (q.items.some(i => i.status === 'done')) showToast(card._handedOff?'伺服器已接手，可以關閉網頁':t('upload.qDoneToast'), 'success');
   }
 }
 

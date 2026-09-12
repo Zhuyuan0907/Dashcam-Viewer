@@ -24,6 +24,7 @@ import { cleanupOrphanClips } from "./routes/clips.js";
 import { syncTripInfoDeviceMetadata } from "./trips/repo.js";
 import { buildApp } from "./app.js";
 import type { AppContext } from "./context.js";
+import { stopMediaProcesses } from "./media/ffmpeg.js";
 
 /** ISO 時間戳做為備份檔名(檔名安全:去掉 ":" 與毫秒)。 */
 function backupStamp(): string {
@@ -47,8 +48,14 @@ async function main(): Promise<void> {
 
   // 進程層級的安全網:背景 void promise(sweep / SSE / ffmpeg 後續)若拋出未捕捉的 rejection,
   // 只記錄不讓整個服務崩潰(否則磁碟滿等瞬時錯誤會造成 systemd 反覆重啟的 crash loop)。
-  process.on("unhandledRejection", (reason) => app.log.error({ err: reason }, "unhandledRejection"));
-  process.on("uncaughtException", (err) => app.log.error({ err }, "uncaughtException"));
+  process.on("unhandledRejection", (reason) =>
+    app.log.error({ err: reason }, "unhandledRejection"),
+  );
+  process.on("uncaughtException", (err) => {
+    app.log.fatal({ err }, "uncaughtException: terminating unsafe process");
+    stopMediaProcesses();
+    process.exit(1);
+  });
 
   // 啟動時的崩潰/中斷殘留修復。
   // A failed rollback is not safe to serve. Let the supervisor report startup failure.
@@ -59,13 +66,16 @@ async function main(): Promise<void> {
     if (trimFixed > 0) app.log.info(`修復 ${trimFixed} 個中斷的裁剪殘留(暫存檔/遺失播放檔)`);
     const clipOrphans = await cleanupOrphanClips(db);
     if (clipOrphans > 0) app.log.info(`清理 ${clipOrphans} 個孤兒匯出片段`);
-    const metadataMarker = db.prepare("SELECT value FROM settings WHERE key = ?")
+    const metadataMarker = db
+      .prepare("SELECT value FROM settings WHERE key = ?")
       .get("schema.trip_info_devices_v1") as { value: string } | undefined;
     if (!metadataMarker) {
       const synced = await syncTripInfoDeviceMetadata(db);
       if (synced.failed === 0) {
-        db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, '1', ?)")
-          .run("schema.trip_info_devices_v1", Math.floor(Date.now() / 1000));
+        db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, '1', ?)").run(
+          "schema.trip_info_devices_v1",
+          Math.floor(Date.now() / 1000),
+        );
       }
       app.log.info(
         `旅程 metadata 裝置快照同步：掃描 ${synced.scanned}、更新 ${synced.updated}、失敗 ${synced.failed}`,
@@ -140,14 +150,16 @@ async function main(): Promise<void> {
     // 逾時保底:若 SFTP/HTTP 因既有連線卡住無法優雅關閉,10 秒後強制結束(避免無限期不退出)。
     const force = setTimeout(() => {
       app.log.error("關機逾時,強制結束");
+      stopMediaProcesses();
       process.exit(1);
     }, 10_000);
     force.unref();
     try {
       clearInterval(sweep);
       ctx.tasks?.stop();
-      while (ctx.tasks?.active()) await new Promise(resolve=>setTimeout(resolve,100));
+      while (ctx.tasks?.active()) await new Promise((resolve) => setTimeout(resolve, 100));
       if (sftp) await sftp.stop();
+      stopMediaProcesses();
       await app.close();
     } catch (e) {
       app.log.error({ err: e }, "關機過程發生錯誤");

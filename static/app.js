@@ -173,7 +173,7 @@ function t(key, params) {
   return s;
 }
 
-/** 套用品牌:favicon、品牌文字/icon、登入底圖、頁尾。(主題與色彩已固定走 style.css 預設) */
+/** 套用品牌：favicon、品牌文字/icon、登入底圖、頁尾；色票由共用主題系統管理。 */
 function applyBranding(cfg) {
   const b = cfg.brand || {};
   if (b.faviconDataUrl) setFavicon(b.faviconDataUrl);
@@ -202,11 +202,6 @@ async function reloadConfig() {
   return __cfg;
 }
 
-function injectStylesheet(href, id) {
-  let l = document.getElementById(id);
-  if (!l) { l = document.createElement('link'); l.id = id; l.rel = 'stylesheet'; document.head.appendChild(l); }
-  l.href = href;
-}
 function setFavicon(href) {
   let link = document.querySelector('link[rel="icon"]');
   if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }

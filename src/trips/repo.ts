@@ -15,7 +15,7 @@ import {
   type DashcamDeviceSnapshot,
 } from "../devices/repo.js";
 import { withinTrips } from "../util/paths.js";
-import { readTimeline, sliceTimeline, type Timeline } from '../media/timeline.js';
+import { readTimeline, sliceTimeline, type Timeline } from "../media/timeline.js";
 
 /** 一趟旅程的完整資料(對應 DB 欄位與 info.json)。 */
 export interface TripInfo {
@@ -43,7 +43,8 @@ export interface TripInfo {
 }
 
 /** DB 列(has_* 為 0/1,另含 trip_dir/created_at/owner_id/可見性/裁剪原始值)。 */
-export interface TripRow extends Omit<TripInfo, "has_front" | "has_rear" | "owner_id" | "device_id" | "device"> {
+export interface TripRow
+  extends Omit<TripInfo, "has_front" | "has_rear" | "owner_id" | "device_id" | "device"> {
   timeline_json?: string | null;
   trim_offset_sec?: number;
   has_front: number;
@@ -116,9 +117,9 @@ export function upsertTrip(
   // INSERT OR REPLACE 會整列覆寫,故若本次未指定 owner,先沿用既有 owner_id。
   let owner = ownerId ?? info.owner_id ?? null;
   if (ownerId === undefined) {
-    const existing = db.prepare("SELECT owner_id FROM trips WHERE trip_id = ?").get(info.trip_id) as
-      | { owner_id: number | null }
-      | undefined;
+    const existing = db
+      .prepare("SELECT owner_id FROM trips WHERE trip_id = ?")
+      .get(info.trip_id) as { owner_id: number | null } | undefined;
     owner = existing?.owner_id ?? null;
   }
   db.prepare(UPSERT_SQL).run({
@@ -142,8 +143,10 @@ export function upsertTrip(
     device_id: info.device_id ?? null,
     device_snapshot: serializeDeviceSnapshot(info.device ?? null),
   });
-  if (info.timeline) db.prepare('UPDATE trips SET timeline_json=? WHERE trip_id=? AND orig_duration_sec IS NULL')
-    .run(JSON.stringify(info.timeline),info.trip_id);
+  if (info.timeline)
+    db.prepare(
+      "UPDATE trips SET timeline_json=? WHERE trip_id=? AND orig_duration_sec IS NULL",
+    ).run(JSON.stringify(info.timeline), info.trip_id);
 }
 
 /** DB 內保存 JSON 字串,API/呼叫端統一拿結構化 device。 */
@@ -184,7 +187,7 @@ export function canViewTrip(
 }
 
 /** 請求者是否可編輯(裁剪 / 設定可見性)某旅程:擁有者本人或管理員。 */
-export function canEditTrip(db: DB, viewer: Viewer, trip: { owner_id: number | null }): boolean {
+export function canEditTrip(_db: DB, viewer: Viewer, trip: { owner_id: number | null }): boolean {
   if (viewer.role === "admin") return true;
   return trip.owner_id !== null && trip.owner_id === viewer.id;
 }
@@ -249,7 +252,9 @@ export function listOwners(db: DB, viewer: Viewer): OwnerOption[] {
 }
 
 export function getTrip(db: DB, tripId: string): TripRow | null {
-  return (db.prepare("SELECT * FROM trips WHERE trip_id = ?").get(tripId) as TripRow | undefined) ?? null;
+  return (
+    (db.prepare("SELECT * FROM trips WHERE trip_id = ?").get(tripId) as TripRow | undefined) ?? null
+  );
 }
 
 /** 一趟旅程的備註(單一、可編輯)。 */
@@ -314,11 +319,17 @@ export function applyTrim(
     offset?: number;
   },
 ): void {
-  const row = getTrip(db,tripId)!;
-  const offset = v.offset ?? v.newStart-v.prevStart;
+  const row = getTrip(db, tripId)!;
+  const offset = v.offset ?? v.newStart - v.prevStart;
   const timeline = readTimeline(row);
-  db.prepare('UPDATE trips SET orig_timeline_json=COALESCE(orig_timeline_json,?), timeline_json=?, trim_offset_sec=trim_offset_sec+? WHERE trip_id=?')
-    .run(JSON.stringify(timeline),JSON.stringify(sliceTimeline(timeline,offset,offset+v.newDur)),offset,tripId);
+  db.prepare(
+    "UPDATE trips SET orig_timeline_json=COALESCE(orig_timeline_json,?), timeline_json=?, trim_offset_sec=trim_offset_sec+? WHERE trip_id=?",
+  ).run(
+    JSON.stringify(timeline),
+    JSON.stringify(sliceTimeline(timeline, offset, offset + v.newDur)),
+    offset,
+    tripId,
+  );
   db.prepare(
     `UPDATE trips SET
        orig_start_epoch  = COALESCE(orig_start_epoch, ?),
@@ -363,10 +374,7 @@ async function fileBytes(p: string | null): Promise<number> {
  * 是否需套用 per-trip 可見性過濾:擁有者本人或管理員 → 否(看全部);其他人 → 是。
  * 回傳可直接嵌入 SQL 的片段:{ join, cond }(cond 已含 owner 條件)。
  */
-function visibilityScope(
-  viewer: Viewer,
-  ownerId: number | null,
-): { join: string; cond: string } {
+function visibilityScope(viewer: Viewer, ownerId: number | null): { join: string; cond: string } {
   const seeAll = viewer.role === "admin" || (ownerId !== null && ownerId === viewer.id);
   if (seeAll) return { join: "", cond: "t.owner_id IS ?" };
   return {
@@ -377,7 +385,13 @@ function visibilityScope(
 
 export async function listTrips(
   db: DB,
-  opts: { date?: string | null; ownerId?: number | null; viewer: Viewer; limit: number; offset: number },
+  opts: {
+    date?: string | null;
+    ownerId?: number | null;
+    viewer: Viewer;
+    limit: number;
+    offset: number;
+  },
 ): Promise<{ total: number; trips: TripRowWithBytes[] }> {
   const owner = opts.ownerId ?? null;
   const { join, cond } = visibilityScope(opts.viewer, owner);
@@ -392,14 +406,19 @@ export async function listTrips(
     )
     .all(...params, opts.limit, opts.offset) as TripRow[];
   const total = (
-    db.prepare(`SELECT COUNT(*) AS c FROM trips t ${join} WHERE ${cond}${dateCond}`).get(...params) as {
+    db
+      .prepare(`SELECT COUNT(*) AS c FROM trips t ${join} WHERE ${cond}${dateCond}`)
+      .get(...params) as {
       c: number;
     }
   ).c;
 
   // 非阻塞 stat,平行取大小(避免在 async handler 內做同步 I/O 卡住 event loop)。
   const trips = await Promise.all(
-    rows.map(async (r) => ({ ...r, bytes: (await fileBytes(r.front_path)) + (await fileBytes(r.rear_path)) })),
+    rows.map(async (r) => ({
+      ...r,
+      bytes: (await fileBytes(r.front_path)) + (await fileBytes(r.rear_path)),
+    })),
   );
   return { total, trips };
 }
@@ -480,9 +499,7 @@ export async function deleteTrip(db: DB, tripId: string): Promise<boolean> {
   db.prepare("DELETE FROM trips WHERE trip_id = ?").run(tripId);
   if (row.trip_dir) {
     // 若還有其他旅程列共用同一目錄(分批重匯入可能造成),不可刪目錄,否則會毀掉別列的影片。
-    const shared = db
-      .prepare("SELECT 1 FROM trips WHERE trip_dir = ? LIMIT 1")
-      .get(row.trip_dir);
+    const shared = db.prepare("SELECT 1 FROM trips WHERE trip_dir = ? LIMIT 1").get(row.trip_dir);
     if (!shared) {
       await fs.rm(row.trip_dir, { recursive: true, force: true });
     }
@@ -515,29 +532,34 @@ export async function rebuildFromDisk(db: DB): Promise<number> {
     try {
       const info = JSON.parse(await fs.readFile(file, "utf-8")) as Partial<TripInfo>;
       if (!info.trip_id || !info.date) continue;
-      const requestedOwnerId = Number.isInteger(info.owner_id) && Number(info.owner_id) > 0
-        ? Number(info.owner_id)
-        : null;
-      const ownerUsername = typeof info.owner_username === "string" && info.owner_username.length > 0
-        ? info.owner_username
-        : null;
+      const requestedOwnerId =
+        Number.isInteger(info.owner_id) && Number(info.owner_id) > 0 ? Number(info.owner_id) : null;
+      const ownerUsername =
+        typeof info.owner_username === "string" && info.owner_username.length > 0
+          ? info.owner_username
+          : null;
       // owner_id 是單一 DB 內的代理鍵。只有 ID 與不可變帳號名稱都吻合才恢復
       // 歸屬；舊 metadata 缺少名稱時寧可成為 orphan，也不能錯綁另一個帳號。
-      const validOwner = requestedOwnerId !== null && ownerUsername !== null
-        ? db.prepare("SELECT id FROM users WHERE id = ? AND username = ?")
-          .get(requestedOwnerId, ownerUsername) as { id: number } | undefined
-        : undefined;
+      const validOwner =
+        requestedOwnerId !== null && ownerUsername !== null
+          ? (db
+              .prepare("SELECT id FROM users WHERE id = ? AND username = ?")
+              .get(requestedOwnerId, ownerUsername) as { id: number } | undefined)
+          : undefined;
       const ownerId = validOwner?.id ?? null;
-      const requestedDeviceId = Number.isInteger(info.device_id) && Number(info.device_id) > 0
-        ? Number(info.device_id)
-        : null;
+      const requestedDeviceId =
+        Number.isInteger(info.device_id) && Number(info.device_id) > 0
+          ? Number(info.device_id)
+          : null;
       // device_id 是單一 DB 內的代理鍵。從空庫／不同備份重建時該 ID 可能不存在，
       // 直接寫入會觸發外鍵錯誤並讓整趟旅程被略過。只有裝置仍存在且屬於 owner 時
       // 才恢復關聯；否則設 null，仍保留 info.json 裡的不可變裝置快照。
-      const validDevice = requestedDeviceId !== null && ownerId !== null
-        ? db.prepare("SELECT id FROM dashcam_devices WHERE id = ? AND user_id = ?")
-          .get(requestedDeviceId, ownerId) as { id: number } | undefined
-        : undefined;
+      const validDevice =
+        requestedDeviceId !== null && ownerId !== null
+          ? (db
+              .prepare("SELECT id FROM dashcam_devices WHERE id = ? AND user_id = ?")
+              .get(requestedDeviceId, ownerId) as { id: number } | undefined)
+          : undefined;
       const deviceId = validDevice?.id ?? null;
       scopes.set(`${ownerId ?? "null"}|${info.date}`, { date: info.date, ownerId });
       upsertTrip(
@@ -549,6 +571,7 @@ export async function rebuildFromDisk(db: DB): Promise<number> {
           start_epoch: info.start_epoch ?? 0,
           end_epoch: info.end_epoch ?? 0,
           duration_sec: info.duration_sec ?? 0,
+          timeline: info.timeline,
           segment_count: info.segment_count ?? 0,
           emer_count: info.emer_count ?? 0,
           has_front: Boolean(info.has_front),
@@ -585,11 +608,13 @@ export interface TripInfoMetadataSyncResult {
  * 共用目錄、損壞 JSON 或 trip_id 不一致一律拒絕寫入，避免交叉覆蓋旅程歸屬。
  */
 export async function syncTripInfoDeviceMetadata(db: DB): Promise<TripInfoMetadataSyncResult> {
-  const rows = db.prepare(
-    `SELECT t.*, u.username AS owner_username
+  const rows = db
+    .prepare(
+      `SELECT t.*, u.username AS owner_username
        FROM trips t LEFT JOIN users u ON u.id = t.owner_id
       ORDER BY t.trip_id`,
-  ).all() as Array<TripRow & { owner_username: string | null }>;
+    )
+    .all() as Array<TripRow & { owner_username: string | null }>;
   const result: TripInfoMetadataSyncResult = { scanned: 0, updated: 0, failed: 0 };
   const rowDir = (row: TripRow): string | null => {
     const inferred = row.front_path
@@ -636,7 +661,9 @@ export async function syncTripInfoDeviceMetadata(db: DB): Promise<TripInfoMetada
         const raw = await fs.readFile(infoPath, "utf8");
         const parsed = JSON.parse(raw) as unknown;
         if (
-          !parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+          !parsed ||
+          typeof parsed !== "object" ||
+          Array.isArray(parsed) ||
           (parsed as Record<string, unknown>).trip_id !== row.trip_id
         ) {
           throw new Error("info.json trip_id 與資料庫不一致");
@@ -671,7 +698,8 @@ export async function syncTripInfoDeviceMetadata(db: DB): Promise<TripInfoMetada
         device_id: row.device_id,
         device,
       };
-      const unchanged = original !== null &&
+      const unchanged =
+        original !== null &&
         original.owner_id === next.owner_id &&
         original.owner_username === next.owner_username &&
         original.device_id === next.device_id &&

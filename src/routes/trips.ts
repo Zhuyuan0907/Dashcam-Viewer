@@ -25,9 +25,9 @@ import type { DashcamDeviceSnapshot } from "../devices/repo.js";
 import type { DB } from "../db.js";
 import { clampInt } from "../util/num.js";
 import { makeRequireUser, makeRequireAdmin, type AppContext } from "../context.js";
-import { readTimeline } from '../media/timeline.js';
-import { inspectMedia } from '../media/inspect.js';
-import { withinTrips } from '../util/paths.js';
+import { readTimeline } from "../media/timeline.js";
+import { inspectMediaCached } from "../media/inspect.js";
+import { withinTrips } from "../util/paths.js";
 
 /**
  * 對外旅程 DTO。資料層刻意保留完整路徑供影片、裁剪與刪除流程使用，
@@ -115,7 +115,10 @@ export function registerTrips(app: FastifyInstance, ctx: AppContext): void {
    * 解析 ?owner 為要瀏覽的擁有者 id(預設請求者本人),並檢查可見性。
    * 回傳 { ownerId } 或 { error:reply } —— 呼叫端遇 error 直接 return。
    */
-  function resolveOwner(req: { query: { owner?: string }; user?: { id: number; role: string } }): number {
+  function resolveOwner(req: {
+    query: { owner?: string };
+    user?: { id: number; role: string };
+  }): number {
     const raw = req.query.owner;
     if (raw === undefined || raw === "") return req.user!.id;
     const n = Number.parseInt(raw, 10);
@@ -123,16 +126,22 @@ export function registerTrips(app: FastifyInstance, ctx: AppContext): void {
   }
 
   // 可瀏覽的旅程擁有者清單(browse 使用者選單)。
-  app.get<{Params:{'*':string}}>('/api/trip-media/*',{preHandler:requireUser,config:{rateLimit:{max:20,timeWindow:'1 minute'}}},async(req,reply)=>{
-    const row=getTrip(db,req.params['*']);
-    if(!row || !canViewTrip(db,req.user!,row))return reply.code(404).send({detail:'旅程不存在'});
-    const result:Record<string,unknown>={};
-    for(const camera of ['front','rear'] as const) {
-      const file=row[`${camera}_path`];
-      if(file && withinTrips(file)) result[camera]=await inspectMedia(file).catch(()=>null);
-    }
-    return result;
-  });
+  app.get<{ Params: { "*": string } }>(
+    "/api/trip-media/*",
+    { preHandler: requireUser, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+    async (req, reply) => {
+      const row = getTrip(db, req.params["*"]);
+      if (!row || !canViewTrip(db, req.user!, row))
+        return reply.code(404).send({ detail: "旅程不存在" });
+      const result: Record<string, unknown> = {};
+      for (const camera of ["front", "rear"] as const) {
+        const file = row[`${camera}_path`];
+        if (file && withinTrips(file))
+          result[camera] = await inspectMediaCached(file).catch(() => null);
+      }
+      return result;
+    },
+  );
   app.get("/api/trip-owners", { preHandler: requireUser }, async (req) =>
     listOwners(db, req.user!),
   );
@@ -149,7 +158,9 @@ export function registerTrips(app: FastifyInstance, ctx: AppContext): void {
     },
   );
 
-  app.get("/api/trips/stats", { preHandler: requireUser }, async (req) => overallStats(db, req.user!));
+  app.get("/api/trips/stats", { preHandler: requireUser }, async (req) =>
+    overallStats(db, req.user!),
+  );
 
   app.get<{ Querystring: { date?: string; owner?: string; limit?: string; offset?: string } }>(
     "/api/trips",
@@ -195,24 +206,35 @@ export function registerTrips(app: FastifyInstance, ctx: AppContext): void {
 
   app.delete<{ Params: { "*": string } }>(
     "/api/trips/*",
-    { preHandler: requireAdmin },
+    { preHandler: requireUser },
     async (req, reply) => {
       const tripId = req.params["*"];
-      // 先中止任何對這趟正在跑的裁剪/匯出,避免 ffmpeg 對著即將被刪的檔案繼續空轉。
-      if (ctx.jobs.busy(tripId)) return reply.code(409).send({ detail: '請先等待或取消此旅程的背景工作' });
-      const ok = await deleteTrip(db, tripId);
-      if (!ok) return reply.code(404).send({ detail: "旅程不存在" });
-      return { status: "deleted", trip_id: tripId };
+      const row = getTrip(db, tripId);
+      if (!row || !canEditTrip(db, req.user!, row))
+        return reply.code(404).send({ detail: "旅程不存在" });
+      if (ctx.jobs.busy(tripId))
+        return reply.code(409).send({ detail: "請先等待或取消此旅程的背景工作" });
+      ctx.jobs.registerTrim(tripId, new AbortController());
+      try {
+        const ok = await deleteTrip(db, tripId);
+        if (!ok) return reply.code(404).send({ detail: "旅程不存在" });
+        return { status: "deleted", trip_id: tripId };
+      } finally {
+        ctx.jobs.unregisterTrim(tripId);
+      }
     },
   );
 
   // 旅程備註(單一、可編輯;僅管理員可寫)。獨立前綴避開 /api/trips/* catch-all。
   app.put<{ Params: { "*": string }; Body: { note?: string } }>(
     "/api/trip-note/*",
-    { preHandler: requireAdmin },
+    { preHandler: requireUser },
     async (req, reply) => {
       const tripId = req.params["*"];
-      if (!getTrip(db, tripId)) return reply.code(404).send({ detail: "旅程不存在" });
+      const row = getTrip(db, tripId);
+      if (!row) return reply.code(404).send({ detail: "旅程不存在" });
+      if (!canEditTrip(db, req.user!, row))
+        return reply.code(403).send({ detail: "無權編輯此旅程" });
       const note = typeof req.body?.note === "string" ? req.body.note : "";
       if (note.length > 5000) return reply.code(400).send({ detail: "備註過長(上限 5000 字)" });
       setTripNote(db, tripId, note, req.user!.id);
@@ -228,7 +250,8 @@ export function registerTrips(app: FastifyInstance, ctx: AppContext): void {
       const tripId = req.params["*"];
       const row = getTrip(db, tripId);
       if (!row) return reply.code(404).send({ detail: "旅程不存在" });
-      if (!canEditTrip(db, req.user!, row)) return reply.code(403).send({ detail: "無權編輯此旅程" });
+      if (!canEditTrip(db, req.user!, row))
+        return reply.code(403).send({ detail: "無權編輯此旅程" });
       const ov = req.body?.override;
       if (ov !== null && ov !== 0 && ov !== 1) {
         return reply.code(400).send({ detail: "override 須為 null、0 或 1" });

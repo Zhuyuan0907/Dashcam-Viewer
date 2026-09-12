@@ -2,7 +2,6 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title data-i18n-title="title.trip">旅程 — 行車記錄</title>
   <link rel="stylesheet" href="/static/style.css">
@@ -315,7 +314,7 @@
       .info-strip .chip:last-child:nth-child(odd) { grid-column: 1 / -1; border-right: 0; }  /* 奇數總數末格跨滿一列 */
     }
   </style>
-</head>
+<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css"><script src="/static/timeline.js"></script></head>
 <body>
 
 <header class="hdr">
@@ -510,7 +509,7 @@
                   <span data-i18n="trip.clip.cpuNote">這裡為 CPU 硬解，請耐心等候</span>
                 </span>
               </div>
-              <p class="edit-hint" style="margin:10px 0 0;" data-i18n="trip.clip.reportHint">檢舉用途建議:前鏡頭＋快速(無損)——受理單位要求原始畫面,無損模式不重新壓縮。</p>
+              <p class="edit-hint" style="margin:10px 0 0;" data-i18n="trip.clip.reportHint">快速模式可能包含選取外影格，精確模式會重編碼。請保留原始素材，送出前確認實際輸出及受理規範。</p>
               <div class="trim-progress" id="clip-progress" style="display:none;">
                 <div class="progress-track"><div class="progress-fill" id="clip-bar" style="width:0%;"></div></div>
                 <div class="trim-progress-foot">
@@ -872,14 +871,14 @@ function initPlayer() {
     all().forEach(v => v.pause());
     setPlayIcon(false);
     const nt = Math.max(0, Math.min(total, m.currentTime + dir / (mediaInfo[mainCam]?.fps || 30)));
-    all().forEach(v => { v.currentTime = nt; });
+    seekAll(nt);
   }
   function seekBy(d) {
     const m = main();
     const total = dur || m.duration;
     if (!Number.isFinite(total) || total <= 0) return;
     const nt = Math.max(0, Math.min(total, m.currentTime + d));
-    all().forEach(v => { v.currentTime = nt; });
+    seekAll(nt);
   }
 
   document.getElementById('btn-play').onclick = toggle;
@@ -912,7 +911,7 @@ function initPlayer() {
       if (!d) return;
       const nt = percent / 100 * d;
       tCur.textContent = fmtSecs(nt);
-      all().forEach(v => { v.currentTime = nt; });
+      seekAll(nt);
     },
   });
 
@@ -928,15 +927,7 @@ function initPlayer() {
     // 同步其他鏡頭
     others().forEach(v => {
       const targetCam = Object.keys(videos).find(c => videos[c] === v);
-      const sourceSpans = trip.timeline?.[mainCam];
-      const source = sourceSpans?.find(s => m.currentTime >= s.start && m.currentTime < s.start+s.duration);
-      const epoch = source ? source.epoch+m.currentTime-source.start : null;
-      const dest = epoch === null ? null : trip.timeline?.[targetCam]?.find(s => epoch >= s.epoch && epoch < s.epoch+s.duration);
-      const missing = sourceSpans && !dest;
-      v.style.visibility = missing ? 'hidden' : '';
-      v.parentElement.title = missing ? '此時段缺少鏡頭影片' : '';
-      const position = dest ? dest.start+epoch-dest.epoch : m.currentTime;
-      if (!missing && Math.abs(v.currentTime-position)>0.25) v.currentTime=position;
+      DashcamTimeline.sync(trip.timeline,mainCam,targetCam,m,v);
     });
     if (!m.paused) saveResume(false);   // 續看記憶(內部 5 秒節流)
     if (typeof onPlayerTick === 'function') onPlayerTick();   // 剪輯面板:更新播放頭 / 預覽循環
@@ -1196,13 +1187,9 @@ function seekAll(sec) {
   const d = selDur();
   const t = Math.max(0, Math.min(d || sec, sec));
   if (videos[mainCam]) videos[mainCam].currentTime = t;
-  const spans = trip.timeline?.[mainCam] || [];
-  const span = spans.find(s => t >= s.start && t <= s.start + s.duration);
-  const epoch = span ? span.epoch + t - span.start : null;
   for (const c of cams) {
     if (c === mainCam || !videos[c]) continue;
-    const other = (trip.timeline?.[c] || []).find(s => epoch !== null && epoch >= s.epoch && epoch <= s.epoch + s.duration);
-    if (other) videos[c].currentTime = other.start + epoch - other.epoch;
+    DashcamTimeline.sync(trip.timeline,mainCam,c,videos[mainCam],videos[c],true);
   }
 }
 
@@ -1215,6 +1202,8 @@ function setupEdit() {
   shareBtn.setAttribute('aria-label', tt('trip.share.button'));
   document.getElementById('btn-link-label').textContent = tt('trip.share.button');
   document.getElementById('edit-btn').style.display = '';
+  document.getElementById('delete-btn').classList.remove('admin-only');
+  document.getElementById('delete-btn').style.display = '';
   // 可見性:標題列按鈕 + 下拉選單
   document.getElementById('vis-wrap').style.display = '';
   reflectVis(trip.public_override === 1 ? 'public' : trip.public_override === 0 ? 'private' : 'inherit');
@@ -1697,6 +1686,7 @@ async function startClipExport() {
   showClipProg(0, tt('trip.clip.exporting'));
   const body = {
     start: selStart, end: selEnd, layout: clipLayout, quality: clipQuality,
+    expected_version: `${trip.start_epoch}:${trip.duration_sec}`,
     label: document.getElementById('clip-label').value || '',
   };
   if (clipLayout === 'pip') body.main = videos[mainCam] ? mainCam : 'front';
@@ -1826,7 +1816,7 @@ async function applyTrim() {
   try {
     await apiFetch('/api/trip-trim/' + encodeURIComponent(tripId), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ start: selStart, end: selEnd }),
+      body: JSON.stringify({ start: selStart, end: selEnd, expected_version: `${trip.start_epoch}:${trip.duration_sec}` }),
     });
     listenTrim();
   } catch (e) {
@@ -1890,16 +1880,16 @@ async function restoreTrim() {
   } catch (e) { showToast(tt('trip.trim.fail') + '：' + e.message, 'error'); }
 }
 
-/* ── 行內備註(緊接統計列;僅管理員可編輯) ──────────────────────────────────── */
+/* ── 行內備註(緊接統計列；擁有者或管理員可編輯) ──────────────────────────── */
 function renderNote() {
   const el = document.getElementById('note-inline');
   const note = (trip.note || '').trim();
-  // 訪客且無備註:整段隱藏。管理員:永遠顯示(空狀態給「＋ 新增備註」邀請,點即編)。
-  if (!note && !isAdmin) { el.style.display = 'none'; return; }
+  const editable=isAdmin||!!(currentUser&&trip.owner_id===currentUser.id);
+  if (!note && !editable) { el.style.display = 'none'; return; }
   el.style.display = '';
-  el.className = 'note-inline' + (isAdmin ? ' editable' : '') + (note ? '' : ' empty');
-  el.onclick = isAdmin ? startNoteEdit : null;
-  el.textContent = note || (isAdmin ? '＋ ' + tt('trip.noteAdd') : '');
+  el.className = 'note-inline' + (editable ? ' editable' : '') + (note ? '' : ' empty');
+  el.onclick = editable ? startNoteEdit : null;
+  el.textContent = note || (editable ? '＋ ' + tt('trip.noteAdd') : '');
   scheduleFit();   // 備註顯示/隱藏/編輯改變影片下方高度 → 重算
 }
 function startNoteEdit() {

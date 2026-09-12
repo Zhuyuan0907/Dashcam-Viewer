@@ -225,15 +225,33 @@ export function createDb(dbPath: string): DB {
 
 /** 舊資料庫欄位遷移(冪等)。 */
 function migrate(db: DB): void {
-  const mediaColumns = new Set((db.prepare('PRAGMA table_info(trips)').all() as {name:string}[]).map(c => c.name));
-  for (const [name, type] of [['timeline_json','TEXT'],['orig_timeline_json','TEXT'],['trim_offset_sec','REAL NOT NULL DEFAULT 0']]) {
+  const mediaColumns = new Set(
+    (db.prepare("PRAGMA table_info(trips)").all() as { name: string }[]).map((c) => c.name),
+  );
+  for (const [name, type] of [
+    ["timeline_json", "TEXT"],
+    ["orig_timeline_json", "TEXT"],
+    ["trim_offset_sec", "REAL NOT NULL DEFAULT 0"],
+  ]) {
     if (!mediaColumns.has(name!)) db.exec(`ALTER TABLE trips ADD COLUMN ${name} ${type}`);
+  }
+  // Pre-timeline trimmed rows need their accumulated original-file offset migrated once.
+  if (mediaColumns.has("orig_start_epoch")) {
+    db.exec(
+      "UPDATE trips SET trim_offset_sec=MAX(0,start_epoch-orig_start_epoch) WHERE orig_start_epoch IS NOT NULL AND timeline_json IS NULL AND trim_offset_sec=0",
+    );
   }
   db.exec(`CREATE TABLE IF NOT EXISTS media_commits (
     id TEXT PRIMARY KEY, trip_id TEXT NOT NULL, entries TEXT NOT NULL
   )`);
-  const clipColumns = new Set((db.prepare('PRAGMA table_info(trip_clips)').all() as {name:string}[]).map(c => c.name));
-  for (const [name, type] of [['source_start_epoch', 'REAL'], ['source_end_epoch', 'REAL'], ['source_version', 'TEXT']]) {
+  const clipColumns = new Set(
+    (db.prepare("PRAGMA table_info(trip_clips)").all() as { name: string }[]).map((c) => c.name),
+  );
+  for (const [name, type] of [
+    ["source_start_epoch", "REAL"],
+    ["source_end_epoch", "REAL"],
+    ["source_version", "TEXT"],
+  ]) {
     if (!clipColumns.has(name!)) db.exec(`ALTER TABLE trip_clips ADD COLUMN ${name} ${type}`);
   }
   const userCols = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
@@ -268,7 +286,9 @@ function migrate(db: DB): void {
     db.exec("ALTER TABLE sftp_sessions ADD COLUMN idle_sec INTEGER NOT NULL DEFAULT 600");
   }
   if (!sftpCols.some((c) => c.name === "device_id")) {
-    db.exec("ALTER TABLE sftp_sessions ADD COLUMN device_id INTEGER REFERENCES dashcam_devices(id) ON DELETE SET NULL");
+    db.exec(
+      "ALTER TABLE sftp_sessions ADD COLUMN device_id INTEGER REFERENCES dashcam_devices(id) ON DELETE SET NULL",
+    );
   }
   if (!sftpCols.some((c) => c.name === "device_snapshot")) {
     db.exec("ALTER TABLE sftp_sessions ADD COLUMN device_snapshot TEXT");
@@ -283,11 +303,15 @@ function migrate(db: DB): void {
     );
   }
   if (needTrip("public_override")) db.exec("ALTER TABLE trips ADD COLUMN public_override INTEGER");
-  if (needTrip("orig_start_epoch")) db.exec("ALTER TABLE trips ADD COLUMN orig_start_epoch INTEGER");
+  if (needTrip("orig_start_epoch"))
+    db.exec("ALTER TABLE trips ADD COLUMN orig_start_epoch INTEGER");
   if (needTrip("orig_end_epoch")) db.exec("ALTER TABLE trips ADD COLUMN orig_end_epoch INTEGER");
-  if (needTrip("orig_duration_sec")) db.exec("ALTER TABLE trips ADD COLUMN orig_duration_sec INTEGER");
+  if (needTrip("orig_duration_sec"))
+    db.exec("ALTER TABLE trips ADD COLUMN orig_duration_sec INTEGER");
   if (needTrip("device_id")) {
-    db.exec("ALTER TABLE trips ADD COLUMN device_id INTEGER REFERENCES dashcam_devices(id) ON DELETE SET NULL");
+    db.exec(
+      "ALTER TABLE trips ADD COLUMN device_id INTEGER REFERENCES dashcam_devices(id) ON DELETE SET NULL",
+    );
   }
   if (needTrip("device_snapshot")) db.exec("ALTER TABLE trips ADD COLUMN device_snapshot TEXT");
   // 匯出片段的檢舉輔助欄位(草稿 JSON + 已檢舉時間)。
@@ -300,9 +324,9 @@ function migrate(db: DB): void {
 
   // device_note(v2.0 舊欄位)→多裝置資料。以 settings marker 保證冪等,並把既有旅程
   // 快照回填成換機前的裝置;空白備註不建立虛構裝置。
-  const deviceMigration = db.prepare("SELECT value FROM settings WHERE key = ?").get("schema.devices_v1") as
-    | { value: string }
-    | undefined;
+  const deviceMigration = db
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get("schema.devices_v1") as { value: string } | undefined;
   if (!deviceMigration) {
     const tx = db.transaction(() => {
       const users = db
@@ -312,9 +336,18 @@ function migrate(db: DB): void {
       for (const u of users) {
         if (!u.device_note) continue;
         let device = db
-          .prepare("SELECT * FROM dashcam_devices WHERE user_id = ? ORDER BY is_default DESC, id LIMIT 1")
+          .prepare(
+            "SELECT * FROM dashcam_devices WHERE user_id = ? ORDER BY is_default DESC, id LIMIT 1",
+          )
           .get(u.id) as
-          | { id: number; profile_key: string; model: string; nickname: string; note: string; show_on_trips: number }
+          | {
+              id: number;
+              profile_key: string;
+              model: string;
+              nickname: string;
+              note: string;
+              show_on_trips: number;
+            }
           | undefined;
         if (!device) {
           const profile = /MiVue\s*[™ ]?\s*MP20/i.test(u.device_note) ? "mivue-mp20" : "custom";
@@ -347,8 +380,10 @@ function migrate(db: DB): void {
           "UPDATE trips SET device_id = ?, device_snapshot = ? WHERE owner_id = ? AND device_snapshot IS NULL",
         ).run(device.id, snapshot, u.id);
       }
-      db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, '1', ?)")
-        .run("schema.devices_v1", now);
+      db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, '1', ?)").run(
+        "schema.devices_v1",
+        now,
+      );
     });
     tx();
   }
@@ -402,7 +437,14 @@ export function pruneBackups(destDir: string, keep: number): void {
 
 /** 確保資料目錄結構存在。 */
 export function ensureDataDirs(): void {
-  for (const sub of ["uploads/F", "uploads/R", "uploads/NMEA", "trips", "uploads/prebuilt", "quarantine"]) {
+  for (const sub of [
+    "uploads/F",
+    "uploads/R",
+    "uploads/NMEA",
+    "trips",
+    "uploads/prebuilt",
+    "quarantine",
+  ]) {
     fs.mkdirSync(path.join(DATA_DIR, sub), { recursive: true });
   }
 }

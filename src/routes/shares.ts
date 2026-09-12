@@ -9,6 +9,7 @@ import { createReadStream } from "node:fs";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { COOKIE_SECURE, STATIC_DIR } from "../config.js";
 import { extractFrame } from "../media/ffmpeg.js";
+import { readTimeline } from "../media/timeline.js";
 import {
   DEFAULT_SHARE_DAYS,
   MAX_SHARE_DAYS,
@@ -126,6 +127,7 @@ function sharedTripDto(db: AppContext["db"], row: SharedTripRow) {
     start_epoch: row.start_epoch,
     end_epoch: row.end_epoch,
     duration_sec: row.duration_sec,
+    timeline: readTimeline(row),
     segment_count: row.segment_count,
     emer_count: row.emer_count,
     has_front: row.has_front,
@@ -137,9 +139,9 @@ function sharedTripDto(db: AppContext["db"], row: SharedTripRow) {
   };
 }
 
-function parseExpiryDays(body: { expires_in_days?: number | null } | undefined):
-  | { ok: true; days: number | null }
-  | { ok: false } {
+function parseExpiryDays(
+  body: { expires_in_days?: number | null } | undefined,
+): { ok: true; days: number | null } | { ok: false } {
   const value = body?.expires_in_days;
   if (value === undefined) return { ok: true, days: DEFAULT_SHARE_DAYS };
   if (value === null) return { ok: true, days: null };
@@ -150,9 +152,11 @@ function parseExpiryDays(body: { expires_in_days?: number | null } | undefined):
 export function registerShares(app: FastifyInstance, ctx: AppContext): void {
   const { db } = ctx;
   const requireUser = makeRequireUser(ctx);
-  const storedSecrets = (db.prepare("SELECT COUNT(*) AS count FROM trip_share_secrets").get() as {
-    count: number;
-  }).count;
+  const storedSecrets = (
+    db.prepare("SELECT COUNT(*) AS count FROM trip_share_secrets").get() as {
+      count: number;
+    }
+  ).count;
   initializeShareTokenVault(storedSecrets > 0);
 
   // 建立分享：只有旅程擁有者本人或管理員可做。trip_id 可含斜線，故使用 wildcard。
@@ -168,7 +172,9 @@ export function registerShares(app: FastifyInstance, ctx: AppContext): void {
       }
       const parsed = parseExpiryDays(req.body);
       if (!parsed.ok) {
-        return reply.code(400).send({ detail: `expires_in_days 須為 1 至 ${MAX_SHARE_DAYS} 的整數或 null` });
+        return reply
+          .code(400)
+          .send({ detail: `expires_in_days 須為 1 至 ${MAX_SHARE_DAYS} 的整數或 null` });
       }
       const now = Math.floor(Date.now() / 1000);
       const expiresAt = parsed.days === null ? null : now + parsed.days * 86_400;
@@ -243,7 +249,9 @@ export function registerShares(app: FastifyInstance, ctx: AppContext): void {
       }
       const token = recoverTripShareToken(share);
       if (!token) {
-        return protectShareResponse(reply).code(409).send({ detail: "此舊分享無法取回，請重新產生" });
+        return protectShareResponse(reply)
+          .code(409)
+          .send({ detail: "此舊分享無法取回，請重新產生" });
       }
       return protectShareResponse(reply).send(shareLinkDto({ token, share }, now));
     },
@@ -292,9 +300,10 @@ export function registerShares(app: FastifyInstance, ctx: AppContext): void {
       if (!row) return invalidShare(reply);
 
       const now = Math.floor(Date.now() / 1000);
-      const remaining = row.share_expires_at === null
-        ? SHARE_COOKIE_TTL_SEC
-        : Math.max(1, row.share_expires_at - now);
+      const remaining =
+        row.share_expires_at === null
+          ? SHARE_COOKIE_TTL_SEC
+          : Math.max(1, row.share_expires_at - now);
       const maxAge = Math.min(SHARE_COOKIE_TTL_SEC, remaining);
       protectShareResponse(reply).setCookie(SHARE_COOKIE, token, {
         httpOnly: true,
@@ -319,27 +328,24 @@ export function registerShares(app: FastifyInstance, ctx: AppContext): void {
     return protectShareResponse(reply).send(sharedTripDto(db, row));
   });
 
-  app.get<{ Params: { camera: string } }>(
-    "/share/video/:camera",
-    async (req, reply) => {
-      const row = sharedTripFromCookie(db, req);
-      if (!row) return invalidShare(reply);
-      if (req.params.camera !== "front" && req.params.camera !== "rear") {
-        return protectShareResponse(reply).code(400).send({ detail: "camera 必須是 front 或 rear" });
-      }
-      const videoPath = req.params.camera === "front" ? row.front_path : row.rear_path;
-      if (!videoPath || !withinTrips(videoPath)) {
-        return protectShareResponse(reply).code(404).send({ detail: "影片檔案不存在" });
-      }
-      try {
-        await fsp.access(videoPath, fs.constants.R_OK);
-      } catch {
-        return protectShareResponse(reply).code(404).send({ detail: "影片檔案不存在" });
-      }
-      protectShareResponse(reply).header("Content-Disposition", "inline");
-      return sendRange(req, reply, videoPath);
-    },
-  );
+  app.get<{ Params: { camera: string } }>("/share/video/:camera", async (req, reply) => {
+    const row = sharedTripFromCookie(db, req);
+    if (!row) return invalidShare(reply);
+    if (req.params.camera !== "front" && req.params.camera !== "rear") {
+      return protectShareResponse(reply).code(400).send({ detail: "camera 必須是 front 或 rear" });
+    }
+    const videoPath = req.params.camera === "front" ? row.front_path : row.rear_path;
+    if (!videoPath || !withinTrips(videoPath)) {
+      return protectShareResponse(reply).code(404).send({ detail: "影片檔案不存在" });
+    }
+    try {
+      await fsp.access(videoPath, fs.constants.R_OK);
+    } catch {
+      return protectShareResponse(reply).code(404).send({ detail: "影片檔案不存在" });
+    }
+    protectShareResponse(reply).header("Content-Disposition", "inline");
+    return sendRange(req, reply, videoPath);
+  });
 
   app.get("/share/thumbnail", async (req, reply) => {
     const row = sharedTripFromCookie(db, req);
@@ -352,9 +358,8 @@ export function registerShares(app: FastifyInstance, ctx: AppContext): void {
     }
 
     // DB 的 trip_dir 也必須在 TRIPS_DIR 內；不可信時退回已驗證影片所在目錄。
-    const tripDir = row.trip_dir && withinTrips(row.trip_dir)
-      ? row.trip_dir
-      : path.dirname(candidates[0]!);
+    const tripDir =
+      row.trip_dir && withinTrips(row.trip_dir) ? row.trip_dir : path.dirname(candidates[0]!);
     const thumbPath = path.join(tripDir, "thumb.jpg");
     let ready = false;
     try {

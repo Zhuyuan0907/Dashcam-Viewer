@@ -5,12 +5,21 @@
  * 卻在 async 流程裡直接呼叫,處理影片時會凍住整個 event loop。
  * 這裡一律走 spawn,絕不阻塞;且永遠用陣列參數,不經 shell(避免命令注入)。
  */
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import os from "node:os";
 import fs from "node:fs/promises";
 import path from "node:path";
 
 export const FALLBACK_DURATION = 120; // 無法取得時長時的預設秒數
+const children = new Set<ChildProcess>();
+function track<T extends ChildProcess>(child: T): T {
+  children.add(child);
+  child.once("close", () => children.delete(child));
+  return child;
+}
+export function stopMediaProcesses(): void {
+  for (const child of children) child.kill("SIGKILL");
+}
 
 // 縮圖暫存檔的程序內唯一序號,避免同一輸出路徑的併發產生互相覆蓋暫存檔。
 let thumbTmpSeq = 0;
@@ -23,21 +32,19 @@ interface RunResult {
 
 function run(cmd: string, args: string[], timeoutMs: number): Promise<RunResult> {
   return new Promise((resolve) => {
-    const proc = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const proc = track(spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] }));
     let stdout = "";
     let stderr = "";
     let settled = false;
 
     const timer = setTimeout(() => {
       if (!settled) {
-        settled = true;
         proc.kill("SIGKILL");
-        resolve({ code: null, stdout, stderr });
       }
     }, timeoutMs);
 
-    proc.stdout.on("data", (d) => (stdout += d.toString()));
-    proc.stderr.on("data", (d) => (stderr += d.toString()));
+    proc.stdout.on("data", (d) => (stdout = (stdout + d.toString()).slice(-1_048_576)));
+    proc.stderr.on("data", (d) => (stderr = (stderr + d.toString()).slice(-65_536)));
     proc.on("error", () => {
       if (!settled) {
         settled = true;
@@ -59,7 +66,15 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<RunResult>
 export async function probeDuration(file: string): Promise<number> {
   const r = await run(
     "ffprobe",
-    ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file],
+    [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      file,
+    ],
     30_000,
   );
   if (r.code !== 0) return FALLBACK_DURATION;
@@ -75,7 +90,15 @@ export async function probeDuration(file: string): Promise<number> {
 export async function probeReadable(file: string): Promise<boolean> {
   const r = await run(
     "ffprobe",
-    ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file],
+    [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      file,
+    ],
     30_000,
   );
   if (r.code !== 0) return false;
@@ -98,12 +121,18 @@ export async function extractFrame(
   // 暫存檔名帶 pid + 程序內唯一序號,確保同一輸出路徑的併發產生各寫各的暫存檔。
   const tmp = `${outPath}.tmp.${process.pid}.${thumbTmpSeq++}.jpg`;
   const args = (ss: string): string[] => [
-    "-ss", ss,
-    "-i", videoPath,
-    "-frames:v", "1",
-    "-vf", `scale=${width}:-2`,
-    "-q:v", "3",
-    "-y", tmp,
+    "-ss",
+    ss,
+    "-i",
+    videoPath,
+    "-frames:v",
+    "1",
+    "-vf",
+    `scale=${width}:-2`,
+    "-q:v",
+    "3",
+    "-y",
+    tmp,
   ];
   let r = await run("ffmpeg", args(String(atSec)), 30_000);
   if (r.code !== 0) {
@@ -163,10 +192,11 @@ function spawnFfmpegWithProgress(
       resolve({ ok: false, error: "已取消", aborted: true });
       return;
     }
-    const proc = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
+    const proc = track(spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] }));
     let stderr = "";
     let settled = false;
     let aborted = false;
+    let timedOut = false;
 
     // 降低 ffmpeg 優先權,避免壓垮串流/其他請求(失敗不致命)。
     try {
@@ -183,10 +213,8 @@ function spawnFfmpegWithProgress(
 
     const timer = setTimeout(() => {
       if (!settled) {
-        settled = true;
-        if (signal) signal.removeEventListener("abort", onAbort);
+        timedOut = true;
         proc.kill("SIGKILL");
-        resolve({ ok: false, error: "處理逾時" });
       }
     }, timeoutMs);
     proc.stderr.on("data", (d) => {
@@ -216,6 +244,7 @@ function spawnFfmpegWithProgress(
       clearTimeout(timer);
       if (signal) signal.removeEventListener("abort", onAbort);
       if (aborted) return resolve({ ok: false, error: "已取消", aborted: true });
+      if (timedOut) return resolve({ ok: false, error: "處理逾時" });
       if (code === 0) return resolve({ ok: true });
       const lines = stderr.trim().split("\n").filter(Boolean);
       resolve({ ok: false, error: lines[lines.length - 1] ?? "未知錯誤" });
@@ -233,13 +262,23 @@ export function trimReencode(
   const { threads } = opts;
   const args = [
     "-y",
-    "-ss", String(startSec),
-    "-i", input,
-    "-t", String(durSec),
+    "-ss",
+    String(startSec),
+    "-i",
+    input,
+    "-t",
+    String(durSec),
     ...(threads && threads > 0 ? ["-threads", String(threads)] : []),
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-    "-c:a", "aac",
-    "-movflags", "+faststart",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "20",
+    "-c:a",
+    "aac",
+    "-movflags",
+    "+faststart",
     output,
   ];
   return spawnFfmpegWithProgress(args, durSec, opts);
@@ -283,16 +322,33 @@ export function buildClipArgs(p: ClipArgsSpec): string[] {
     if (p.quality === "fast") throw new Error("pip 版面不支援快速(無損)模式");
     return [
       "-y",
-      "-ss", S, "-i", p.mainInput,
-      "-ss", S, "-i", p.pipInput,
-      "-t", D,
+      "-ss",
+      S,
+      "-i",
+      p.mainInput,
+      "-ss",
+      S,
+      "-i",
+      p.pipInput,
+      "-t",
+      D,
       ...T,
       "-filter_complex",
       "[1:v]scale='trunc(iw/6)*2':-2[p];[0:v][p]overlay=W-w-24:24,format=yuv420p[v]",
-      "-map", "[v]", "-map", "0:a?",
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-      "-c:a", "aac",
-      "-movflags", "+faststart",
+      "-map",
+      "[v]",
+      "-map",
+      "0:a?",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "20",
+      "-c:a",
+      "aac",
+      "-movflags",
+      "+faststart",
       p.output,
     ];
   }
@@ -304,22 +360,39 @@ export function buildClipArgs(p: ClipArgsSpec): string[] {
     const FAST_TAIL_PAD_SEC = 5;
     return [
       "-y",
-      "-ss", S, "-i", p.mainInput,
-      "-t", String(p.durSec + FAST_TAIL_PAD_SEC),
-      "-c", "copy",
-      "-movflags", "+faststart",
+      "-ss",
+      S,
+      "-i",
+      p.mainInput,
+      "-t",
+      String(p.durSec + FAST_TAIL_PAD_SEC),
+      "-c",
+      "copy",
+      "-movflags",
+      "+faststart",
       p.output,
     ];
   }
 
   return [
     "-y",
-    "-ss", S, "-i", p.mainInput,
-    "-t", D,
+    "-ss",
+    S,
+    "-i",
+    p.mainInput,
+    "-t",
+    D,
     ...T,
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-    "-c:a", "aac",
-    "-movflags", "+faststart",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "20",
+    "-c:a",
+    "aac",
+    "-movflags",
+    "+faststart",
     p.output,
   ];
 }

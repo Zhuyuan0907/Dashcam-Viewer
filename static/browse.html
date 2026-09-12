@@ -2,7 +2,6 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title data-i18n-title="title.browse">瀏覽旅程 — 行車記錄</title>
   <link rel="stylesheet" href="/static/style.css">
@@ -149,7 +148,7 @@
       #trip-content::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; }
     }
   </style>
-</head>
+<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css"></head>
 <body>
 
 <header class="hdr">

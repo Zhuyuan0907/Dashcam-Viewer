@@ -47,7 +47,10 @@ function escHtml(s: string): string {
   return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
 }
 function escAttr(s: string): string {
-  return s.replace(/[&"<>]/g, (c) => ({ "&": "&amp;", '"': "&quot;", "<": "&lt;", ">": "&gt;" })[c]!);
+  return s.replace(
+    /[&"<>]/g,
+    (c) => ({ "&": "&amp;", '"': "&quot;", "<": "&lt;", ">": "&gt;" })[c]!,
+  );
 }
 
 /** 在單一開始標籤字串內,設定(或新增)某屬性值。 */
@@ -85,14 +88,17 @@ function injectStrings(
   );
 
   // 任意元素的 data-i18n-attr="attr:key;attr2:key2"
-  html = html.replace(/<[a-zA-Z0-9]+\b[^>]*\sdata-i18n-attr="([^"]+)"[^>]*>/g, (tag, spec: string) => {
-    let out = tag;
-    for (const pair of spec.split(";")) {
-      const [attr, key] = pair.split(":").map((x) => x.trim());
-      if (attr && key && has(key)) out = setTagAttr(out, attr, strings[key]!);
-    }
-    return out.replace(/\sdata-i18n-attr="[^"]*"/, "");
-  });
+  html = html.replace(
+    /<[a-zA-Z0-9]+\b[^>]*\sdata-i18n-attr="([^"]+)"[^>]*>/g,
+    (tag, spec: string) => {
+      let out = tag;
+      for (const pair of spec.split(";")) {
+        const [attr, key] = pair.split(":").map((x) => x.trim());
+        if (attr && key && has(key)) out = setTagAttr(out, attr, strings[key]!);
+      }
+      return out.replace(/\sdata-i18n-attr="[^"]*"/, "");
+    },
+  );
 
   // 元素文字 data-i18n="key"(對應舊 applyI18n 的 textContent 行為:僅在 key 存在時覆寫)
   html = html.replace(
@@ -124,14 +130,16 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
     const strings = settings.readStrings();
     const brandTitle = settings.get("site_title");
     let html = injectStrings(rawHtml(name), strings, brandTitle, "{page} — {brand}");
-    html=html.replace('</head>','<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css"></head>');
 
     // 注入該頁需要的字串給動態 JS(t() 讀 window.__S);只含該頁命名空間,避免外洩。
     // `<` 一律轉成 <:字串值(可由管理員自訂)含 </script> 時才不會提前關閉標籤。
     const subset = pickStrings(strings, PAGE_NS[name] ?? ["common", "nav", "title"]);
     const blob = `<script>window.__S=${JSON.stringify(subset).replace(/</g, "\\u003c")};</script>`;
     if (html.includes('<script src="/static/app.js">')) {
-      html = html.replace('<script src="/static/app.js">', `${blob}\n<script src="/static/app.js">`);
+      html = html.replace(
+        '<script src="/static/app.js">',
+        `${blob}\n<script src="/static/app.js">`,
+      );
     } else {
       html = html.replace("</body>", `${blob}\n</body>`);
     }

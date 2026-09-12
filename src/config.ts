@@ -23,7 +23,7 @@ function envInt(name: string, fallback: number): number {
 export const BASE_DIR = path.resolve(__dirname, "..");
 
 /** 影片與資料庫的根目錄。 */
-export const DATA_DIR = path.resolve(env("DASHCAM_DATA_DIR", path.join(BASE_DIR, 'data')));
+export const DATA_DIR = path.resolve(env("DASHCAM_DATA_DIR", path.join(BASE_DIR, "data")));
 
 export const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 export const TRIPS_DIR = path.join(DATA_DIR, "trips");
@@ -170,6 +170,3 @@ export const TRIM_THREADS = (() => {
  * 佔滿(重編碼很吃資源)。預設 1200s(20 分)。
  */
 export const CLIP_MAX_SEC = envInt("DASHCAM_CLIP_MAX_SEC", 1200);
-
-/** 同時進行的片段匯出(重編碼)工作數上限;超過即回 429。預設 2。 */
-export const CLIP_CONCURRENCY = Math.max(1, envInt("DASHCAM_CLIP_CONCURRENCY", 2));

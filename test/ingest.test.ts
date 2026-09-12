@@ -20,6 +20,16 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
+test('same-name equal-size different bytes are retained as a conflict',async()=>{
+  const root=path.join(UPLOAD_DIR,'conflict-case'),name='FILE260611-194117-000000F.mp4';
+  await fs.mkdir(path.join(root,'F'),{recursive:true});
+  await fs.writeFile(path.join(root,name),'abc');await fs.writeFile(path.join(root,'F',name),'def');
+  const result=await ingestFlatFolder('conflict-case');
+  assert.equal(result.rejected.length,1);
+  assert.equal(await fs.readFile(path.join(root,name),'utf8'),'abc');
+  assert.equal(await fs.readFile(path.join(root,'F',name),'utf8'),'def');
+});
+
 test("把扁平/混合的 SFTP 資料夾分流成 F/R/NMEA + prebuilt", async () => {
   const sid = "sess0001";
   const root = path.join(UPLOAD_DIR, sid);

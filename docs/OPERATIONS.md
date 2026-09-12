@@ -81,6 +81,10 @@ docker compose start dashcam
 
 早期版本預設使用 `/mnt/data/dashcam`；本版預設是專案的 `data/`。
 升級前務必在 `.env` 明確設定**原本的資料目錄**，避免看到空的新站而誤以為資料遺失。
+舊的 `DASHCAM_CLIP_CONCURRENCY` 已由 `DASHCAM_JOB_CONCURRENCY` 與
+`DASHCAM_JOBS_PER_USER` 取代，會一起限制匯入、裁剪及匯出。
+自訂 `strings.yml` 不會被預設字串覆蓋；若舊版檢舉提示推薦快速模式，請同步改成
+「保留原始素材並核對輸出；快速模式可能包含選取範圍外影格」。
 
 瀏覽器重開：續傳需重新選取相同檔案；上傳尚未完整送達時不能關頁。
 服務重啟：已接受但未完成的工作標示「中斷」，不承諾從同一影格續編碼。

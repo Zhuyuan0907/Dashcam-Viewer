@@ -46,7 +46,16 @@ function parseLocalDateTime(s: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(s.trim());
   if (!m) return null;
   // 牆鐘以 UTC 解讀(與 organizer.parseEpoch 一致)
-  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])));
+  const d = new Date(
+    Date.UTC(
+      Number(m[1]),
+      Number(m[2]) - 1,
+      Number(m[3]),
+      Number(m[4]),
+      Number(m[5]),
+      Number(m[6]),
+    ),
+  );
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -302,7 +311,15 @@ async function importOneTrip(
 
   if (dryRun) return { info };
 
-  await fs.mkdir(destDir, { recursive: true });
+  if (
+    await fs
+      .stat(destDir)
+      .then(() => true)
+      .catch(() => false)
+  )
+    return { skipped: `略過既有旅程（不覆寫）：${ref.date}/${ref.name}` };
+  await fs.mkdir(path.dirname(destDir), { recursive: true });
+  await fs.mkdir(destDir);
   if (hasFront && frontPath && !(await fileExists(frontPath))) await transfer(srcFront, frontPath);
   if (hasRear && rearPath && !(await fileExists(rearPath))) await transfer(srcRear, rearPath);
   await fs.writeFile(path.join(destDir, "info.json"), JSON.stringify(info, null, 2));
