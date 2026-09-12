@@ -24,6 +24,7 @@ import { registerOps } from "./routes/ops.js";
 import { registerShares } from "./routes/shares.js";
 import { BackgroundTasks } from './background.js';
 import { registerBackground } from './routes/background.js';
+import { registerResumable } from './uploads/resumable.js';
 
 export interface BuildOptions {
   logger?: boolean;
@@ -83,6 +84,7 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
   registerShares(app, ctx);
   registerBackground(app, ctx);
   registerUploadSessions(app, ctx);
+  registerResumable(app, ctx);
   registerProcess(app, ctx);
   registerTrips(app, ctx);
   registerEdit(app, ctx);

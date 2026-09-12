@@ -123,6 +123,10 @@ export class SftpSessionManager {
   rootDir(id: string): string {
     return path.join(UPLOAD_DIR, id);
   }
+  usesResumable(id:string):boolean {
+    if(!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='upload_manifests'").get())return false;
+    return !!this.db.prepare('SELECT 1 FROM upload_manifests WHERE session_id=?').get(id);
+  }
 
   sftpUsername(s: SftpSession): string {
     return `${s.username}.${s.id}`;

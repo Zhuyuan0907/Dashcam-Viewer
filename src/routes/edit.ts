@@ -32,6 +32,7 @@ import type { DB } from "../db.js";
 import { commitMedia, recoverMediaCommits } from '../media/commit.js';
 import { inspectMedia } from '../media/inspect.js';
 import { readTimeline, continuous, timeAt } from '../media/timeline.js';
+import { reserveForMedia } from '../media/space.js';
 
 /** 前鏡頭.mp4 → 前鏡頭.orig.mp4(同目錄的原始備份路徑)。 */
 function origPath(p: string): string {
@@ -285,6 +286,7 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
       plan.newStart = timeAt(timeline.front.length ? timeline.front : timeline.rear,start) ?? plan.newStart;
       plan.newEnd = plan.newStart + plan.dur;
       const prog: Record<string, number> = {};
+      let release=()=>{};
       const emit = (): void => {
         const total = cams.reduce((a, p) => a + (prog[p] ?? 0), 0);
         const pct = Math.round((total / cams.length) * 100);
@@ -292,6 +294,7 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
       };
       try {
         // 1) 確保每個鏡頭都有 .orig 備份(首次裁剪用 copy,不動播放檔 → 崩潰不 404)。
+        release=await reserveForMedia(cams);
         for (const p of cams) {
           const orig = origPath(p);
           if (!(await exists(orig))) await fsp.copyFile(p, orig);
@@ -343,6 +346,7 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
           message: cancelled ? "已取消裁剪" : err instanceof Error ? err.message : String(err),
         });
       } finally {
+        release();
         jobs.unregisterTrim(row.trip_id);
         channel.close();
       }

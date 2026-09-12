@@ -378,6 +378,8 @@ function buildCard(s) {
     </div>
 
     <!-- 瀏覽器直傳:拖放/選檔 -->
+    <p><label><input type="checkbox" data-auto-process checked> 整批傳完後自動整理</label></p>
+    <p class="dz-hint">支援分塊續傳。離頁前請等候「伺服器已接手」；重開頁面可重新選取相同檔案接續傳輸。</p>
     <div class="drop-zone" data-dz tabindex="0" role="button" aria-label="選擇要上傳的行車記錄器檔案">
       <span>${t('upload.dropTitle')}</span>
       <span class="dz-buttons">
@@ -660,8 +662,13 @@ async function enqueue(card, sid, picked) {
       reason: check && check.reason,
     });
   }
-  renderQueue(card);
-  pump(card, sid);
+  try {
+    const items=q.items.filter(i=>i.status!=='rejected');
+    for(const it of items)it.fingerprint ||= await uploadFingerprint(it.file);
+    const manifest=await apiFetch('/api/upload-sessions/'+sid+'/manifest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({files:items.map(it=>({name:it.rel,size:it.file.size,fingerprint:it.fingerprint})),auto_process:card.querySelector('[data-auto-process]').checked,gap_min:gapBySession.get(sid)??defaultGap()})});
+    for(const it of items){const f=manifest.files.find(f=>f.name===it.rel);if(f?.complete){it.status='done';it.pct=100;}}
+    renderQueue(card);pump(card,sid);
+  } catch(e){for(const it of q.items)if(it.status==='waiting'){it.status='error';it.err=e.message;}renderQueue(card);showToast(e.message,'error');}
 }
 
 function pump(card, sid) {
@@ -676,29 +683,35 @@ function pump(card, sid) {
   renderQueue(card);
 }
 
-function uploadOne(card, sid, it) {
-  const url = '/api/upload-sessions/' + sid + '/files/' +
-    it.rel.split('/').map(encodeURIComponent).join('/');
-  const xhr = new XMLHttpRequest();
-  it.xhr = xhr;
-  xhr.open('PUT', url);
-  xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable) { it.pct = Math.round(e.loaded / e.total * 100); renderQueueItem(card, it); }
-  };
-  xhr.onload = () => {
-    it.xhr = null;
-    if (xhr.status >= 200 && xhr.status < 300) { it.status = 'done'; it.pct = 100; }
-    else {
-      it.status = 'error';
-      try { it.err = JSON.parse(xhr.responseText).detail || ('HTTP ' + xhr.status); }
-      catch { it.err = 'HTTP ' + xhr.status; }
+async function uploadFingerprint(file){
+  const sample=new Uint8Array(await new Blob([file.slice(0,65536),file.slice(Math.max(0,file.size-65536))]).arrayBuffer());
+  let hash=2166136261;for(const b of sample)hash=Math.imul(hash^b,16777619);
+  return [file.size,file.lastModified,hash>>>0].join(':');
+}
+async function uploadOne(card, sid, it) {
+  try {
+    const manifest=await apiFetch('/api/upload-sessions/'+sid+'/manifest');
+    const f=manifest.files.find(f=>f.name===it.rel);
+    if(!f||f.fingerprint!==await uploadFingerprint(it.file))throw Error('請重新選取原本的檔案，或建立新工作階段');
+    let offset=f.received,complete=!!f.complete;
+    while(!complete){
+      const chunk=it.file.slice(offset,offset+manifest.chunk_size);
+      const digest=crypto.subtle ? [...new Uint8Array(await crypto.subtle.digest('SHA-256',await chunk.arrayBuffer()))].map(v=>v.toString(16).padStart(2,'0')).join('') : null;
+      const result=await new Promise((resolve,reject)=>{
+        const xhr=new XMLHttpRequest();it.xhr=xhr;
+        xhr.open('PUT','/api/upload-sessions/'+sid+'/chunks/'+it.rel.split('/').map(encodeURIComponent).join('/')+'?offset='+offset);
+        xhr.setRequestHeader('Content-Type','application/octet-stream');if(digest)xhr.setRequestHeader('X-Chunk-SHA256',digest);
+        xhr.upload.onprogress=e=>{it.pct=Math.min(99,Math.round((offset+e.loaded)/it.file.size*100));renderQueueItem(card,it);};
+        xhr.onload=()=>{let r;try{r=JSON.parse(xhr.responseText);}catch{reject(Error('伺服器回應無法解析'));return;}if(xhr.status>=200&&xhr.status<300)resolve(r);else reject(Error(r.detail||'上傳失敗'));};
+        xhr.onerror=()=>reject(Error('連線中斷，可重新選取檔案續傳'));xhr.onabort=()=>reject(Error('傳輸已中斷'));xhr.send(chunk);
+      });
+      offset=result.received;complete=result.complete;
+      if(result.processing)showToast('伺服器已接手，可以關閉網頁','success');
+      else if(result.detail)showToast(result.detail,'error');
     }
-    settle(card, sid);
-  };
-  xhr.onerror = () => { it.xhr = null; it.status = 'error'; it.err = t('upload.qConnFail'); settle(card, sid); };
-  xhr.onabort = () => { it.xhr = null; if (it.status === 'uploading') it.status = 'error'; settle(card, sid); };
-  xhr.send(it.file);
+    it.status='done';it.pct=100;
+  } catch(e){it.status='error';it.err=e.message;}
+  finally{it.xhr=null;settle(card,sid);}
 }
 
 function settle(card, sid) {

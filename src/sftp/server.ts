@@ -49,6 +49,7 @@ export async function buildSftpServer(sessions: SftpSessionManager): Promise<Sft
       const parsed = parseUsername(ctx.username);
       if (!parsed) return ctx.reject();
       const s = sessions.get(parsed.sid);
+      if (s && sessions.usesResumable(s.id)) return ctx.reject();
       if (!s || s.status !== "active" || s.username !== parsed.account) return ctx.reject();
       if (!timingSafeEqualStr(ctx.password, s.password)) return ctx.reject();
       sid = s.id;

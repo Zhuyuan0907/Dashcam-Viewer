@@ -174,6 +174,9 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
       if (s.status !== "active") {
         return reply.code(400).send({ detail: "此工作階段已在處理中" });
       }
+      if (db.prepare('SELECT 1 FROM upload_files WHERE session_id=? AND complete=0 LIMIT 1').get(s.id)) {
+        return reply.code(409).send({detail:'檔案尚未收齊，請重新選取相同檔案續傳'});
+      }
       if (s.conns > 0) {
         return reply.code(409).send({ detail: "仍有 SFTP 連線在傳輸,請先中斷連線再確認" });
       }
@@ -324,6 +327,7 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
 
       const rel = cleanRelPath(req.params["*"]);
       if (!rel) return reply.code(400).send({ detail: "檔名不合法" });
+      if(db.prepare('SELECT 1 FROM upload_manifests WHERE session_id=?').get(s.id))return reply.code(409).send({detail:'此階段使用續傳模式，請透過分塊端點上傳'});
       const root = sessions.rootDir(s.id);
       let dst: string;
       try {

@@ -39,6 +39,7 @@ import { makeRequireUser, type AppContext } from "../context.js";
 import type { DB } from "../db.js";
 import { inspectMedia } from '../media/inspect.js';
 import { readTimeline, continuous, timeAt } from '../media/timeline.js';
+import { reserveForMedia } from '../media/space.js';
 
 /**
  * 啟動時清理孤兒片段檔(供 server.ts 呼叫):掃描各旅程 <trip_dir>/clips/ 下的檔案,
@@ -506,7 +507,10 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
     return jobId;
 
     async function run(): Promise<void> {
+      let release=()=>{};
       try {
+        controller.signal.throwIfAborted();
+        release=await reserveForMedia([p.mainPath,...(p.pipPath?[p.pipPath]:[])],2);
         await fsp.mkdir(clipsDir, { recursive: true });
         channel.push({ stage: "encode", done: 0, total: 100, message: "匯出中… 0%" });
         const r = await exportClip({
@@ -569,6 +573,7 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
           message: cancelled ? "已取消匯出" : err instanceof Error ? err.message : String(err),
         });
       } finally {
+        release();
         running.delete(jobId);
         jobs.unregisterClip(jobId);
         channel.close();
