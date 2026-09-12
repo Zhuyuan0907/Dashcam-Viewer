@@ -1,0 +1,28 @@
+# Node
+node_modules/
+dist/
+*.log
+npm-debug.log*
+
+# Python (legacy)
+venv/
+__pycache__/
+*.pyc
+
+# Data (never commit videos / DB)
+/mnt/data
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# OS / editor
+.DS_Store
+._*
+.idea/
+.vscode/
+*.swp
+
+# Env
+.env
+.env.local

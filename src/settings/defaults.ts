@@ -31,6 +31,12 @@ export const SETTINGS_DEFAULTS = {
   items_per_page: 12,
   default_camera: "front" as "front" | "rear",
 
+  // ── 檢舉輔助 ──
+  /** 使用者所在縣市的交通違規檢舉系統網址(檢舉對話框的「前往檢舉系統」按鈕)。 */
+  report_url: "",
+  /** 檢舉系統顯示名稱(如「新北市交通違規檢舉系統」);留空則顯示通用文字。 */
+  report_name: "",
+
   // ── 運作參數(fallback 到 config.ts env 常數) ──
   sftp_public_host: SFTP_PUBLIC_HOST,
   sftp_port: SFTP_PORT,

@@ -7,7 +7,13 @@
 import crypto from "node:crypto";
 import ssh2 from "ssh2";
 import type { Connection, AuthContext, Session } from "ssh2";
-import { SFTP_HOST, SFTP_PORT } from "../config.js";
+import {
+  SFTP_HOST,
+  SFTP_PORT,
+  MAX_FILE_BYTES,
+  MAX_SESSION_BYTES,
+  MIN_FREE_DISK_BYTES,
+} from "../config.js";
 import type { SftpSessionManager } from "./sessions.js";
 import { ensureHostKey } from "./hostkey.js";
 import { bindSftpHandlers } from "./handlers.js";
@@ -61,7 +67,12 @@ export async function buildSftpServer(sessions: SftpSessionManager): Promise<Sft
           const sftp = acceptSftp();
           if (sid) {
             const id = sid;
-            bindSftpHandlers(sftp, root!, (delta) => sessions.touch(id, delta));
+            bindSftpHandlers(sftp, root!, (delta) => sessions.touch(id, delta), {
+              maxFileBytes: MAX_FILE_BYTES,
+              maxSessionBytes: MAX_SESSION_BYTES,
+              minFreeBytes: MIN_FREE_DISK_BYTES,
+              sessionBytes: () => sessions.get(id)?.totalBytes ?? 0,
+            });
           }
         });
       });

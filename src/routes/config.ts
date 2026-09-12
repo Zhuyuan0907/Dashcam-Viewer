@@ -98,6 +98,12 @@ const VALIDATORS: Record<string, (v: unknown) => unknown> = {
   units: (v) => enumOf(v, ["km", "mi"] as const),
   items_per_page: (v) => int(v, 1, 200),
   default_camera: (v) => enumOf(v, ["front", "rear"] as const),
+  report_url: (v) => {
+    const s = str(v, 300).trim();
+    if (s !== "" && !/^https?:\/\//.test(s)) throw new ValidationError("網址只能是 http(s)://");
+    return s;
+  },
+  report_name: (v) => str(v, 100),
   sftp_public_host: hostname,
   sftp_port: (v) => int(v, 1, 65535),
   upload_session_idle_sec: (v) => int(v, 60, 86400),

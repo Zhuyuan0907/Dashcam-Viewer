@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="color-scheme" content="light">
+  <link id="share-favicon" rel="icon" href="data:,">
+  <title>分享的行車影片</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    html { color-scheme: light; }
+    body { min-height: 100dvh; }
+    .share-head {
+      min-height: var(--hdr-h);
+      display: flex;
+      align-items: center;
+      background: transparent;
+    }
+    .share-brand {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 18px;
+    }
+    .share-brand-mark {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 0;
+      color: var(--accent);
+      background: transparent;
+      overflow: visible;
+    }
+    .share-brand-mark svg { width: 18px; height: 18px; }
+    .share-brand-mark img { width: 100%; height: 100%; display: block; object-fit: contain; border-radius: inherit; }
+    .share-main {
+      padding-top: 18px;
+      padding-bottom: max(18px, env(safe-area-inset-bottom));
+    }
+    .share-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 20px;
+      margin-bottom: 14px;
+    }
+    .share-eyebrow { color: var(--ink-3); font-size: 12.5px; font-weight: 700; line-height: 1.4; margin-bottom: 2px; }
+    .share-title { font-size: 24px; line-height: 1.15; letter-spacing: 0; }
+    .share-expiry { color: var(--ink-3); font-size: 13px; line-height: 1.45; text-align: right; white-space: nowrap; }
+    /* 與登入旅程頁相同的觀看台；公開頁只拿掉需要帳號權限的操作。 */
+    .share-stage { width: 100%; min-height: 240px; max-height: calc(100dvh - 260px);
+      aspect-ratio: 16 / 9; touch-action: none; }
+    .share-stage .pip { appearance: none; padding: 0; font: inherit; color: inherit; }
+    .share-stage .stage-empty[hidden] { display: none; }
+    .share-stage .ctrl { transition: opacity .25s ease; }
+    .ctrl-group { display: flex; align-items: center; gap: 8px; flex: none; }
+    .share-stage:fullscreen { max-height: none; }
+    .share-stage:fullscreen .stage-video { object-fit: contain; }
+    @media (hover: none) {
+      .share-stage:hover .ctrl { opacity: 0; }
+      .share-stage.show-ctrl .ctrl { opacity: 1; }
+    }
+    .share-facts { margin-top: 10px; flex-wrap: nowrap; }
+    .share-facts .chip { min-width: 0; }
+    .share-state {
+      min-height: 54dvh;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--ink-2);
+    }
+    .share-state h1 { color: var(--ink); font-size: 26px; letter-spacing: 0; margin-bottom: 8px; }
+    .share-state p { max-width: 420px; }
+    .share-toast { position: fixed; left: 50%; bottom: max(22px, env(safe-area-inset-bottom));
+      z-index: 100; transform: translateX(-50%); padding: 10px 16px; border-radius: 999px;
+      background: var(--ink); color: var(--surface); font-size: 13px; font-weight: 700;
+      box-shadow: var(--shadow-md); white-space: nowrap; }
+    .share-toast[hidden] { display: none; }
+    #content[hidden], #state[hidden] { display: none; }
+    @media (max-width: 760px) {
+      .share-main { padding-top: 14px; }
+      .share-title-row { display: block; }
+      .share-title { font-size: 22px; }
+      .share-expiry { text-align: left; margin-top: 4px; white-space: normal; }
+      .share-stage { margin-left: calc(0px - max(var(--gutter), var(--safe-left)));
+        margin-right: calc(0px - max(var(--gutter), var(--safe-right)));
+        width: calc(100% + max(var(--gutter), var(--safe-left)) + max(var(--gutter), var(--safe-right)));
+        border-radius: 0;
+        min-height: 0; max-height: 64dvh; }
+    }
+    @media (max-width: 640px) {
+      .ctrl { flex-wrap: wrap; justify-content: space-between; gap: 7px 8px;
+        padding: 7px 12px calc(8px + env(safe-area-inset-bottom));
+        background: linear-gradient(to top, rgba(0,0,0,.82) 0%, rgba(0,0,0,.3) 64%, transparent 100%); }
+      .ctrl-seek { order: -1; flex: 1 0 100%; gap: 8px; }
+      .ctrl-btn { width: 40px; height: 40px; }
+      .ctrl-btn svg { width: 18px; height: 18px; }
+      .ctrl-vol { display: none; }
+      .pip { width: 38%; min-width: 112px; max-width: 200px; top: 10px; right: 10px; bottom: auto; }
+      .zoom-tag { left: 12px; right: auto; top: 72px; }
+    }
+    @media (max-width: 560px) {
+      .share-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+        border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+      .share-facts .chip { padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line); }
+      .share-facts .chip:first-child { padding-left: 12px; }
+      .share-facts .chip:nth-child(odd) { border-right: 1px solid var(--line); }
+      .share-facts .chip:nth-child(3), .share-facts .chip:nth-child(4) { border-bottom: 0; }
+      .share-facts:has(#device-chip:not([hidden])) .chip:nth-child(3),
+      .share-facts:has(#device-chip:not([hidden])) .chip:nth-child(4) { border-bottom: 1px solid var(--line); }
+      .share-facts #device-chip { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }
+      .share-facts .chip[hidden] { display: none; }
+    }
+    @media (max-width: 760px) and (orientation: portrait) {
+      .share-stage { aspect-ratio: 4 / 3; max-height: 76dvh; }
+      .share-stage .stage-video { object-fit: cover; }
+    }
+    @media (max-width: 360px) {
+      .ctrl, .ctrl-group { gap: 6px; }
+      .ctrl-btn { width: 38px; height: 38px; }
+      .ctrl-btn.wide { padding: 0 9px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="share-head">
+    <div class="share-brand wrap">
+      <span class="share-brand-mark" id="share-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m16 13 5 3V8l-5 3"></path><rect x="3" y="6" width="13" height="12" rx="2"></rect>
+        </svg>
+      </span>
+      <span id="share-brand-name">行車記錄</span>
+    </div>
+  </header>
+
+  <main class="share-main wrap">
+    <section id="state" class="share-state" role="status" aria-live="polite">
+      <div><h1>正在載入影片</h1><p>請稍候</p></div>
+    </section>
+
+    <div id="content" hidden>
+      <div class="share-title-row">
+        <div>
+          <div class="share-eyebrow">分享的行車影片</div>
+          <h1 id="title" class="share-title"></h1>
+        </div>
+        <div id="expiry" class="share-expiry"></div>
+      </div>
+
+      <div class="stage share-stage" id="stage">
+        <div class="zoom-layer" id="zoom-layer"></div>
+        <div class="cam-tag" id="cam-tag">前鏡頭</div>
+        <div class="zoom-tag" id="zoom-tag">100%</div>
+        <div class="stage-empty" id="stage-empty" hidden>無影片</div>
+
+        <button class="pip" id="pip" type="button" hidden aria-label="切換主鏡頭">
+          <span class="pip-tag" id="pip-tag">後鏡頭</span>
+          <span class="pip-swap">⇄ 切換</span>
+        </button>
+
+        <div class="ctrl" id="ctrl">
+          <div class="ctrl-group ctrl-transport">
+            <button class="ctrl-btn" id="btn-play" type="button" title="播放或暫停"
+              data-play-label="播放" data-pause-label="暫停" aria-label="播放">
+              <svg data-playback-icon viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button class="ctrl-btn" id="btn-back" type="button" title="上一格" aria-label="上一格">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 5v14l-9-7zM7 5h2v14H7z"/></svg>
+            </button>
+            <button class="ctrl-btn" id="btn-fwd" type="button" title="下一格" aria-label="下一格">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5l9 7-9 7zM15 5h2v14h-2z"/></svg>
+            </button>
+          </div>
+
+          <div class="ctrl-seek">
+            <span class="ctrl-time" id="t-cur">0:00</span>
+            <div class="ctrl-track" id="track">
+              <div class="ctrl-fill" id="fill"></div>
+              <input type="range" id="seek" min="0" max="100" value="0" step="0.05" aria-label="影片進度">
+            </div>
+            <span class="ctrl-time" id="t-tot">0:00</span>
+          </div>
+
+          <div class="ctrl-group ctrl-tools">
+            <button class="ctrl-btn wide" id="btn-speed" type="button" title="播放速度">1×</button>
+            <button class="ctrl-btn" id="btn-snap" type="button" title="截圖存檔" aria-label="截圖存檔">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </button>
+            <div class="ctrl-vol">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              <input type="range" id="vol" min="0" max="1" step="0.05" value="0.8" aria-label="音量">
+            </div>
+            <button class="ctrl-btn" id="btn-full" type="button" title="全螢幕" aria-label="全螢幕">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="share-facts info-strip">
+        <span class="chip"><b id="time"></b><span>時間</span></span>
+        <span class="chip"><b id="duration"></b><span>行駛</span></span>
+        <span class="chip"><b id="segments"></b><span>片段</span></span>
+        <span class="chip"><b id="gforce"></b><span>最高 G</span></span>
+        <span class="chip" id="device-chip" hidden><b id="device-chip-name"></b><span>記錄器</span></span>
+      </div>
+
+    </div>
+  </main>
+
+  <div id="share-toast" class="share-toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="/static/player-controls.js"></script>
+  <script>
+    (() => {
+      const state = document.getElementById('state');
+      const content = document.getElementById('content');
+      const stage = document.getElementById('stage');
+      const layer = document.getElementById('zoom-layer');
+      const pip = document.getElementById('pip');
+      const seek = document.getElementById('seek');
+      const volume = document.getElementById('vol');
+      const speeds = [1, 1.5, 2];
+      const FPS = 30;
+
+      let loadGeneration = 0;
+      let tripData = null;
+      let videos = {};
+      let cameras = [];
+      let mainCamera = '';
+      let duration = 0;
+      let speedIndex = 0;
+      let controlsTimer = null;
+      let playerActive = false;
+      let dragMoved = false;
+      let lastPointerType = 'mouse';
+      let fitFrame = null;
+      const zoom = { z: 1, x: 0, y: 0 };
+
+      const setText = (id, value) => { document.getElementById(id).textContent = value; };
+      const fmtSecs = value => {
+        const sec = Math.max(0, Number(value) || 0);
+        const hours = Math.floor(sec / 3600);
+        const mins = Math.floor((sec % 3600) / 60);
+        const seconds = Math.floor(sec % 60);
+        return hours
+          ? `${hours}:${String(mins).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+          : `${mins}:${String(seconds).padStart(2, '0')}`;
+      };
+      const fmtTime = epoch => new Date(epoch * 1000).toLocaleTimeString('zh-TW', {
+        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC'
+      });
+      const fmtDuration = value => {
+        const sec = Math.max(0, Number(value) || 0);
+        const hours = Math.floor(sec / 3600);
+        const mins = Math.floor((sec % 3600) / 60);
+        const seconds = Math.floor(sec % 60);
+        if (hours) return `${hours} 小時 ${mins} 分`;
+        if (mins) return `${mins} 分 ${seconds} 秒`;
+        return `${seconds} 秒`;
+      };
+      const cameraName = camera => camera === 'front' ? '前鏡頭' : '後鏡頭';
+      const mainVideo = () => videos[mainCamera] || null;
+      const allVideos = () => cameras.map(camera => videos[camera]).filter(Boolean);
+      const otherVideos = () => cameras.filter(camera => camera !== mainCamera).map(camera => videos[camera]);
+
+      function feedback(message) {
+        const toast = document.getElementById('share-toast');
+        toast.textContent = message;
+        toast.hidden = false;
+        clearTimeout(feedback.timer);
+        feedback.timer = setTimeout(() => { toast.hidden = true; }, 2200);
+      }
+
+      async function loadBrand() {
+        try {
+          const response = await fetch('/api/config', { cache: 'no-cache', referrerPolicy: 'no-referrer' });
+          if (!response.ok) return;
+          const config = await response.json();
+          const brand = config && config.brand ? config.brand : {};
+          const title = String(brand.title || '').trim();
+          if (title) {
+            setText('share-brand-name', title);
+            document.title = `分享的行車影片 · ${title}`;
+          }
+          if (brand.iconDataUrl) {
+            const icon = document.createElement('img');
+            icon.src = brand.iconDataUrl;
+            icon.alt = '';
+            document.getElementById('share-brand-mark').replaceChildren(icon);
+          }
+          if (brand.faviconDataUrl) document.getElementById('share-favicon').href = brand.faviconDataUrl;
+        } catch {}
+      }
+
+      function setPlayIcon(playing) {
+        DashcamPlayerControls.setPlaybackState(document.getElementById('btn-play'), playing);
+      }
+
+      function fitShareStage() {
+        if (window.innerWidth <= 760 || document.fullscreenElement) {
+          stage.style.maxHeight = '';
+          return;
+        }
+        stage.style.maxHeight = '';
+        const stageBox = stage.getBoundingClientRect();
+        const mainBox = document.querySelector('.share-main').getBoundingClientRect();
+        const below = mainBox.bottom - stageBox.bottom;
+        const available = window.innerHeight - stageBox.top - below - 8;
+        stage.style.maxHeight = `${Math.max(240, Math.round(available))}px`;
+      }
+
+      function scheduleShareFit() {
+        cancelAnimationFrame(fitFrame);
+        fitFrame = requestAnimationFrame(() => {
+          fitFrame = null;
+          fitShareStage();
+        });
+      }
+
+      function controlsWake() {
+        stage.classList.add('show-ctrl');
+        clearTimeout(controlsTimer);
+        const video = mainVideo();
+        if (video && !video.paused) {
+          controlsTimer = setTimeout(() => stage.classList.remove('show-ctrl'), 2600);
+        }
+      }
+
+      function controlsPin() {
+        clearTimeout(controlsTimer);
+        stage.classList.add('show-ctrl');
+      }
+
+      function applyZoom() {
+        layer.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`;
+        layer.classList.toggle('zoomed', zoom.z > 1);
+        const tag = document.getElementById('zoom-tag');
+        tag.textContent = Math.round(zoom.z * 100) + '%';
+        tag.classList.toggle('show', zoom.z > 1.01);
+      }
+
+      function resetZoom() {
+        zoom.z = 1;
+        zoom.x = 0;
+        zoom.y = 0;
+        applyZoom();
+      }
+
+      function clampPan() {
+        const width = stage.clientWidth;
+        const height = stage.clientHeight;
+        zoom.x = Math.min(0, Math.max(width - width * zoom.z, zoom.x));
+        zoom.y = Math.min(0, Math.max(height - height * zoom.z, zoom.y));
+      }
+
+      function destroyPlayer() {
+        playerActive = false;
+        clearTimeout(controlsTimer);
+        for (const video of allVideos()) {
+          video.pause();
+          video.removeAttribute('src');
+          video.removeAttribute('poster');
+          video.load();
+          video.remove();
+        }
+        videos = {};
+        cameras = [];
+        mainCamera = '';
+        duration = 0;
+        layer.replaceChildren();
+        pip.querySelectorAll('video').forEach(video => video.remove());
+        pip.hidden = true;
+        seek.value = '0';
+        document.getElementById('fill').style.width = '0%';
+        setText('t-cur', '0:00');
+        setText('t-tot', '0:00');
+        setPlayIcon(false);
+        resetZoom();
+        controlsPin();
+      }
+
+      function showState(headingText, messageText) {
+        destroyPlayer();
+        content.hidden = true;
+        state.hidden = false;
+        state.replaceChildren();
+        const wrap = document.createElement('div');
+        const heading = document.createElement('h1');
+        const message = document.createElement('p');
+        heading.textContent = headingText;
+        message.textContent = messageText;
+        wrap.append(heading, message);
+        state.appendChild(wrap);
+      }
+
+      function showError() {
+        showState('這個分享連結已失效', '請向分享者索取新的連結。');
+      }
+
+      function showLoading() {
+        showState('正在載入影片', '請稍候');
+      }
+
+      function makeVideo(camera) {
+        const video = document.createElement('video');
+        video.id = camera === 'front' ? 'video' : 'video-rear';
+        video.dataset.camera = camera;
+        video.src = `/share/video/${camera}`;
+        video.preload = 'metadata';
+        video.playsInline = true;
+        video.muted = camera !== mainCamera;
+        video.volume = Number(volume.value);
+        video.playbackRate = speeds[speedIndex];
+        if (camera === 'front') video.poster = '/share/thumbnail';
+        video.addEventListener('loadedmetadata', () => {
+          if (camera !== mainCamera) return;
+          duration = Number.isFinite(video.duration) ? video.duration : 0;
+          setText('t-tot', fmtSecs(duration));
+        });
+        video.addEventListener('play', () => {
+          if (camera !== mainCamera) return;
+          setPlayIcon(true);
+          controlsWake();
+        });
+        video.addEventListener('playing', () => {
+          if (camera === mainCamera) return;
+          const primary = mainVideo();
+          if (primary && Math.abs(video.currentTime - primary.currentTime) > 0.15) {
+            video.currentTime = primary.currentTime;
+          }
+        });
+        video.addEventListener('pause', () => {
+          if (camera !== mainCamera) return;
+          setPlayIcon(false);
+          controlsPin();
+        });
+        video.addEventListener('seeked', () => {
+          if (camera === mainCamera) seekControl.settled();
+        });
+        video.addEventListener('ended', () => {
+          if (camera !== mainCamera) return;
+          for (const item of allVideos()) {
+            item.pause();
+            item.currentTime = 0;
+          }
+          setPlayIcon(false);
+          controlsPin();
+        });
+        return video;
+      }
+
+      function layoutCameras() {
+        const primary = mainVideo();
+        if (!primary) return;
+        primary.className = 'stage-video';
+        layer.replaceChildren(primary);
+        setText('cam-tag', cameraName(mainCamera));
+
+        const secondaryCamera = cameras.find(camera => camera !== mainCamera);
+        pip.querySelectorAll('video').forEach(video => video.remove());
+        if (secondaryCamera) {
+          const secondary = videos[secondaryCamera];
+          secondary.className = '';
+          pip.insertBefore(secondary, pip.firstChild);
+          setText('pip-tag', cameraName(secondaryCamera));
+          pip.setAttribute('aria-label', `切換至${cameraName(secondaryCamera)}`);
+          pip.hidden = false;
+        } else {
+          pip.hidden = true;
+        }
+        for (const camera of cameras) {
+          videos[camera].muted = camera !== mainCamera;
+          videos[camera].volume = Number(volume.value);
+        }
+        applyZoom();
+      }
+
+      function initializePlayer(trip) {
+        destroyPlayer();
+        tripData = trip;
+        cameras = [trip.has_front && 'front', trip.has_rear && 'rear'].filter(Boolean);
+        if (!cameras.length) throw new Error('no video');
+        mainCamera = cameras.includes('front') ? 'front' : cameras[0];
+        speedIndex = 0;
+        setText('btn-speed', '1×');
+        for (const camera of cameras) videos[camera] = makeVideo(camera);
+        layoutCameras();
+        playerActive = true;
+        controlsPin();
+      }
+
+      function togglePlayback() {
+        const primary = mainVideo();
+        if (!primary) return;
+        if (primary.paused) {
+          for (const video of allVideos()) video.play().catch(() => {});
+          setPlayIcon(true);
+          controlsWake();
+        } else {
+          for (const video of allVideos()) video.pause();
+          setPlayIcon(false);
+          controlsPin();
+        }
+      }
+
+      function seekAll(seconds) {
+        const total = duration || mainVideo()?.duration;
+        if (!Number.isFinite(total) || total <= 0) return;
+        const next = Math.max(0, Math.min(total, seconds));
+        for (const video of allVideos()) video.currentTime = next;
+      }
+
+      function stepFrame(direction) {
+        const primary = mainVideo();
+        if (!primary) return;
+        for (const video of allVideos()) video.pause();
+        setPlayIcon(false);
+        seekAll(primary.currentTime + direction / FPS);
+      }
+
+      function seekBy(seconds) {
+        const primary = mainVideo();
+        if (primary) seekAll(primary.currentTime + seconds);
+      }
+
+      function swapCameras() {
+        if (cameras.length < 2) return;
+        const previous = mainVideo();
+        const currentTime = previous?.currentTime || 0;
+        const wasPlaying = previous && !previous.paused;
+        mainCamera = cameras.find(camera => camera !== mainCamera);
+        resetZoom();
+        layoutCameras();
+        seekAll(currentTime);
+        if (wasPlaying) {
+          for (const video of allVideos()) video.play().catch(() => {});
+        }
+        const currentDuration = mainVideo()?.duration;
+        if (Number.isFinite(currentDuration) && currentDuration > 0) {
+          duration = currentDuration;
+          setText('t-tot', fmtSecs(duration));
+        }
+        controlsWake();
+      }
+
+      function snapshot() {
+        const video = mainVideo();
+        if (!video || !video.videoWidth) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        canvas.toBlob(blob => {
+          if (!blob) return;
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = `${tripData?.date || 'dashcam'}_${mainCamera}_${fmtSecs(video.currentTime).replaceAll(':', '-')}.png`;
+          anchor.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          feedback('截圖已儲存');
+        }, 'image/png');
+      }
+
+      function toggleFullscreen() {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else stage.requestFullscreen?.();
+      }
+
+      async function load() {
+        const generation = ++loadGeneration;
+        let token = null;
+        if (location.hash) {
+          try { token = decodeURIComponent(location.hash.slice(1)); }
+          catch { token = ''; }
+        }
+        try {
+          if (token !== null) {
+            const access = await fetch('/api/share/access', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token }),
+              credentials: 'same-origin',
+              cache: 'no-store',
+              referrerPolicy: 'no-referrer'
+            });
+            if (generation !== loadGeneration) return;
+            // Fragment 從不送到伺服器；兌換完成後才清除，網路中斷時仍可重新整理重試。
+            history.replaceState(null, '', location.pathname + location.search);
+            if (!access.ok) throw new Error('invalid share');
+          }
+          const response = await fetch('/share/metadata', {
+            credentials: 'same-origin', cache: 'no-store', referrerPolicy: 'no-referrer'
+          });
+          if (generation !== loadGeneration) return;
+          if (!response.ok) throw new Error('invalid share');
+          const trip = await response.json();
+          const start = fmtTime(trip.start_epoch);
+          const end = fmtTime(trip.end_epoch);
+          setText('title', `${trip.date} · ${start}`);
+          setText('time', `${start}–${end}`);
+          setText('duration', fmtDuration(trip.duration_sec));
+          setText('segments', `${trip.segment_count || 0} 段`);
+          setText('gforce', `${Number(trip.peak_gforce || 0).toFixed(2)}g`);
+          if (!trip.has_front && !trip.has_rear) throw new Error('no video');
+
+          if (trip.expires_at) {
+            const expiryText = new Date(trip.expires_at * 1000).toLocaleString('zh-TW', {
+              year: 'numeric', month: 'long', day: 'numeric',
+              hour: '2-digit', minute: '2-digit', hour12: false,
+            });
+            setText('expiry', `可觀看至 ${expiryText}`);
+          } else {
+            setText('expiry', '分享者可隨時停止此連結');
+          }
+
+          if (trip.device) {
+            const name = String(trip.device.model || trip.device.nickname || '').trim();
+            setText('device-chip-name', name);
+            document.getElementById('device-chip').hidden = !name;
+          } else {
+            document.getElementById('device-chip').hidden = true;
+            setText('device-chip-name', '');
+          }
+
+          state.hidden = true;
+          content.hidden = false;
+          initializePlayer(trip);
+          scheduleShareFit();
+        } catch {
+          if (generation === loadGeneration) showError();
+        }
+      }
+
+      function playerTick() {
+        if (playerActive) {
+          const primary = mainVideo();
+          const total = duration || primary?.duration || 0;
+          if (primary && total) {
+            const percentage = primary.currentTime / total * 100;
+            seekControl.render(percentage);
+            if (!seekControl.seeking) setText('t-cur', fmtSecs(primary.currentTime));
+            for (const video of otherVideos()) {
+              if (Math.abs(video.currentTime - primary.currentTime) > 0.25) {
+                video.currentTime = primary.currentTime;
+              }
+            }
+          }
+        }
+        requestAnimationFrame(playerTick);
+      }
+
+      document.getElementById('btn-play').addEventListener('click', togglePlayback);
+      document.getElementById('btn-back').addEventListener('click', () => stepFrame(-1));
+      document.getElementById('btn-fwd').addEventListener('click', () => stepFrame(1));
+      document.getElementById('btn-snap').addEventListener('click', snapshot);
+      document.getElementById('btn-full').addEventListener('click', toggleFullscreen);
+      document.getElementById('btn-speed').addEventListener('click', () => {
+        speedIndex = (speedIndex + 1) % speeds.length;
+        for (const video of allVideos()) video.playbackRate = speeds[speedIndex];
+        setText('btn-speed', speeds[speedIndex] + '×');
+        controlsWake();
+      });
+      pip.addEventListener('click', swapCameras);
+      volume.addEventListener('input', () => {
+        const primary = mainVideo();
+        if (primary) primary.volume = Number(volume.value);
+      });
+      const seekControl = DashcamPlayerControls.bindPreciseSeek({
+        track: document.getElementById('track'), input: seek,
+        fill: document.getElementById('fill'),
+        onSeek(percent) {
+        const total = duration || mainVideo()?.duration || 0;
+          if (!total) return;
+          const seconds = percent / 100 * total;
+          setText('t-cur', fmtSecs(seconds));
+          seekAll(seconds);
+        },
+      });
+
+      stage.addEventListener('pointermove', controlsWake);
+      stage.addEventListener('pointerdown', controlsWake);
+      let tapTimer = null;
+      layer.addEventListener('click', () => {
+        if (dragMoved) return;
+        if (lastPointerType === 'touch' || lastPointerType === 'pen') {
+          if (tapTimer) {
+            clearTimeout(tapTimer);
+            tapTimer = null;
+            return;
+          }
+          tapTimer = setTimeout(() => {
+            tapTimer = null;
+            togglePlayback();
+          }, 280);
+          return;
+        }
+        togglePlayback();
+      });
+
+      stage.addEventListener('wheel', event => {
+        event.preventDefault();
+        const rect = stage.getBoundingClientRect();
+        const centerX = event.clientX - rect.left;
+        const centerY = event.clientY - rect.top;
+        const previous = zoom.z;
+        const next = Math.min(6, Math.max(1, previous * (event.deltaY < 0 ? 1.15 : 1 / 1.15)));
+        if (next === previous) return;
+        zoom.x = centerX - (centerX - zoom.x) * (next / previous);
+        zoom.y = centerY - (centerY - zoom.y) * (next / previous);
+        zoom.z = next;
+        if (zoom.z === 1) {
+          zoom.x = 0;
+          zoom.y = 0;
+        }
+        clampPan();
+        applyZoom();
+      }, { passive: false });
+
+      const pointers = new Map();
+      let dragging = false;
+      let startX = 0;
+      let startY = 0;
+      let originX = 0;
+      let originY = 0;
+      let pinch = null;
+      const midpoint = () => {
+        let x = 0;
+        let y = 0;
+        for (const point of pointers.values()) {
+          x += point.x;
+          y += point.y;
+        }
+        const count = pointers.size || 1;
+        return { x: x / count, y: y / count };
+      };
+      const spread = () => {
+        const points = [...pointers.values()];
+        return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+      };
+
+      stage.addEventListener('pointerdown', event => {
+        lastPointerType = event.pointerType || 'mouse';
+        if (event.target.closest('.ctrl') || event.target.closest('.pip')) return;
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        try { stage.setPointerCapture(event.pointerId); } catch {}
+        if (pointers.size === 2) {
+          dragging = false;
+          dragMoved = true;
+          const rect = stage.getBoundingClientRect();
+          const center = midpoint();
+          pinch = {
+            dist: spread() || 1,
+            x: center.x - rect.left,
+            y: center.y - rect.top,
+            zoom: zoom.z,
+            offsetX: zoom.x,
+            offsetY: zoom.y,
+          };
+        } else if (pointers.size === 1 && zoom.z > 1) {
+          dragging = true;
+          dragMoved = false;
+          startX = event.clientX;
+          startY = event.clientY;
+          originX = zoom.x;
+          originY = zoom.y;
+          layer.classList.add('grabbing');
+        }
+      });
+
+      stage.addEventListener('pointermove', event => {
+        if (!pointers.has(event.pointerId)) return;
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (pinch && pointers.size >= 2) {
+          event.preventDefault();
+          const ratio = Math.min(6, Math.max(1, pinch.zoom * (spread() / pinch.dist))) / pinch.zoom;
+          zoom.z = pinch.zoom * ratio;
+          zoom.x = pinch.x - (pinch.x - pinch.offsetX) * ratio;
+          zoom.y = pinch.y - (pinch.y - pinch.offsetY) * ratio;
+          if (zoom.z <= 1.001) resetZoom();
+          else {
+            clampPan();
+            applyZoom();
+          }
+        } else if (dragging) {
+          const deltaX = event.clientX - startX;
+          const deltaY = event.clientY - startY;
+          if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) dragMoved = true;
+          zoom.x = originX + deltaX;
+          zoom.y = originY + deltaY;
+          clampPan();
+          applyZoom();
+        }
+      });
+
+      const releasePointer = event => {
+        pointers.delete(event.pointerId);
+        if (pointers.size < 2) pinch = null;
+        if (pointers.size === 0) {
+          dragging = false;
+          layer.classList.remove('grabbing');
+          setTimeout(() => { dragMoved = false; }, 60);
+        }
+      };
+      stage.addEventListener('pointerup', releasePointer);
+      stage.addEventListener('pointercancel', releasePointer);
+      stage.addEventListener('dblclick', event => {
+        if (event.target.closest('.ctrl') || event.target.closest('.pip')) return;
+        if (zoom.z > 1) {
+          resetZoom();
+          return;
+        }
+        const rect = stage.getBoundingClientRect();
+        const centerX = event.clientX - rect.left;
+        const centerY = event.clientY - rect.top;
+        zoom.z = 2.5;
+        zoom.x = centerX - centerX * zoom.z;
+        zoom.y = centerY - centerY * zoom.z;
+        clampPan();
+        applyZoom();
+      });
+
+      document.addEventListener('keydown', event => {
+        if (!playerActive) return;
+        const tag = event.target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || event.target.isContentEditable) return;
+        switch (event.key) {
+          case ' ': event.preventDefault(); togglePlayback(); break;
+          case 'ArrowLeft': seekBy(-5); break;
+          case 'ArrowRight': seekBy(5); break;
+          case ',': stepFrame(-1); break;
+          case '.': stepFrame(1); break;
+          case 'f': case 'F': toggleFullscreen(); break;
+          case 's': case 'S': snapshot(); break;
+          case 'm': case 'M': {
+            const primary = mainVideo();
+            if (primary) primary.muted = !primary.muted;
+            break;
+          }
+        }
+      });
+      window.addEventListener('resize', () => {
+        clampPan();
+        applyZoom();
+        scheduleShareFit();
+      });
+      document.addEventListener('fullscreenchange', scheduleShareFit);
+      document.fonts?.ready.then(scheduleShareFit).catch(() => {});
+      window.addEventListener('hashchange', () => {
+        if (!location.hash) return;
+        showLoading();
+        load();
+      });
+      requestAnimationFrame(playerTick);
+      loadBrand();
+      load();
+    })();
+  </script>
+</body>
+</html>

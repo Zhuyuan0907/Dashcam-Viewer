@@ -161,6 +161,7 @@
     <nav class="hdr-nav">
       <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
       <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/clips" href="/clips" data-i18n="nav.clips">片段</a>
       <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
       <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
       <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
@@ -217,6 +218,7 @@ let ownersList = [];       // 可瀏覽的旅程擁有者
 (async () => {
   await configReady;
   const user = await checkAuth();
+  if (!user) return;   // 未登入/強制改密碼:checkAuth 已轉址,別再解參考 null
   renderHeader(user);
   selfId = user.id;
   currentOwner = user.id;
@@ -233,6 +235,10 @@ async function loadOwners() {
     owners.unshift({ id: selfId, username: '', name: '', is_self: true });
   }
   ownersList = owners;
+  const requestedOwner = Number.parseInt(new URLSearchParams(location.search).get('owner') || '', 10);
+  if (Number.isInteger(requestedOwner) && owners.some(o => o.id === requestedOwner)) {
+    currentOwner = requestedOwner;
+  }
   const bar = document.getElementById('owner-bar');
   const sel = document.getElementById('owner-select');
   sel.innerHTML = owners.map(o =>
@@ -248,6 +254,9 @@ function otherOwners() { return ownersList.filter(o => !o.is_self); }
 function onOwnerChange() {
   const sel = document.getElementById('owner-select');
   currentOwner = parseInt(sel.value, 10);
+  const url = new URL(location.href);
+  url.searchParams.set('owner', String(currentOwner));
+  history.replaceState(null, '', url.pathname + url.search);
   location.hash = '';
   loadDates();
 }
@@ -255,6 +264,9 @@ function onOwnerChange() {
 /** 由選單卡點選某位使用者 → 切換並載入。 */
 function selectOwner(id) {
   currentOwner = id;
+  const url = new URL(location.href);
+  url.searchParams.set('owner', String(currentOwner));
+  history.replaceState(null, '', url.pathname + url.search);
   const sel = document.getElementById('owner-select');
   if (sel) sel.value = String(id);
   location.hash = '';
@@ -375,7 +387,10 @@ async function loadDates() {
   }
 }
 
+let selectSeq = 0;   // 請求序號:快速連點日期/切換使用者時,慢的舊回應不可覆蓋新內容
+
 async function selectDate(date) {
+  const seq = ++selectSeq;
   location.hash = date;
   document.querySelectorAll('#date-list .drow').forEach(a =>
     a.classList.toggle('active', a.dataset.date === date));
@@ -389,6 +404,7 @@ async function selectDate(date) {
 
   try {
     const data = await apiFetch(`/api/trips?date=${encodeURIComponent(date)}&owner=${encodeURIComponent(currentOwner)}&limit=100`);
+    if (seq !== selectSeq) return;   // 已有更新的選取,丟棄本回應
     const label = new Date(date).toLocaleDateString(cfgLocale(),
       { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', timeZone: 'UTC' });
     const totalSec = data.trips.reduce((s, tr) => s + tr.duration_sec, 0);
@@ -415,6 +431,7 @@ async function selectDate(date) {
           : `<div class="empty"><div class="empty-icon">${camIcon()}</div><h3>${t('browse.noTripThisDay')}</h3></div>`}
       </div>`;
   } catch (e) {
+    if (seq !== selectSeq) return;
     content.innerHTML = `<div class="empty"><div class="empty-icon">${camIcon()}</div>
       <h3>${t('common.loadFail')}</h3><p>${escapeHtml(e.message)}</p></div>`;
   }

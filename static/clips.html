@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <script>/* 主題:無閃爍套用(須在 CSS 前) */(function(){try{var m=localStorage.getItem('dc.theme')||'auto';if(m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title data-i18n-title="title.clips">匯出的片段 — 行車記錄</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* ── 片段頁 · 沿用首頁設計語言(scoped:只吃全域 token) ───────────────────── */
+    .clips-head { margin-bottom: clamp(18px, 3vh, 30px); }
+    .clips-title { font-family: var(--font-display); font-weight: 800;
+      font-size: clamp(28px, 5vw, 44px); letter-spacing: -.03em; margin: 0; }
+    .clips-sub { margin-top: 10px; font-size: clamp(14px, 1.8vw, 16px); color: var(--ink-2);
+      max-width: 52ch; line-height: 1.6; }
+    .clips-count { margin-top: 12px; font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-3); }
+
+    .clips-grid { display: grid; gap: clamp(16px, 2vw, 24px);
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+    .clip-card { background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+      overflow: hidden; display: flex; flex-direction: column; transition: box-shadow .25s, transform .2s; }
+    .clip-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+
+    /* 影格區:預設佔位(▶),點擊才載入 <video> → 不一次抓全部影片 */
+    .clip-frame { position: relative; aspect-ratio: 16/9; background: #000; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; }
+    .clip-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+    /* 自動縮圖(按需由後端擷取一格);置於最底層,播放鈕/徽章疊在其上 */
+    .clip-thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+    .clip-play { position: relative; z-index: 1; width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,.92);
+      color: var(--accent); display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-md);
+      transition: transform .15s; }
+    .clip-frame:hover .clip-play { transform: scale(1.08); }
+    /* 自訂播放器控制列:沿用全域 .ctrl* 類別,顯隱 scoped 於片段卡(暫停常亮、播放中 hover 才顯示) */
+    .clip-frame .ctrl { opacity: 0; transition: opacity .2s; }
+    .clip-frame:hover .ctrl,
+    .clip-frame.paused .ctrl { opacity: 1; }
+    .clip-frame.playing { cursor: default; }
+    .clip-frame:fullscreen { aspect-ratio: auto; }
+
+    /* ── 窄卡片版面:進度條獨佔第一行,第二行「播放組靠左、工具組靠右」,避免全部擠成一團/換行亂掉 ── */
+    .clip-frame .ctrl { flex-wrap: wrap; justify-content: space-between; align-items: center;
+      gap: 7px 8px; padding: 9px 11px calc(9px + env(safe-area-inset-bottom)); }
+    .clip-frame .ctrl-seek { order: -1; flex: 1 0 100%; gap: 8px; }
+    .clip-frame .ctrl-group { display: flex; align-items: center; gap: 6px; flex: none; }
+    .clip-frame .ctrl-btn { width: 32px; height: 32px; }
+    .clip-frame .ctrl-btn svg { width: 16px; height: 16px; }
+    /* 窄卡片藏音量(空間不足);全螢幕再顯示 */
+    .clip-frame:not(:fullscreen) .ctrl-vol { display: none; }
+
+    /* ── 全螢幕:回到單列(播放組｜進度｜工具組),按鈕加大、留白置中,顯示音量 → 整齊 ── */
+    .clip-frame:fullscreen .ctrl { flex-wrap: nowrap; gap: 12px 16px;
+      padding: 18px 22px calc(18px + env(safe-area-inset-bottom)); }
+    .clip-frame:fullscreen .ctrl-seek { order: 0; flex: 1; }
+    .clip-frame:fullscreen .ctrl-btn { width: 42px; height: 42px; }
+    .clip-frame:fullscreen .ctrl-btn svg { width: 20px; height: 20px; }
+    .clip-frame:fullscreen .ctrl-vol { display: flex; }
+    .clip-badge { position: absolute; top: 10px; left: 10px; z-index: 2; font-size: 11px; font-weight: 600;
+      padding: 3px 9px; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; backdrop-filter: blur(4px);
+      font-family: var(--font-mono); }
+    .clip-reported { position: absolute; top: 10px; right: 10px; z-index: 2; font-size: 11px; font-weight: 700;
+      padding: 3px 9px; border-radius: 999px; background: color-mix(in oklch, var(--ok) 85%, black); color: #fff; }
+
+    /* ── 檢舉對話框 ─────────────────────────────────────────────────────────── */
+    .report-modal .modal-box { max-width: 520px; }
+    .report-note { font-size: 12.5px; color: var(--ink-3); line-height: 1.7; background: var(--surface-2);
+      border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 9px 12px; margin-bottom: 14px; }
+    .report-meta { font-family: var(--font-mono); font-size: 13px; color: var(--ink-1);
+      background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+      padding: 8px 12px; margin-bottom: 4px; }
+    .report-meta-hint { font-size: 11.5px; color: var(--ink-3); margin: 4px 0 14px; line-height: 1.6; }
+    .report-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+    .report-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .report-actions a { text-decoration: none; }
+    .portal-title { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--ink-3); margin: 14px 0 6px; }
+    .portal-links { display: flex; gap: 6px 12px; flex-wrap: wrap; font-size: 12.5px; }
+    .portal-links a { color: var(--accent); text-decoration: none; }
+    .portal-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .report-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+
+    .clip-card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+    .clip-card-title { font-size: 15px; font-weight: 700; color: var(--ink); word-break: break-word; line-height: 1.3; }
+    .clip-card-meta { font-size: 12.5px; color: var(--ink-3); font-family: var(--font-mono); }
+    .clip-card-source { font-size: 12.5px; color: var(--ink-2); text-decoration: none; align-self: flex-start; }
+    .clip-card-source:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+    .clip-card-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 6px; }
+    .clip-card-actions a { text-decoration: none; }
+
+    .clips-loading, .clips-empty { padding: 80px 20px; }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap hdr-inner">
+    <a class="hdr-brand" href="/">
+      <div class="hdr-brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+      <span class="hdr-brand-text">行車記錄</span>
+    </a>
+    <nav class="hdr-nav">
+      <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
+      <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/clips" href="/clips" data-i18n="nav.clips">片段</a>
+      <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
+      <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
+      <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
+    </nav>
+    <div class="hdr-ctrls" id="hdr-ctrls"></div>
+  </div>
+</header>
+
+<div class="page-body">
+  <div class="wrap" style="padding-top:24px;padding-bottom:48px;">
+    <div class="clips-head">
+      <h1 class="clips-title" data-i18n="clips.pageTitle">匯出的片段</h1>
+      <p class="clips-sub" data-i18n="clips.subtitle">從各趟旅程剪出、另存的獨立片段。原旅程不受影響。</p>
+      <div class="clips-count" id="clips-count"></div>
+    </div>
+
+    <div id="clips-body">
+      <div class="loading-row clips-loading"><div class="spinner spinner-lg"></div><span data-i18n="common.loading">載入中…</span></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/app.js"></script>
+<script src="/static/player-controls.js"></script>
+<script>
+(async () => {
+  await configReady;
+  const user = await checkAuth();
+  renderHeader(user);
+  await load();
+  // 深連結:/clips#report-<id>(旅程頁匯出完成的「產生檢舉資料」CTA 會帶著跳過來)
+  const m = /^#report-(\d+)$/.exec(location.hash);
+  if (m) openReport(parseInt(m[1], 10));
+})();
+
+function tFb(key, fb) { const s = t(key); return s === key ? fb : s; }
+function layoutLabel(layout) {
+  return layout === 'pip' ? t('trip.clip.layoutPip')
+       : layout === 'rear' ? t('trip.clip.layoutRear')
+       : t('trip.clip.layoutFront');
+}
+
+let clipsCache = [];   // 供檢舉對話框以 id 查找
+
+async function load() {
+  const body = document.getElementById('clips-body');
+  let clips;
+  try {
+    clips = await apiFetch('/api/clips');
+  } catch (e) {
+    body.innerHTML = `<div class="empty clips-empty"><h3>${tFb('clips.loadFail','載入片段失敗')}</h3><p>${escapeHtml(e.message)}</p></div>`;
+    return;
+  }
+  clipsCache = clips || [];
+  render(clipsCache);
+}
+
+function render(clips) {
+  const body = document.getElementById('clips-body');
+  const countEl = document.getElementById('clips-count');
+  if (!clips.length) {
+    countEl.textContent = '';
+    body.innerHTML = `
+      <div class="empty clips-empty">
+        <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+        <h3>${tFb('clips.empty','還沒有匯出任何片段')}</h3>
+        <p>${tFb('clips.emptyHint','打開任一趟旅程,按「剪輯 → 匯出片段」,結果就會出現在這裡。')}</p>
+        <a href="/browse" class="btn" style="margin-top:18px;" data-i18n="clips.browseCta">${tFb('clips.browseCta','去瀏覽旅程')}</a>
+      </div>`;
+    return;
+  }
+  countEl.textContent = tFb('clips.count', '共 {n} 個片段').replace('{n}', clips.length);
+  body.innerHTML = `<div class="clips-grid">${clips.map(cardHtml).join('')}</div>`;
+}
+
+function cardHtml(c) {
+  const range = fmtSecs(c.start_sec) + '–' + fmtSecs(c.end_sec);
+  const title = c.label ? escapeHtml(c.label) : (layoutLabel(c.layout) + ' ' + range);
+  const source = `${c.date}　${t('trip.tripOrder', { order: c.day_order })}`;
+  const meta = [
+    layoutLabel(c.layout),
+    fmtSecs(c.duration_sec),
+    fmtBytes(c.size_bytes),
+    c.quality === 'fast' ? t('trip.clip.qualityFast') : t('trip.clip.qualityPrecise'),
+  ].join(' · ');
+  const reported = c.reported_at
+    ? `<span class="clip-reported">⚑ ${tFb('clips.reportedBadge','已檢舉')}</span>` : '';
+  return `
+    <article class="clip-card" id="clip-card-${c.id}">
+      <div class="clip-frame" onclick="playClip(${c.id}, this)">
+        <img class="clip-thumb" loading="lazy" alt="" src="/api/trip-clip-thumb/${c.id}" onerror="this.remove()">
+        <span class="clip-badge">${range}</span>
+        ${reported}
+        <div class="clip-play"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>
+      </div>
+      <div class="clip-card-body">
+        <div class="clip-card-title">${title}</div>
+        <div class="clip-card-meta">${meta}</div>
+        <a class="clip-card-source" href="/trip/${encodeURIComponent(c.trip_id)}">${tFb('clips.source','來源')}：${escapeHtml(source)}</a>
+        <div class="clip-card-actions">
+          <a class="btn btn--solid btn--sm" href="/api/trip-clip-download/${c.id}" download>${tFb('clips.download','下載')}</a>
+          <button class="btn btn--ghost btn--sm" type="button" onclick="openReport(${c.id})">⚑ ${tFb('clips.report','檢舉')}</button>
+          <button class="btn btn--ghost btn--sm" type="button" onclick="delClip(${c.id})">${tFb('clips.delete','刪除')}</button>
+        </div>
+      </div>
+    </article>`;
+}
+
+/* ── 檢舉輔助對話框 ───────────────────────────────────────────────────────────
+ * 自動換算違規時間(旅程起始 + 片段入點;顯示與全站一致採 UTC=車機牆鐘),
+ * 車牌/地點/違規事實草稿存在後端(report_json),跨裝置共用;
+ * 「複製檢舉文字」組出可直接貼進各縣市檢舉系統的描述欄位。 */
+
+// 常用檢舉入口(各縣市系統獨立;可於 管理→檢舉輔助 設定自己縣市的網址)
+const REPORT_PORTALS = [
+  ['警政署檢舉專區總覽', 'https://www.npa.gov.tw/ch/app/artwebsite/view?module=artwebsite&id=4432&serno=dfdca94a-8332-466c-b912-7ceef7ab30c0'],
+  ['臺北市', 'https://prsweb.tcpd.gov.tw/'],
+  ['新北市', 'https://tvrs.ntpd.gov.tw/Home/Report'],
+  ['臺中市', 'https://tvrweb.police.taichung.gov.tw/'],
+  ['臺南市', 'https://tr.tnpd.gov.tw/'],
+  ['國道', 'https://wos.hpb.gov.tw/RV'],
+];
+const VIOLATIONS = ['闖紅燈', '紅燈右轉', '不停讓行人', '違規迴轉', '逆向行駛',
+  '跨越雙白線/雙黃線', '未依規定變換車道', '危險駕駛(蛇行)', '惡意逼車',
+  '轉彎未使用方向燈', '行駛路肩', '駕車使用手持行動電話', '未依兩段式左轉'];
+
+/** 片段的絕對時間區間(UTC 顯示 = 車機牆鐘)。 */
+function clipAbsTime(c) {
+  const fmt = (epoch) => {
+    const d = new Date(epoch * 1000);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ` +
+           `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+  };
+  if (c.source_start_epoch == null || c.source_end_epoch == null) return { from:'時間待確認（舊片段未保存拍攝時間）', to:'' };
+  const a = c.source_start_epoch;
+  const b = c.source_end_epoch;
+  return { from: fmt(a), to: fmt(b) };
+}
+
+let reportClipId = null;
+
+function openReport(id) {
+  const c = clipsCache.find(x => x.id === id);
+  if (!c) return;
+  reportClipId = id;
+  const r = c.report || {};
+  const tm = clipAbsTime(c);
+  const cfgReport = (window.__cfg && __cfg.report) || {};
+  let lastLoc = '';
+  try { lastLoc = localStorage.getItem('dc.report.lastLocation') || ''; } catch {}
+
+  const scrim = document.createElement('div');
+  scrim.className = 'modal-scrim report-modal';
+  scrim.id = 'report-scrim';
+  scrim.innerHTML = `
+    <div class="modal-box" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h3>⚑ ${tFb('clips.report.title','產生檢舉資料')}</h3>
+        <button class="modal-close" type="button" onclick="closeReport()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="report-note">${tFb('clips.report.notice','提醒:檢舉採實名制;違規行為終了起 7 日內有效;請在檢舉系統上傳影片「原始檔」,勿貼連結。')}</div>
+
+        <label class="form-label">${tFb('clips.report.timeLabel','違規時間')}</label>
+        <div class="report-meta" id="rp-time">${tm.from} ～ ${tm.to.slice(11)}</div>
+        <div class="report-meta-hint">${tFb('clips.report.timeHint','依旅程起始時間＋片段位置自動換算;送出前請與畫面上的時間戳核對。')}</div>
+
+        <div class="report-grid">
+          <div>
+            <label class="form-label">${tFb('clips.report.plate','車牌號碼')}</label>
+            <input class="form-input" id="rp-plate" maxlength="20" placeholder="${tFb('clips.report.platePh','如 ABC-1234')}">
+          </div>
+          <div>
+            <label class="form-label">${tFb('clips.report.location','違規地點')}</label>
+            <input class="form-input" id="rp-location" maxlength="200" placeholder="${tFb('clips.report.locationPh','路名/路口,如 中山路與民族路口')}">
+          </div>
+          <div>
+            <label class="form-label">${tFb('clips.report.violation','違規事實')}</label>
+            <input class="form-input" id="rp-violation" maxlength="100" list="rp-violation-list" placeholder="${tFb('clips.report.violationPh','選擇或自行輸入,如 闖紅燈')}">
+            <datalist id="rp-violation-list">${VIOLATIONS.map(v => `<option value="${v}">`).join('')}</datalist>
+          </div>
+          <div>
+            <label class="form-label">${tFb('clips.report.desc','補充描述(選填)')}</label>
+            <textarea class="form-input" id="rp-desc" rows="2" maxlength="1000" placeholder="${tFb('clips.report.descPh','行向、車道、經過…')}"></textarea>
+          </div>
+        </div>
+
+        <div class="report-actions">
+          <button class="btn btn--sm" type="button" onclick="copyReportText()">${tFb('clips.report.copyText','複製檢舉文字')}</button>
+          <a class="btn btn--ghost btn--sm" href="/api/trip-clip-download/${c.id}" download>${tFb('clips.report.download','下載片段(檢舉附件)')}</a>
+          <span id="rp-go"></span>
+        </div>
+        <div id="rp-go-hint" class="report-meta-hint" style="display:none;">${tFb('clips.report.goSystemUnset','尚未設定所在縣市的檢舉系統網址(管理員可在「管理 → 檢舉輔助」設定),可先用下方常用入口。')}</div>
+
+        <div class="portal-title">${tFb('clips.report.commonLinks','常用檢舉入口')}</div>
+        <div class="portal-links">${REPORT_PORTALS.map(([n, u]) =>
+          `<a href="${u}" target="_blank" rel="noopener noreferrer">${n}</a>`).join('')}</div>
+
+        <div class="report-foot">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink-1);cursor:pointer;">
+            <input type="checkbox" id="rp-reported" ${c.reported_at ? 'checked' : ''}>
+            ${tFb('clips.report.markReported','標記為已檢舉')}
+          </label>
+          <button class="btn btn--ghost btn--sm" type="button" onclick="closeReport()">${tFb('common.close','關閉')}</button>
+        </div>
+      </div>
+    </div>`;
+  scrim.addEventListener('click', (e) => { if (e.target === scrim) closeReport(); });
+  document.body.appendChild(scrim);
+
+  document.getElementById('rp-plate').value = r.plate || '';
+  document.getElementById('rp-location').value = r.location || lastLoc;
+  document.getElementById('rp-violation').value = r.violation || '';
+  document.getElementById('rp-desc').value = r.desc || '';
+  // 檢舉系統按鈕:管理員設定過網址才顯示,否則給提示
+  const go = document.getElementById('rp-go');
+  if (cfgReport.url) {
+    const a = document.createElement('a');
+    a.className = 'btn btn--ghost btn--sm';
+    a.href = cfgReport.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    a.textContent = (cfgReport.name || tFb('clips.report.goSystem','前往檢舉系統')) + ' ↗';
+    go.appendChild(a);
+  } else {
+    document.getElementById('rp-go-hint').style.display = '';
+  }
+  document.getElementById('rp-reported').addEventListener('change', saveReport);
+  document.getElementById('rp-plate').focus();
+}
+
+function collectReport() {
+  return {
+    plate: document.getElementById('rp-plate').value.trim(),
+    location: document.getElementById('rp-location').value.trim(),
+    violation: document.getElementById('rp-violation').value.trim(),
+    desc: document.getElementById('rp-desc').value.trim(),
+    reported: document.getElementById('rp-reported').checked,
+  };
+}
+
+async function saveReport() {
+  if (reportClipId === null) return;
+  const id = reportClipId;   // 關閉對話框會清空全域 id,先鎖住
+  const body = collectReport();
+  try { localStorage.setItem('dc.report.lastLocation', body.location); } catch {}
+  try {
+    const updated = await apiFetch('/api/trip-clip-report/' + id, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const c = clipsCache.find(x => x.id === id);
+    if (c) { c.report = updated.report; c.reported_at = updated.reported_at; }
+    return true;
+  } catch (e) {
+    showToast(tFb('clips.report.saveFail','儲存失敗') + '：' + e.message, 'error');
+    return false;
+  }
+}
+
+async function copyReportText() {
+  const c = clipsCache.find(x => x.id === reportClipId);
+  if (!c) return;
+  const v = collectReport();
+  const tm = clipAbsTime(c);
+  const text = tFb('clips.report.templateText',
+    '違規時間:{time}\n違規地點:{location}\n車牌號碼:{plate}\n違規事實:{violation}\n{desc}佐證影片:見附件(擷取行車記錄器,含車機時間戳,未經剪接變造)。')
+    .replace('{time}', `${tm.from} ～ ${tm.to.slice(11)}`)
+    .replace('{location}', v.location || '—')
+    .replace('{plate}', v.plate || '—')
+    .replace('{violation}', v.violation || '—')
+    .replace('{desc}', v.desc ? `補充描述:${v.desc}\n` : '');
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+  }
+  showToast(tFb('clips.report.copied','已複製,貼到檢舉系統的「違規事實描述」欄位'), 'success');
+  saveReport();
+}
+
+function closeReport() {
+  // 關閉即存草稿;存完重繪讓「已檢舉」徽章即時反映
+  const done = saveReport();
+  document.getElementById('report-scrim')?.remove();
+  reportClipId = null;
+  if (location.hash.startsWith('#report-')) history.replaceState(null, '', location.pathname);
+  Promise.resolve(done).then(() => render(clipsCache));
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && reportClipId !== null) closeReport(); });
+
+const CLIP_FPS = 30;   // 逐格步進用(與旅程觀看台一致)
+const CLIP_SKIP = 5;   // 快轉/倒轉秒數
+
+/** 點擊影格 → 就地換成自訂播放器(點擊才載入,避免一次抓全部)。
+   沿用旅程觀看台的設計語言與功能:播放/暫停、快轉/倒轉、逐格、進度、音量、全螢幕。
+   窄卡片時進度條獨佔一行、播放組靠左工具組靠右;全螢幕回到單列並顯示音量。 */
+function playClip(id, frame) {
+  if (frame.dataset.loaded) return;
+  frame.dataset.loaded = '1';
+  frame.onclick = null;
+  frame.classList.add('playing');
+  frame.innerHTML = `
+    <video class="stage-video" src="/api/trip-clip-stream/${id}" playsinline preload="metadata" autoplay></video>
+    <div class="ctrl">
+      <div class="ctrl-group ctrl-transport">
+        <button class="ctrl-btn" data-role="rew" title="${tFb('clips.rewind','倒轉 5 秒')}">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 19V5l-9 7zM22 19V5l-9 7z"/></svg>
+        </button>
+        <button class="ctrl-btn" data-role="stepback" title="${tFb('clips.prevFrame','上一格')}">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 5v14l-9-7zM7 5h2v14H7z"/></svg>
+        </button>
+        <button class="ctrl-btn" data-role="play" type="button" title="${tFb('clips.play','播放/暫停')}"
+          data-play-label="播放" data-pause-label="暫停" aria-label="播放">
+          <svg data-playback-icon viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="ctrl-btn" data-role="stepfwd" title="${tFb('clips.nextFrame','下一格')}">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5l9 7-9 7zM15 5h2v14h-2z"/></svg>
+        </button>
+        <button class="ctrl-btn" data-role="fwd" title="${tFb('clips.forward','快轉 5 秒')}">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 5v14l9-7zM2 5v14l9-7z"/></svg>
+        </button>
+      </div>
+      <div class="ctrl-seek">
+        <span class="ctrl-time" data-role="cur">0:00</span>
+        <div class="ctrl-track" data-role="track"><div class="ctrl-fill"></div><input type="range" min="0" max="100" value="0" step="0.05"></div>
+        <span class="ctrl-time" data-role="tot">0:00</span>
+      </div>
+      <div class="ctrl-group ctrl-tools">
+        <div class="ctrl-vol">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          <input type="range" data-role="vol" min="0" max="1" step="0.05" value="0.8">
+        </div>
+        <button class="ctrl-btn" data-role="full" title="${tFb('clips.fullscreen','全螢幕')}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+        </button>
+      </div>
+    </div>`;
+  wireClipPlayer(frame);
+}
+
+/** 掛上一張片段卡的自訂播放器控制(每張卡獨立)。 */
+function wireClipPlayer(frame) {
+  const v = frame.querySelector('video');
+  const q = (r) => frame.querySelector(`[data-role="${r}"]`);
+  const playButton = q('play');
+  const track = q('track');
+  const fill = track.querySelector('.ctrl-fill');
+  const seek = track.querySelector('input');
+  const cur = q('cur'), tot = q('tot');
+  const vol = q('vol');
+  const clamp = (t) => Math.max(0, Math.min(v.duration || t, t));
+
+  v.volume = parseFloat(vol.value);
+  const setIcon = (playing) => DashcamPlayerControls.setPlaybackState(playButton, playing);
+  const toggle = () => { v.paused ? v.play().catch(() => {}) : v.pause(); };
+  const seekBy = (d) => { v.currentTime = clamp(v.currentTime + d); };
+  const step = (dir) => { v.pause(); v.currentTime = clamp(v.currentTime + dir / CLIP_FPS); };
+
+  const seekControl = DashcamPlayerControls.bindPreciseSeek({
+    track, input: seek, fill,
+    onSeek(percent) {
+      const d = v.duration || 0;
+      if (!d) return;
+      const seconds = percent / 100 * d;
+      cur.textContent = fmtSecs(seconds);
+      v.currentTime = seconds;
+    },
+  });
+
+  playButton.addEventListener('click', toggle);
+  q('rew').addEventListener('click', () => seekBy(-CLIP_SKIP));
+  q('fwd').addEventListener('click', () => seekBy(CLIP_SKIP));
+  q('stepback').addEventListener('click', () => step(-1));
+  q('stepfwd').addEventListener('click', () => step(1));
+  v.addEventListener('click', toggle);
+  v.addEventListener('play', () => { setIcon(true); frame.classList.remove('paused'); });
+  v.addEventListener('pause', () => { setIcon(false); frame.classList.add('paused'); });
+  v.addEventListener('ended', () => setIcon(false));
+  v.addEventListener('seeked', () => seekControl.settled());
+  v.addEventListener('loadedmetadata', () => { tot.textContent = fmtSecs(v.duration || 0); });
+  v.addEventListener('timeupdate', () => {
+    const d = v.duration || 0;
+    if (d) seekControl.render(v.currentTime / d * 100);
+    if (!seekControl.seeking) cur.textContent = fmtSecs(v.currentTime);
+  });
+  vol.addEventListener('input', () => { v.volume = parseFloat(vol.value); });
+  q('full').addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else (frame.requestFullscreen || frame.webkitRequestFullscreen)?.call(frame);
+  });
+}
+
+async function delClip(id) {
+  if (!confirm(tFb('clips.deleteConfirm', '確定刪除這個片段?此動作無法復原。'))) return;
+  try {
+    await apiFetch('/api/trip-clip/' + id, { method: 'DELETE' });
+    showToast(tFb('clips.deleted', '已刪除片段'), 'success');
+    // cache 同步移除:closeReport 等處會 render(clipsCache) 整片重繪,不同步會讓已刪卡片復活
+    clipsCache = clipsCache.filter(c => c.id !== id);
+    const card = document.getElementById('clip-card-' + id);
+    if (card) card.remove();
+    // 更新計數 / 若清空則回到空狀態
+    if (!clipsCache.length) { render([]); }
+    else { document.getElementById('clips-count').textContent = tFb('clips.count', '共 {n} 個片段').replace('{n}', clipsCache.length); }
+  } catch (e) {
+    showToast(tFb('clips.deleteFail', '刪除失敗') + '：' + e.message, 'error');
+  }
+}
+</script>
+</body>
+</html>

@@ -8,6 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { TripInfo } from "./repo.js";
 import type { ProgressEvent } from "./organizer.js";
+import type { DashcamDeviceSnapshot } from "../devices/repo.js";
 
 export const DATE_FOLDER_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const TRIP_FOLDER_RE = /^(\d{2})\.(\d{2})-(\d{2})\.(\d{2})\s*\((\d+)分\)$/;
@@ -88,6 +89,12 @@ export interface ImportOptions {
   offset?: number;
   /** 測試注入:覆寫實際的檔案搬移/複製(預設依 mode 走 fs)。 */
   transfer?: (src: string, dst: string) => Promise<void>;
+  /** 新產物使用 owner/device namespace;省略時維持舊 CLI/測試 id。 */
+  idNamespace?: string;
+  ownerId?: number | null;
+  ownerUsername?: string | null;
+  deviceId?: number | null;
+  device?: DashcamDeviceSnapshot | null;
 }
 
 async function defaultTransfer(src: string, dst: string, mode: "move" | "copy"): Promise<void> {
@@ -160,7 +167,14 @@ export async function* importPrebuiltTrips(
         total: offset + total,
       };
       try {
-        const ev = await importOneTrip(ref, dayOrder, opts.tripsDir, opts.dryRun ?? false, transfer);
+        const ev = await importOneTrip(
+          ref,
+          dayOrder,
+          opts.tripsDir,
+          opts.dryRun ?? false,
+          transfer,
+          opts,
+        );
         if (ev.skipped) {
           yield { stage: "merge", message: ev.skipped, done: offset + done, total: offset + total };
           continue;
@@ -196,6 +210,7 @@ async function importOneTrip(
   tripsDir: string,
   dryRun: boolean,
   transfer: (s: string, d: string) => Promise<void>,
+  context: Pick<ImportOptions, "idNamespace" | "ownerId" | "ownerUsername" | "deviceId" | "device">,
 ): Promise<OneTripResult> {
   const m = TRIP_FOLDER_RE.exec(ref.name.trim());
   if (!m) return { skipped: `略過(名稱格式不符):${ref.date}/${ref.name}` };
@@ -204,6 +219,7 @@ async function importOneTrip(
   const sm = Number(m[2]);
   const eh = Number(m[3]);
   const em = Number(m[4]);
+  const folderMin = Number(m[5]); // 資料夾名的「(N分)」—— 最可靠的時長來源
 
   const infoTxt = path.join(ref.dir, "資訊.txt");
   const meta = (await fileExists(infoTxt)) ? parseInfoTxt(await fs.readFile(infoTxt, "utf-8")) : {};
@@ -221,14 +237,25 @@ async function importOneTrip(
 
   let startDt = parseTs("開始時間", sh, sm);
   let endDt = parseTs("結束時間", eh, em);
-  if (endDt.getTime() <= startDt.getTime()) {
-    endDt = new Date(endDt.getTime() + 86_400_000); // 跨午夜 +1 天
+  // 只有「結束『早於』開始」才是真正跨午夜 → +1 天。start===end(如 08.00-08.00 的短趟,
+  // 分鐘級精度下起訖同分)不可 +1 天,否則不足 1 分的旅程會被算成 24 小時。
+  if (endDt.getTime() < startDt.getTime()) {
+    endDt = new Date(endDt.getTime() + 86_400_000);
   }
 
+  // 時長優先序:資訊.txt 的「總時長」→ 資料夾名的「(N分)」→ 起訖時間差。
   let durSec: number;
   if (meta["總時長"]) {
     const md = DUR_RE.exec(meta["總時長"]);
-    durSec = md ? Number(md[1]) * 60 + Number(md[2]) : Math.floor((endDt.getTime() - startDt.getTime()) / 1000);
+    durSec = md
+      ? Number(md[1]) * 60 + Number(md[2])
+      : folderMin > 0
+        ? folderMin * 60
+        : Math.floor((endDt.getTime() - startDt.getTime()) / 1000);
+  } else if (endDt.getTime() === startDt.getTime() && folderMin > 0) {
+    // 起訖同分(分鐘精度不足以反映實際長度)→ 用資料夾名的分鐘數,並據此校正結束時間。
+    durSec = folderMin * 60;
+    endDt = new Date(startDt.getTime() + durSec * 1000);
   } else {
     durSec = Math.floor((endDt.getTime() - startDt.getTime()) / 1000);
   }
@@ -246,7 +273,8 @@ async function importOneTrip(
 
   const startEpoch = Math.floor(startDt.getTime() / 1000);
   const endEpoch = Math.floor(endDt.getTime() / 1000);
-  const tripIdStr = `pre|${ref.date}|${hhmmss(startDt)}`;
+  const baseTripId = `pre|${ref.date}|${hhmmss(startDt)}`;
+  const tripIdStr = context.idNamespace ? `${context.idNamespace}|${baseTripId}` : baseTripId;
   const destDir = path.join(tripsDir, ref.date, ref.name);
   const frontPath = hasFront ? path.join(destDir, "front.mp4") : null;
   const rearPath = hasRear ? path.join(destDir, "rear.mp4") : null;
@@ -266,6 +294,10 @@ async function importOneTrip(
     rear_path: rearPath,
     peak_gforce: peakG,
     gforce_events: gforceEvents,
+    owner_id: context.ownerId ?? null,
+    owner_username: context.ownerUsername ?? null,
+    device_id: context.deviceId ?? null,
+    device: context.device ?? null,
   };
 
   if (dryRun) return { info };

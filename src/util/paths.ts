@@ -6,6 +6,18 @@
  * 這裡提供唯一的安全接合點。
  */
 import path from "node:path";
+import { TRIPS_DIR } from "../config.js";
+
+/**
+ * 確認一個(來自 DB 的)絕對路徑確實落在旅程根目錄 TRIPS_DIR 內。
+ * 用於在服務/刪除 DB 存的絕對路徑前擋掉被植入 `../` 造成的任意檔存取。
+ * 正好等於根目錄本身也視為合法(與既有 video.ts 行為一致)。
+ */
+export function withinTrips(p: string): boolean {
+  const base = path.resolve(TRIPS_DIR);
+  const rp = path.resolve(p);
+  return rp === base || rp.startsWith(base + path.sep);
+}
 
 /**
  * 把 `relative` 安全地接到 `base` 之下。

@@ -14,8 +14,20 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import type { DB } from "../db.js";
 import { UPLOAD_DIR, PREBUILT_DIR } from "../config.js";
+import {
+  parseDeviceSnapshot,
+  serializeDeviceSnapshot,
+  type DashcamDeviceSnapshot,
+} from "../devices/repo.js";
 
 export type SessionStatus = "active" | "processing" | "done";
+
+export class UploadSessionCreationBlockedError extends Error {
+  constructor() {
+    super("帳號正在刪除，無法建立新的上傳工作階段");
+    this.name = "UploadSessionCreationBlockedError";
+  }
+}
 
 export interface SftpSession {
   id: string;
@@ -29,6 +41,9 @@ export interface SftpSession {
   totalBytes: number;
   /** 此工作階段的有效 idle 逾時(秒);0=不限,永不自動回收。 */
   idleSec: number;
+  /** 建立/最後選擇工作階段時的裝置;快照可跨重啟且不受日後改名影響。 */
+  deviceId: number | null;
+  deviceSnapshot: DashcamDeviceSnapshot | null;
   /** 進行中的 SFTP 連線數(僅記憶體,不入庫)。 */
   conns: number;
   /** 近一秒的即時上傳速率(bytes/秒;僅記憶體)。讀取端應在閒置時視為 0。 */
@@ -50,6 +65,8 @@ interface Row {
   file_count: number;
   total_bytes: number;
   idle_sec: number;
+  device_id: number | null;
+  device_snapshot: string | null;
 }
 
 export class SftpSessionManager {
@@ -57,30 +74,49 @@ export class SftpSessionManager {
   private readonly mem = new Map<string, SftpSession>();
   /** 每個 session 的速率取樣視窗(記憶體;毫秒級)。 */
   private readonly speedWin = new Map<string, { winBytes: number; winStartMs: number }>();
+  /** 上次把 live 狀態寫回 DB 的時間(秒);供 touch() 的節流 DB 同步。 */
+  private readonly lastDbSync = new Map<string, number>();
+  /** 刪除帳號的臨界區：阻止舊 login cookie 在檔案清理 await 期間建立新憑證。 */
+  private readonly revokingUsers = new Set<number>();
 
   constructor(db: DB) {
     this.db = db;
     this.rehydrate();
   }
 
-  /** 啟動時把 DB 內既有 session 載回記憶體(conns 歸零)。 */
+  /**
+   * 啟動時把 DB 內既有 session 載回記憶體(conns 歸零)。
+   * 崩潰/重啟恢復:任何卡在 "processing" 的工作階段,其背景處理已隨程序終止而中斷,
+   * 這裡把它復位成 "active" 並重置閒置時鐘 —— 讓使用者能在上傳頁看到並重新確認處理,
+   * 而不是永遠卡在 processing、且原始素材在寬限期後被靜默刪除。
+   */
   private rehydrate(): void {
     const rows = this.db.prepare("SELECT * FROM sftp_sessions").all() as Row[];
+    const t = now();
     for (const r of rows) {
+      const interrupted = r.status === "processing";
+      const status: SessionStatus = interrupted ? "active" : r.status;
       this.mem.set(r.id, {
         id: r.id,
         userId: r.user_id,
         username: r.username,
         password: r.password,
-        status: r.status,
+        status,
         createdAt: r.created_at,
-        lastActivity: r.last_activity,
+        lastActivity: interrupted ? t : r.last_activity,
         fileCount: r.file_count,
         totalBytes: r.total_bytes,
         idleSec: r.idle_sec,
+        deviceId: r.device_id,
+        deviceSnapshot: parseDeviceSnapshot(r.device_snapshot),
         conns: 0,
         speedBps: 0,
       });
+      if (interrupted) {
+        this.db
+          .prepare("UPDATE sftp_sessions SET status='active', last_activity=? WHERE id=?")
+          .run(t, r.id);
+      }
     }
   }
 
@@ -96,7 +132,12 @@ export class SftpSessionManager {
    * 建立新 session:產生 id + 一次性密碼,寫 DB、建資料夾。
    * @param idleSec 此工作階段的有效 idle 逾時(秒);0=不限(永不自動回收)。由呼叫端依使用者算好。
    */
-  create(user: { id: number; username: string }, idleSec: number): SftpSession {
+  create(
+    user: { id: number; username: string },
+    idleSec: number,
+    device: { id: number; snapshot: DashcamDeviceSnapshot } | null = null,
+  ): SftpSession {
+    if (this.revokingUsers.has(user.id)) throw new UploadSessionCreationBlockedError();
     let id = "";
     do {
       id = crypto.randomBytes(4).toString("hex"); // 8 hex
@@ -108,10 +149,14 @@ export class SftpSessionManager {
     this.db
       .prepare(
         `INSERT INTO sftp_sessions
-           (id, user_id, username, password, status, created_at, last_activity, file_count, total_bytes, idle_sec)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+           (id, user_id, username, password, status, created_at, last_activity, file_count, total_bytes,
+            idle_sec, device_id, device_snapshot)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
-      .run(id, user.id, user.username, password, "active", t, t, 0, 0, idleSec);
+      .run(
+        id, user.id, user.username, password, "active", t, t, 0, 0, idleSec,
+        device?.id ?? null, serializeDeviceSnapshot(device?.snapshot ?? null),
+      );
 
     const s: SftpSession = {
       id,
@@ -124,6 +169,8 @@ export class SftpSessionManager {
       fileCount: 0,
       totalBytes: 0,
       idleSec,
+      deviceId: device?.id ?? null,
+      deviceSnapshot: device?.snapshot ?? null,
       conns: 0,
       speedBps: 0,
     };
@@ -145,6 +192,37 @@ export class SftpSessionManager {
     return [...this.mem.values()].sort((a, b) => b.createdAt - a.createdAt);
   }
 
+  /**
+   * 刪除帳號前撤銷其所有一次性 SFTP/HTTP 上傳憑證。傳輸或處理中的工作不可硬刪，
+   * 呼叫端應回 409，待工作結束／取消後再刪帳號。
+   */
+  async beginRevokeForUser(userId: number): Promise<{ ok: boolean; removed: number }> {
+    if (this.revokingUsers.has(userId)) return { ok: false, removed: 0 };
+    // 在任何 await 前先關閉 create()；呼叫端刪除 users 列後必須以 finishRevokeForUser 解鎖。
+    this.revokingUsers.add(userId);
+    const owned = [...this.mem.values()].filter((s) => s.userId === userId);
+    if (owned.some((s) => s.conns > 0 || s.status === "processing")) {
+      this.revokingUsers.delete(userId);
+      return { ok: false, removed: 0 };
+    }
+    try {
+      // remove() 在第一個 await 前就先刪記憶體與 DB；revokingUsers 則封住其後的檔案清理空窗。
+      await Promise.all(owned.map((s) => this.remove(s.id)));
+      return { ok: true, removed: owned.length };
+    } catch (error) {
+      this.revokingUsers.delete(userId);
+      throw error;
+    }
+  }
+
+  finishRevokeForUser(userId: number): void {
+    this.revokingUsers.delete(userId);
+  }
+
+  isUserRevoking(userId: number): boolean {
+    return this.revokingUsers.has(userId);
+  }
+
   connOpened(id: string): void {
     const s = this.mem.get(id);
     if (!s) return;
@@ -160,14 +238,22 @@ export class SftpSessionManager {
     this.sync(s);
   }
 
-  /** 上傳活動:累加 bytes / 檔數並 bump 活動時間(不每次都寫 DB),同時更新即時速率。 */
+  /** 上傳活動:累加 bytes / 檔數並 bump 活動時間(不每次都寫 DB),同時更新即時速率。
+   *  delta 可為負(HTTP 直傳的覆寫/刪除/失敗回退),計數下限鉗在 0。 */
   touch(id: string, delta: { bytes?: number; files?: number }): void {
     const s = this.mem.get(id);
     if (!s) return;
     const bytes = delta.bytes ?? 0;
-    s.totalBytes += bytes;
-    s.fileCount += delta.files ?? 0;
+    s.totalBytes = Math.max(0, s.totalBytes + bytes);
+    s.fileCount = Math.max(0, s.fileCount + (delta.files ?? 0));
     s.lastActivity = now();
+    // 節流寫回 DB(~30 秒一次):長時間上傳若中途重啟,rehydrate 讀到的 last_activity
+    // 才不會停在上傳開始前 → 被 sweep 當成閒置過期、連同素材整夾刪除。
+    const lastSync = this.lastDbSync.get(id) ?? 0;
+    if (s.lastActivity - lastSync >= 30) {
+      this.lastDbSync.set(id, s.lastActivity);
+      this.sync(s);
+    }
     // 速率:以 ~1 秒滑動視窗平均。累加此視窗 bytes,滿 1 秒即算出 bytes/秒並重置。
     if (bytes > 0) {
       const nowMs = Date.now();
@@ -197,6 +283,26 @@ export class SftpSessionManager {
     this.sync(s);
   }
 
+  /** active 且未傳輸時由 route 驗證後更新裝置選擇。 */
+  setDevice(
+    id: string,
+    device: { id: number; snapshot: DashcamDeviceSnapshot } | null,
+  ): void {
+    const s = this.mem.get(id);
+    if (!s) return;
+    s.deviceId = device?.id ?? null;
+    s.deviceSnapshot = device?.snapshot ?? null;
+    s.lastActivity = now();
+    this.db
+      .prepare("UPDATE sftp_sessions SET device_id = ?, device_snapshot = ?, last_activity = ? WHERE id = ?")
+      .run(
+        s.deviceId,
+        serializeDeviceSnapshot(s.deviceSnapshot),
+        s.lastActivity,
+        s.id,
+      );
+  }
+
   /** 把記憶體 live 狀態寫回 DB。 */
   private sync(s: SftpSession): void {
     this.db
@@ -208,15 +314,18 @@ export class SftpSessionManager {
 
   /**
    * 找出可回收的 session id(conns===0 且閒置超門檻)。逐 session 用自身 idleSec。
-   *   - idleSec===0(不限,如 admin 預設):active 永不回收;但 processing/done 殘留仍給寬限後清。
-   *   - active:超過 idleSec 即回收。
-   *   - processing/done(可能是中斷/崩潰殘留):給較長寬限(≥1 小時)再回收,避免誤砍進行中的合併。
+   *   - active:超過 idleSec 即回收(idleSec===0 不限則永不回收)。
+   *   - processing:**永不自動回收** —— 正在合併的工作階段可能跑很久(大量片段),
+   *     若被 sweep 刪掉來源夾,進行中的 ffmpeg 會失敗且原始素材永久遺失。正常結束時由
+   *     runSession 的 finally 自行 remove;崩潰殘留則已在啟動時復位為 active(見 rehydrate)。
+   *   - done 等其他殘留:給較長寬限(≥1 小時)再回收。
    */
   findExpired(): string[] {
     const t = now();
     const out: string[] = [];
     for (const s of this.mem.values()) {
       if (s.conns > 0) continue;
+      if (s.status === "processing") continue; // 進行中的處理絕不自動回收
       const idle = t - s.lastActivity;
       if (s.status === "active") {
         if (s.idleSec > 0 && idle > s.idleSec) out.push(s.id);
@@ -259,6 +368,7 @@ export class SftpSessionManager {
   async remove(id: string): Promise<void> {
     this.mem.delete(id);
     this.speedWin.delete(id);
+    this.lastDbSync.delete(id);
     this.db.prepare("DELETE FROM sftp_sessions WHERE id = ?").run(id);
     await fsp.rm(this.rootDir(id), { recursive: true, force: true }).catch(() => {});
     await fsp.rm(path.join(PREBUILT_DIR, id), { recursive: true, force: true }).catch(() => {});

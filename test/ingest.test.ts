@@ -40,6 +40,7 @@ test("把扁平/混合的 SFTP 資料夾分流成 F/R/NMEA + prebuilt", async ()
 
   assert.equal(r.accepted, 5);
   assert.equal(r.uploadType, "mixed");
+  assert.deepEqual(r.rawProfiles, ["mivue-mp20"]);
   assert.deepEqual(r.rejected, ["readme.txt"]);
 
   // raw 落點

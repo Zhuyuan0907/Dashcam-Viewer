@@ -2,7 +2,7 @@
  * 使用者管理 API(僅限管理員)。
  */
 import type { FastifyInstance } from "fastify";
-import { hashPassword } from "../auth.js";
+import { hashPasswordAsync } from "../auth.js";
 import { effectiveGravatar } from "../gravatar.js";
 import { makeRequireAdmin, makeRequireOwner, type AppContext } from "../context.js";
 
@@ -11,6 +11,7 @@ interface UserBody {
   password?: string;
   role?: string;
   email?: string;
+  must_change_password?: boolean;
 }
 
 export function registerUsers(app: FastifyInstance, ctx: AppContext): void {
@@ -51,19 +52,30 @@ export function registerUsers(app: FastifyInstance, ctx: AppContext): void {
     const password = body.password ?? "";
     const role = body.role ?? "viewer";
     const email = (body.email ?? "").trim().toLowerCase();
+    // 勾選「首次登入須改密碼」→ 密碼可留空(建成無密碼帳號,首次以空白密碼登入後強制改)。
+    const requireChange = !!body.must_change_password;
 
     if (username.length < 2) return reply.code(400).send({ detail: "帳號至少 2 個字元" });
-    if (password.length < 6) return reply.code(400).send({ detail: "密碼至少 6 個字元" });
+    if (requireChange) {
+      // 留空 = 無密碼;有填則仍須至少 6 個字元。
+      if (password !== "" && password.length < 6) {
+        return reply.code(400).send({ detail: "密碼至少 6 個字元(或留空,首次登入時再設定)" });
+      }
+    } else if (password.length < 6) {
+      return reply.code(400).send({ detail: "密碼至少 6 個字元" });
+    }
     if (role !== "admin" && role !== "viewer") return reply.code(400).send({ detail: "角色須為 admin 或 viewer" });
     // 只有總管理員能授予管理員角色。
     if (role === "admin" && !req.user!.is_owner) {
       return reply.code(403).send({ detail: "只有總管理員能新增管理員" });
     }
 
+    // 無密碼帳號存空字串 hash;verifyPassword 對空字串一律 false,登入端另行放行空白密碼。
+    const passwordHash = password === "" ? "" : await hashPasswordAsync(password);
     try {
       db.prepare(
-        "INSERT INTO users (username, password_hash, role, email, created_at) VALUES (?,?,?,?,?)",
-      ).run(username, hashPassword(password), role, email, Math.floor(Date.now() / 1000));
+        "INSERT INTO users (username, password_hash, role, email, created_at, must_change_password) VALUES (?,?,?,?,?,?)",
+      ).run(username, passwordHash, role, email, Math.floor(Date.now() / 1000), requireChange ? 1 : 0);
     } catch (e) {
       if ((e as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
         return reply.code(400).send({ detail: "帳號已存在" });
@@ -87,8 +99,28 @@ export function registerUsers(app: FastifyInstance, ctx: AppContext): void {
       if (target.role === "admin" && !req.user!.is_owner) {
         return reply.code(403).send({ detail: "只有總管理員能刪除管理員" });
       }
-      db.prepare("DELETE FROM users WHERE id = ?").run(userId);
-      return { status: "ok" };
+      const tripCount = (
+        db.prepare("SELECT COUNT(*) AS count FROM trips WHERE owner_id = ?").get(userId) as { count: number }
+      ).count;
+      if (tripCount > 0) {
+        return reply.code(409).send({
+          detail: `此帳號仍有 ${tripCount} 趟旅程，請先處理旅程歸屬後再刪除`,
+          trip_count: tripCount,
+        });
+      }
+      if (ctx.jobs.hasOwnerProcess(userId)) {
+        return reply.code(409).send({ detail: "此帳號仍有事件素材正在重試，請等待重試完成後再刪除" });
+      }
+      const revoked = await ctx.sessions.beginRevokeForUser(userId);
+      if (!revoked.ok) {
+        return reply.code(409).send({ detail: "此帳號仍有傳輸或影片處理工作，請先完成或取消後再刪除" });
+      }
+      try {
+        db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+        return { status: "ok", revoked_upload_sessions: revoked.removed };
+      } finally {
+        ctx.sessions.finishRevokeForUser(userId);
+      }
     },
   );
 
@@ -115,6 +147,9 @@ export function registerUsers(app: FastifyInstance, ctx: AppContext): void {
     "/api/users/:id/upload-idle",
     { preHandler: requireAdmin },
     async (req, reply) => {
+      if (!getTarget(Number.parseInt(req.params.id, 10))) {
+        return reply.code(404).send({ detail: "使用者不存在" });
+      }
       const raw = req.body?.seconds;
       let value: number | null;
       if (raw === null || raw === undefined) {
@@ -141,12 +176,27 @@ export function registerUsers(app: FastifyInstance, ctx: AppContext): void {
     "/api/users/:id/password",
     { preHandler: requireAdmin },
     async (req, reply) => {
+      const userId = Number.parseInt(req.params.id, 10);
+      const target = getTarget(userId);
+      if (!target) return reply.code(404).send({ detail: "使用者不存在" });
+      // 與刪除 / 改角色相同的保護:非本人不得重設總管理員密碼(否則可竄改後登入接管、提權);
+      // 非總管理員不得重設其他管理員密碼(避免橫向奪取 admin 帳號)。
+      if (target.is_owner && userId !== req.user!.id) {
+        return reply.code(403).send({ detail: "無法重設總管理員的密碼" });
+      }
+      if (target.role === "admin" && !target.is_owner && !req.user!.is_owner && userId !== req.user!.id) {
+        return reply.code(403).send({ detail: "只有總管理員能重設其他管理員的密碼" });
+      }
       const password = req.body?.password ?? "";
       if (password.length < 6) return reply.code(400).send({ detail: "密碼至少 6 個字元" });
       db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(
-        hashPassword(password),
-        Number.parseInt(req.params.id, 10),
+        await hashPasswordAsync(password),
+        userId,
       );
+      // 重設密碼的意義通常是「奪回帳號控制權」:撤銷該帳號所有既有登入 session,
+      // 否則舊裝置(或已入侵者)的 session 會繼續有效。自己重設自己時保留目前這個 session。
+      const cur = req.cookies?.session_token ?? "";
+      db.prepare("DELETE FROM sessions WHERE user_id = ? AND token != ?").run(userId, cur);
       return { status: "ok" };
     },
   );

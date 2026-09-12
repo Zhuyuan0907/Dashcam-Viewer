@@ -8,8 +8,9 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { STATIC_DIR } from "../config.js";
+import { lookupSession } from "../auth.js";
 import type { AppContext } from "../context.js";
 
 /** 每頁要注入給動態 JS 的字串命名空間(key 前綴)。靜態文字替換用全量,不受此限。 */
@@ -19,20 +20,26 @@ const PAGE_NS: Record<string, string[]> = {
   "trip.html": ["common", "nav", "title", "trip"],
   "login.html": ["common", "nav", "title", "auth"],
   "setup.html": ["common", "nav", "title", "auth"],
+  "change-password.html": ["common", "nav", "title", "auth"],
   "upload.html": ["common", "nav", "title", "upload"],
-  "admin.html": ["common", "nav", "title", "admin"],
-  "ops.html": ["common", "nav", "title", "ops"],
+  "clips.html": ["common", "nav", "title", "clips", "trip"],
+  // admin 頁的動態 JS 有用到 upload.*(即時上傳狀況)、trip.*(fmtElapsed 時間單位)、
+  // auth.*(建立帳號送出鈕);ops 頁重試完成 fallback 用 upload.done —— 缺了會顯示原始 key。
+  "admin.html": ["common", "nav", "title", "admin", "upload", "trip", "auth"],
+  "ops.html": ["common", "nav", "title", "ops", "upload"],
   "account.html": ["common", "nav", "title", "account"],
 };
 
-const rawCache = new Map<string, string>();
+// HTML 快取以 mtime 失效:改 static/*.html 立即生效(不必重啟),同時避免每請求重讀磁碟。
+const rawCache = new Map<string, { html: string; mtimeMs: number }>();
 function rawHtml(name: string): string {
-  let s = rawCache.get(name);
-  if (s === undefined) {
-    s = fs.readFileSync(path.join(STATIC_DIR, name), "utf8");
-    rawCache.set(name, s);
-  }
-  return s;
+  const file = path.join(STATIC_DIR, name);
+  const { mtimeMs } = fs.statSync(file);
+  const hit = rawCache.get(name);
+  if (hit && hit.mtimeMs === mtimeMs) return hit.html;
+  const html = fs.readFileSync(file, "utf8");
+  rawCache.set(name, { html, mtimeMs });
+  return html;
 }
 
 function escHtml(s: string): string {
@@ -118,8 +125,9 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
     let html = injectStrings(rawHtml(name), strings, brandTitle, "{page} — {brand}");
 
     // 注入該頁需要的字串給動態 JS(t() 讀 window.__S);只含該頁命名空間,避免外洩。
+    // `<` 一律轉成 <:字串值(可由管理員自訂)含 </script> 時才不會提前關閉標籤。
     const subset = pickStrings(strings, PAGE_NS[name] ?? ["common", "nav", "title"]);
-    const blob = `<script>window.__S=${JSON.stringify(subset)};</script>`;
+    const blob = `<script>window.__S=${JSON.stringify(subset).replace(/</g, "\\u003c")};</script>`;
     if (html.includes('<script src="/static/app.js">')) {
       html = html.replace('<script src="/static/app.js">', `${blob}\n<script src="/static/app.js">`);
     } else {
@@ -131,13 +139,24 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
 
   const page = (name: string) => (_req: unknown, reply: FastifyReply) => renderPage(name, reply);
 
+  // 管理員頁:出頁前先驗 session(非管理員導回首頁/登入頁)。頁內注入了 admin/ops
+  // 字串命名空間與後台介面結構,伺服器端就該把關,而非只靠前端 checkAuth 導走。
+  const adminPage = (name: string) => (req: FastifyRequest, reply: FastifyReply) => {
+    const user = lookupSession(ctx.db, req.cookies?.session_token);
+    if (!user) return reply.redirect("/login", 302);
+    if (user.role !== "admin") return reply.redirect("/", 302);
+    return renderPage(name, reply);
+  };
+
   app.get("/login", page("login.html"));
+  app.get("/change-password", page("change-password.html"));
   app.get("/", page("index.html"));
   app.get("/browse", page("browse.html"));
   app.get("/trip/*", page("trip.html"));
   app.get("/upload", page("upload.html"));
-  app.get("/admin", page("admin.html"));
-  app.get("/ops", page("ops.html"));
+  app.get("/clips", page("clips.html"));
+  app.get("/admin", adminPage("admin.html"));
+  app.get("/ops", adminPage("ops.html"));
   app.get("/account", page("account.html"));
 
   app.get("/setup", (_req, reply) => {

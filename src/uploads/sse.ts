@@ -21,6 +21,8 @@ class Channel {
   private readonly subscribers = new Set<Subscriber>();
   closed = false;
   lastActivity = Date.now();
+  /** 建立此 channel 的擁有者 user id(供進度 SSE 授權;null=不限)。 */
+  ownerId: number | null = null;
 
   push(event: SSEEvent): void {
     this.lastActivity = Date.now();
@@ -55,8 +57,9 @@ class Channel {
 export class SSERegistry {
   private readonly channels = new Map<string, Channel>();
 
-  create(sessionId: string): Channel {
+  create(sessionId: string, ownerId: number | null = null): Channel {
     const ch = new Channel();
+    ch.ownerId = ownerId;
     this.channels.set(sessionId, ch);
     return ch;
   }
@@ -67,6 +70,15 @@ export class SSERegistry {
 
   has(sessionId: string): boolean {
     return this.channels.has(sessionId);
+  }
+
+  /**
+   * 是否有「進行中(尚未關閉)」的 channel。與 has() 不同:已完成的 channel 會保留
+   * 約 5 分鐘供重連,此期間 has() 仍為真,但工作其實已結束。判斷「是否正在跑」應用此。
+   */
+  isActive(sessionId: string): boolean {
+    const ch = this.channels.get(sessionId);
+    return !!ch && !ch.closed;
   }
 
   remove(sessionId: string): void {

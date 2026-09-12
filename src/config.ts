@@ -22,20 +22,16 @@ function envInt(name: string, fallback: number): number {
 /** 專案根目錄(dist/ 或 src/ 的上一層)。 */
 export const BASE_DIR = path.resolve(__dirname, "..");
 
-/**
- * 影片與資料庫的根目錄。
- * 預設為專案下的 ./data(相對於 BASE_DIR,不綁定任何掛載碟);
- * 正式部署時用環境變數 DASHCAM_DATA_DIR 指向實際資料碟,例如 /mnt/data/dashcam。
- */
-export const DATA_DIR = (() => {
-  const v = process.env.DASHCAM_DATA_DIR;
-  if (v !== undefined && v !== "") return path.resolve(v);
-  return path.join(BASE_DIR, "data");
-})();
+/** 影片與資料庫的根目錄。 */
+export const DATA_DIR = path.resolve(env("DASHCAM_DATA_DIR", "/mnt/data/dashcam"));
 
 export const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 export const TRIPS_DIR = path.join(DATA_DIR, "trips");
 export const DB_PATH = path.join(DATA_DIR, "dashcam.db");
+/** 分享 token 的 AES-256-GCM 金鑰；刻意與 SQLite 備份分開保存。 */
+export const SHARE_TOKEN_KEY_PATH = path.resolve(
+  env("DASHCAM_SHARE_TOKEN_KEY_PATH", path.join(DATA_DIR, "share_token.key")),
+);
 /** 已整理旅程的上傳暫存區(uploads/prebuilt)。 */
 export const PREBUILT_DIR = path.join(UPLOAD_DIR, "prebuilt");
 /** 處理失敗時隔離保留原始素材的根目錄(供管理員事後重試)。 */
@@ -51,6 +47,14 @@ export const STATIC_DIR = path.join(BASE_DIR, "static");
 
 export const PORT = envInt("DASHCAM_PORT", 8080);
 export const HOST = env("DASHCAM_HOST", "0.0.0.0");
+
+/**
+ * 是否信任反向代理送來的 `X-Forwarded-For`(決定 req.ip 的來源)。
+ * 預設 false:直連(區網純 HTTP)部署時,req.ip 取自實際 socket 位址,
+ * 使攻擊者無法偽造 XFF 繞過登入速率限制。只有確實部署在會覆寫 XFF 的
+ * 可信反向代理後方時才設為 true。
+ */
+export const TRUST_PROXY = env("DASHCAM_TRUST_PROXY", "false").toLowerCase() === "true";
 
 /** Session 有效期(秒),預設 30 天。 */
 export const SESSION_TTL = envInt("DASHCAM_SESSION_TTL", 30 * 86_400);
@@ -74,11 +78,8 @@ export const SFTP_PORT = envInt("DASHCAM_SFTP_PORT", 2022);
 /** SFTP 監聽位址。 */
 export const SFTP_HOST = env("DASHCAM_SFTP_HOST", "0.0.0.0");
 
-/**
- * 顯示給使用者的對外主機名(連線資訊用,如 sftp://<這個>:2022)。
- * 預設 localhost,正式部署請用 DASHCAM_SFTP_PUBLIC_HOST 設成你的網域或對外 IP。
- */
-export const SFTP_PUBLIC_HOST = env("DASHCAM_SFTP_PUBLIC_HOST", "localhost");
+/** 顯示給使用者的對外主機名(連線資訊用,如 sftp://<這個>:2022)。 */
+export const SFTP_PUBLIC_HOST = env("DASHCAM_SFTP_PUBLIC_HOST", "172.16.10.29");
 
 /** SFTP host key 路徑(不存在時自動以 ssh-keygen 產生)。 */
 export const SFTP_HOST_KEY_PATH = path.join(DATA_DIR, "sftp_host_key");
@@ -97,6 +98,28 @@ export const MAX_FILE_BYTES = envInt("DASHCAM_MAX_FILE_BYTES", 16 * 1024 * 1024 
 
 /** 每次 multipart 請求的檔案數上限。 */
 export const MAX_FILES_PER_REQUEST = envInt("DASHCAM_MAX_FILES_PER_REQUEST", 200);
+
+/**
+ * 單一上傳工作階段的總量上限(bytes)。0=不限(預設)。
+ * 用於防止單一(含訪客)工作階段無限寫入灌爆磁碟。
+ */
+export const MAX_SESSION_BYTES = envInt("DASHCAM_MAX_SESSION_BYTES", 0);
+
+/**
+ * 磁碟可用空間下限(bytes)。SFTP 寫入前檢查:低於此值即拒絕寫入,
+ * 保護既有資料不被上傳寫爆(合併/裁剪也需要暫存空間)。預設 512 MiB。設 0 關閉檢查。
+ */
+export const MIN_FREE_DISK_BYTES = envInt("DASHCAM_MIN_FREE_DISK_BYTES", 512 * 1024 * 1024);
+
+// ── 資料庫自動備份 ───────────────────────────────────────────────────────────
+/** 是否啟用 SQLite 定期自動備份(VACUUM INTO 快照)。 */
+export const BACKUP_ENABLED = env("DASHCAM_BACKUP_ENABLED", "true").toLowerCase() !== "false";
+/** 備份存放目錄。 */
+export const BACKUP_DIR = path.join(DATA_DIR, "backups");
+/** 自動備份間隔(小時)。 */
+export const BACKUP_INTERVAL_HOURS = envInt("DASHCAM_BACKUP_INTERVAL_HOURS", 24);
+/** 最多保留幾份備份(超過即刪最舊)。 */
+export const BACKUP_KEEP = Math.max(1, envInt("DASHCAM_BACKUP_KEEP", 7));
 
 /**
  * Cookie secure 旗標:
@@ -141,3 +164,12 @@ export const TRIM_THREADS = (() => {
   })();
   return Math.max(1, Math.floor(cores / 2));
 })();
+
+/**
+ * 「匯出片段」單一片段的最長秒數上限。避免使用者不小心用超長區間把伺服器 CPU
+ * 佔滿(重編碼很吃資源)。預設 1200s(20 分)。
+ */
+export const CLIP_MAX_SEC = envInt("DASHCAM_CLIP_MAX_SEC", 1200);
+
+/** 同時進行的片段匯出(重編碼)工作數上限;超過即回 429。預設 2。 */
+export const CLIP_CONCURRENCY = Math.max(1, envInt("DASHCAM_CLIP_CONCURRENCY", 2));

@@ -134,10 +134,23 @@ export async function sweepQuarantine(db: DB, maxAgeSec: number): Promise<number
   let cleaned = 0;
   for (const r of rows) {
     await fs.rm(r.quarantine_dir, { recursive: true, force: true }).catch(() => {});
-    db.prepare(
-      "UPDATE incidents SET quarantine_dir = NULL, resolution = CASE WHEN resolution = '' THEN ? ELSE resolution END WHERE id = ?",
-    ).run("素材已逾保留期限,自動清理", r.id);
-    cleaned++;
+    // 只有在目錄「確實已消失」時才清空 DB 欄位並標記已清理。否則(EACCES/EBUSY/EIO 等)
+    // 保留欄位,讓下一輪 sweep 再試 —— 避免 DB 記錄與磁碟不符(目錄失聯卻標記已清)。
+    if (!(await dirStillExists(r.quarantine_dir))) {
+      db.prepare(
+        "UPDATE incidents SET quarantine_dir = NULL, resolution = CASE WHEN resolution = '' THEN ? ELSE resolution END WHERE id = ?",
+      ).run("素材已逾保留期限,自動清理", r.id);
+      cleaned++;
+    }
   }
   return cleaned;
+}
+
+async function dirStillExists(p: string): Promise<boolean> {
+  try {
+    await fs.stat(p);
+    return true;
+  } catch {
+    return false;
+  }
 }

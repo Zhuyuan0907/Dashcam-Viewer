@@ -46,6 +46,7 @@
     <nav class="hdr-nav">
       <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
       <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/clips" href="/clips" data-i18n="nav.clips">片段</a>
       <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
       <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
       <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
@@ -257,7 +258,12 @@ function retry(id, mode){
         if (d.stage==='error'){ logLine('× '+d.message); retryES.close(); retryES=null; return; }
         if (d.message) logLine(d.message);
       };
-      retryES.onerror = () => { if(retryES){retryES.close();retryES=null;} };
+      retryES.onerror = () => {
+        if(retryES){retryES.close();retryES=null;}
+        // 斷線不可讓 spinner 永遠轉:告知重試仍在背景進行,重新整理可看結果
+        document.querySelector('#retry-stage .spinner')?.remove();
+        logLine('× ' + t('ops.retry.connLost'));
+      };
     })
     .catch(e => { showToast(t('ops.toast.fail')+'：'+e.message, 'error'); panel.style.display='none'; });
 }

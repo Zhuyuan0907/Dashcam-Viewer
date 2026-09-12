@@ -15,6 +15,60 @@
       padding: 6px 10px; margin: 0 -10px; transition: background-color .15s ease; }
     .note-inline.editable:hover { background: var(--surface-2); }
     .note-inline.empty { color: var(--ink-3); }
+    /* 旅程摘要：桌機把快速分享併在統計列最右側，不額外占用一整列。 */
+    .trip-summary-row { display: flex; align-items: center; min-width: 0; }
+    .trip-summary-row .info-strip { flex: 1 1 auto; min-width: 0; }
+    .trip-media-actions { display: flex; align-items: center; justify-content: flex-end;
+      flex: none; min-height: 35px; margin-left: 18px; padding-left: 18px;
+      border-left: 1px solid var(--line); }
+    .trip-share-btn { gap: 7px; white-space: nowrap; }
+    .trip-share-btn svg { width: 16px; height: 16px; flex: none; }
+    @media (max-width: 560px) {
+      .trip-summary-row { display: flex; flex-direction: column; align-items: stretch; }
+      .trip-media-actions { order: -1; min-height: 36px; margin: -4px 0 8px;
+        padding: 0; border-left: 0; }
+    }
+    .share-modal-box { max-width: 520px; }
+    .share-lead { margin: 0 0 18px; color: var(--ink-2); font-size: 14px; line-height: 1.65; }
+    .share-create-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+    .share-field { min-width: 0; }
+    .share-field label { display: block; margin-bottom: 6px; color: var(--ink-3); font-size: 12px; font-weight: 650; }
+    .share-result { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .share-result[hidden], .share-list-empty[hidden] { display: none; }
+    .share-result-label { display: block; margin-bottom: 7px; color: var(--ink-2); font-size: 13px; font-weight: 650; }
+    .share-copy-row { display: grid; grid-template-columns: minmax(0, 1fr) 42px; gap: 8px; }
+    .share-copy-row .form-input { min-width: 0; font-family: var(--font-mono); font-size: 12px; }
+    .share-copy-btn { width: 42px; height: 42px; padding: 0; }
+    .share-copy-btn svg { width: 17px; height: 17px; }
+    .share-once-note { margin: 7px 0 0; color: var(--ink-3); font-size: 12px; line-height: 1.55; }
+    .share-manage { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .share-manage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .share-manage-head h4 { margin: 0; font-size: 14px; }
+    .share-manage-head span { color: var(--ink-3); font-size: 12px; }
+    .share-list { max-height: 220px; overflow-y: auto; }
+    .share-list-empty { padding: 16px 0 4px; color: var(--ink-3); font-size: 13px; text-align: center; }
+    .share-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center;
+      padding: 11px 0; border-top: 1px solid var(--line); }
+    .share-row:first-child { border-top: 0; }
+    .share-row-main { min-width: 0; }
+    .share-row-title { display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: 13.5px; font-weight: 650; }
+    .share-status { display: inline-flex; align-items: center; min-height: 20px; padding: 1px 7px;
+      border-radius: 999px; background: var(--ok-soft, color-mix(in srgb, var(--ok) 12%, transparent)); color: var(--ok); font-size: 11px; }
+    .share-status.off { background: var(--surface-2); color: var(--ink-3); }
+    .share-row-meta { margin-top: 3px; color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .share-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+    .share-row-copy { width: 34px; height: 34px; padding: 0; }
+    .share-row-copy svg { width: 16px; height: 16px; }
+    .share-revoke { min-width: 64px; }
+    @media (max-width: 560px) {
+      .share-create-row { grid-template-columns: 1fr; }
+      .share-create-row .btn { width: 100%; justify-content: center; }
+      .share-list { max-height: 28dvh; }
+      .share-row { grid-template-columns: 1fr; gap: 8px; }
+      .share-row-actions { justify-content: flex-start; }
+      .share-row-actions .btn { min-height: 40px; }
+      .share-row-copy { width: 40px; }
+    }
     /* 快捷鍵提示:整頁最底、淡色、置中(緊貼影片下方,免捲動即可對照) */
     .kbd-hint { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
       text-align: center; font-family: var(--font-mono); font-size: 11.5px;
@@ -37,28 +91,148 @@
     /* 控制列分組:左=播放控制、右=工具,中間 seek 撐開 → 不再全擠左邊 */
     .ctrl-group { display: flex; align-items: center; gap: 8px; flex: none; }
 
-    /* ── 編輯工具卡(可見性 + 裁剪) ─────────────────────────────────────────── */
-    #edit-panel { margin-bottom: 14px; }
+    /* ── 剪輯面板:Premiere 式卡片(節目監視器在上、時間軸+分頁在下)──────────── */
+    #edit-panel { margin: 12px 0 2px; }
     .edit-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
-      box-shadow: var(--shadow-sm); overflow: hidden; }
-    .edit-block { padding: 14px 16px; }
-    .edit-block + .edit-block { border-top: 1px solid var(--line); }
-    .edit-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+      box-shadow: var(--shadow-md); overflow: hidden; }
+    /* 標題列:focus-title 風 + 收合鈕 */
+    .edit-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 13px 18px; border-bottom: 1px solid var(--line);
+      background: linear-gradient(to bottom, var(--surface-2), var(--surface)); }
+    .edit-head-title { font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: -.02em; margin: 0; }
+    .edit-close { appearance: none; border: 0; background: none; color: var(--ink-3); cursor: pointer;
+      width: 30px; height: 30px; border-radius: 8px; font-size: 16px; line-height: 1;
+      display: flex; align-items: center; justify-content: center; transition: background .15s, color .15s; }
+    .edit-close:hover { background: var(--surface-2); color: var(--ink); }
+    .edit-body { padding: 16px 18px 18px; }
+
     .edit-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
-    .edit-vis { width: auto; min-width: 180px; }
-    .edit-title { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-    .trimmed-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
-      background: var(--accent-soft); color: var(--accent); }
-    .edit-hint { font-size: 12px; color: var(--ink-3); line-height: 1.6; margin: 0 0 12px; }
-    .trim-fields { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-    .trim-field { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-      background: var(--surface-2); border-radius: var(--radius-sm); }
-    .trim-fname { font-size: 12px; color: var(--ink-3); }
-    .trim-fval { font-family: var(--font-mono); font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .edit-hint { font-size: 12.5px; color: var(--ink-3); line-height: 1.6; margin: 0 0 12px; }
     .trim-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    /* 匯出片段:美化主行動鈕(漸層膠囊 + 圖示)+ 旁邊 CPU 提示 */
+    .clip-export-row { display: flex; align-items: center; gap: 12px 14px; flex-wrap: wrap; }
+    .clip-export-btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 22px;
+      font: inherit; font-size: 14px; font-weight: 700; letter-spacing: .01em; color: #fff; border: 0;
+      border-radius: 999px; cursor: pointer; white-space: nowrap;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 8px 20px -8px var(--accent); transition: transform .12s ease, box-shadow .2s ease, filter .2s ease; }
+    .clip-export-btn:hover { transform: translateY(-1.5px); box-shadow: 0 13px 28px -9px var(--accent); filter: brightness(1.05); }
+    .clip-export-btn:active { transform: translateY(0); box-shadow: 0 6px 16px -8px var(--accent); }
+    .clip-export-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; filter: none; }
+    .clip-export-btn svg { width: 17px; height: 17px; }
+    .clip-cpu-note { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+      color: var(--ink-3); line-height: 1.4; }
+    .clip-cpu-note svg { width: 15px; height: 15px; flex: none; opacity: .85; color: var(--accent); }
     .trim-progress { margin-top: 12px; }
     .trim-progress .progress-track { margin-bottom: 6px; }
     .trim-progress-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+    /* 時間軸標題 */
+    .tl-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
+    .tl-hint { font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+
+    /* ── 時間軸(主角):加高、把手加大、入/出標籤、細刻度 ────────────────────── */
+    .clip-timeline { position: relative; height: 64px; margin: 0 0 13px; border-radius: var(--radius-sm);
+      background: repeating-linear-gradient(90deg, var(--surface-2) 0, var(--surface-2) 22px, var(--surface-3) 22px, var(--surface-3) 23px);
+      border: 1px solid var(--line); cursor: pointer; touch-action: none; overflow: hidden; user-select: none; }
+    .clip-tl-sel { position: absolute; top: 0; bottom: 0; left: 0; width: 100%;
+      background: var(--accent-soft); border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+    .clip-tl-playhead { position: absolute; top: 0; bottom: 0; width: 2px; left: 0;
+      background: var(--ink); opacity: .8; pointer-events: none; z-index: 3; }
+    .clip-tl-playhead::before { content: ''; position: absolute; top: 0; left: -4px;
+      border: 5px solid transparent; border-top-color: var(--ink); }
+    .clip-tl-handle { position: absolute; top: 0; bottom: 0; width: 22px; transform: translateX(-50%);
+      cursor: ew-resize; display: flex; align-items: flex-start; justify-content: center; touch-action: none; z-index: 4; }
+    .clip-tl-handle::before { content: ''; position: absolute; top: 0; bottom: 0; width: 3px; background: var(--accent); }
+    .clip-tl-handle::after { content: ''; position: absolute; top: 50%; transform: translateY(-50%);
+      width: 8px; height: 28px; border-radius: 4px; background: var(--accent);
+      box-shadow: 0 1px 3px hsl(var(--shadow-color) / .35); }
+    .clip-tl-cap { position: relative; z-index: 1; margin-top: 4px; padding: 1px 5px; border-radius: 5px;
+      font-size: 10px; font-weight: 700; line-height: 1.5; white-space: nowrap;
+      background: var(--accent); color: #fff; pointer-events: none; }
+    .clip-tl-handle.is-in .clip-tl-cap { transform: translateX(9px); }
+    .clip-tl-handle.is-out .clip-tl-cap { transform: translateX(-9px); }
+
+    /* 讀值列:大字等寬,一眼看到入/出/長度 */
+    .clip-readout { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 16px; }
+    .clip-readout .ro-item { display: inline-flex; align-items: baseline; gap: 6px; }
+    .clip-readout .ro-lbl { font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--ink-3); }
+    .clip-readout b { font-family: var(--font-mono); font-size: 20px; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .clip-readout .clip-ro-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+
+    /* ── 動作分頁:匯出片段 / 整趟裁剪 ─────────────────────────────────────────── */
+    .edit-tabs { display: flex; border-bottom: 1px solid var(--line); margin: 0 0 16px; }
+    .edit-tab { appearance: none; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600;
+      color: var(--ink-3); padding: 9px 2px; margin-bottom: -1px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px; border-bottom: 2px solid transparent; transition: color .15s; }
+    .edit-tab + .edit-tab { margin-left: 22px; }
+    .edit-tab:hover { color: var(--ink); }
+    .edit-tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+    .edit-tab.danger.active { color: var(--crit); border-bottom-color: var(--crit); }
+    .trimmed-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+      background: var(--accent-soft); color: var(--accent); }
+
+    /* 匯出完成 CTA:前往片段頁 */
+    .clip-goto { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px;
+      font-weight: 600; color: var(--accent); text-decoration: none; }
+    .clip-goto:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+    /* ── 專注剪輯工作區:進入剪輯 → 整頁鎖成一屏,影片填滿上方、dock 固定在底、免捲動 ── */
+    body.editing { overflow: hidden; }
+    body.editing #page-main > .wrap {
+      height: calc(100dvh - var(--hdr-h) - var(--safe-top));
+      display: flex; flex-direction: column;
+    }
+    body.editing #page-main .trip-head { flex: none; margin-bottom: 10px; }
+    body.editing #page-main #alerts { flex: none; }
+    body.editing #page-main .viewer { flex: 1 1 auto; min-height: 0; }
+    body.editing #page-main .stage { flex: 1 1 auto; min-height: 0; max-height: none; aspect-ratio: auto; }
+    body.editing #page-main #edit-panel { flex: none; margin: 0; }
+    body.editing #page-main .edit-tabpanel { max-height: 30dvh; overflow: auto; }
+    /* 剪輯時隱藏非焦點內容(資訊條 / 備註 / 同天趟次 / 快捷鍵提示) */
+    body.editing #page-main .info-strip,
+    body.editing #page-main .note-inline,
+    body.editing #page-main .other-row,
+    body.editing #page-main .trip-media-actions,
+    body.editing #page-main .kbd-hint,
+    body.editing #page-main .touch-hint { display: none !important; }
+    @media (max-width: 640px) {
+      body.editing #page-main .edit-tabpanel { max-height: 40dvh; }
+    }
+
+    /* ── 剪輯純電腦版:窄螢幕(< 960px)完全隱藏剪輯鈕,避免上下堆疊壓縮影片 ────────
+       setupEdit() 以 inline style.display='' 開啟,這裡的 !important 在窄螢幕時勝出。 */
+    @media (max-width: 959.98px) { #edit-btn { display: none !important; } }
+
+    /* ── 剪輯左右並排(≥ 960px):面板在左、影片在右吃滿剩餘寬與整段高。
+       解決「面板在影片下方 → 影片被嚴重壓縮 / 匯出進度要捲動」:面板變高 → 選項＋進度一屏內全見;
+       影片以 object-fit:contain 保持正確比例(letterbox),不變形。 */
+    @media (min-width: 960px) {
+      body.editing #page-main .viewer { flex-direction: row; align-items: stretch; gap: 16px; }
+      body.editing #page-main #edit-panel {
+        order: -1; flex: none; width: min(420px, 34vw); height: 100%; margin: 0; display: flex;
+      }
+      body.editing #page-main .edit-card { display: flex; flex-direction: column; width: 100%; height: 100%; }
+      body.editing #page-main .edit-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+      body.editing #page-main .edit-tabpanel { max-height: none; overflow: visible; }
+      body.editing #page-main .stage {
+        order: 0; flex: 1 1 auto; min-width: 0; height: 100%; max-height: none; aspect-ratio: auto;
+      }
+    }
+
+    .clip-opts { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+    .clip-opt-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .clip-opt-row .edit-label { min-width: 44px; }
+    .clip-opt-row .form-input { max-width: 280px; }
+    .seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+    .seg-btn { appearance: none; border: 0; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px;
+      padding: 7px 14px; cursor: pointer; border-left: 1px solid var(--line); }
+    .seg-btn:first-child { border-left: 0; }
+    .seg-btn.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .seg-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .clip-q-hint { font-size: 12px; color: var(--ink-3); }
+
     /* 可見性:標題列的「可見性」按鈕 + 下拉選單 */
     .vis-wrap { position: relative; flex: none; }
     #vis-btn { display: inline-flex; align-items: center; }
@@ -154,6 +328,7 @@
     <nav class="hdr-nav">
       <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
       <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/clips" href="/clips" data-i18n="nav.clips">片段</a>
       <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
       <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
       <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
@@ -201,46 +376,6 @@
 
     <div id="alerts"></div>
 
-    <!-- 裁剪工具(擁有者 / 管理員;預設收合,由「剪輯」開啟) -->
-    <div id="edit-panel" style="display:none;">
-      <div class="edit-card">
-        <div class="edit-block">
-          <div class="edit-title">
-            <span data-i18n="trip.trim.title">裁剪影片</span>
-            <span class="trimmed-badge" id="trimmed-badge" style="display:none;" data-i18n="trip.trimmedBadge">已裁剪</span>
-          </div>
-          <p class="edit-hint" data-i18n="trip.trim.hint">設定要保留的起點與終點,前後鏡頭會一起裁剪(精確重編碼,原始檔保留可還原)。</p>
-          <div class="trim-fields">
-            <div class="trim-field">
-              <span class="trim-fname" data-i18n="trip.trim.start">起點</span>
-              <b class="trim-fval" id="trim-start-val">0:00</b>
-              <button class="btn btn--ghost btn--sm" type="button" onclick="setTrimPoint('start')" data-i18n="trip.trim.setCurrent">設為目前畫面</button>
-            </div>
-            <div class="trim-field">
-              <span class="trim-fname" data-i18n="trip.trim.end">終點</span>
-              <b class="trim-fval" id="trim-end-val">0:00</b>
-              <button class="btn btn--ghost btn--sm" type="button" onclick="setTrimPoint('end')" data-i18n="trip.trim.setCurrent">設為目前畫面</button>
-            </div>
-            <div class="trim-field">
-              <span class="trim-fname" data-i18n="trip.trim.rangeLen">保留長度</span>
-              <b class="trim-fval" id="trim-len-val">0:00</b>
-            </div>
-          </div>
-          <div class="trim-actions">
-            <button class="btn btn--sm" type="button" id="trim-apply" onclick="applyTrim()" data-i18n="trip.trim.apply">套用裁剪</button>
-            <button class="btn btn--ghost btn--sm" type="button" id="restore-btn" style="display:none;" onclick="restoreTrim()" data-i18n="trip.trim.restore">還原原始影片</button>
-          </div>
-          <div class="trim-progress" id="trim-progress" style="display:none;">
-            <div class="progress-track"><div class="progress-fill" id="trim-bar" style="width:0%;"></div></div>
-            <div class="trim-progress-foot">
-              <div class="edit-hint" id="trim-stage" style="margin:0;"></div>
-              <button class="btn btn--ghost btn--sm" type="button" id="trim-cancel" onclick="cancelTrim()" data-i18n="common.cancel">取消</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- 觀看台 -->
     <div class="viewer">
       <div class="stage" id="stage">
@@ -258,9 +393,9 @@
         <!-- 控制列:左=播放控制組、中=進度、右=工具組 -->
         <div class="ctrl" id="ctrl">
           <div class="ctrl-group ctrl-transport">
-            <button class="ctrl-btn" id="btn-play" title="播放/暫停 (空白鍵)">
-              <svg id="ic-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-              <svg id="ic-pause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+            <button class="ctrl-btn" id="btn-play" type="button" title="播放/暫停 (空白鍵)"
+              data-play-label="播放" data-pause-label="暫停" aria-label="播放">
+              <svg data-playback-icon viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
             </button>
             <button class="ctrl-btn" id="btn-back" title="上一格 (,)">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 5v14l-9-7zM7 5h2v14H7z"/></svg>
@@ -295,8 +430,120 @@
         </div>
       </div>
 
-      <!-- 緊湊資訊條 -->
-      <div class="info-strip" id="info-strip"></div>
+      <!-- ── 剪輯面板:Premiere 式「時間軸 + 分頁動作」,緊貼影片下方(節目監視器 + 時間軸)── -->
+      <div id="edit-panel" style="display:none;">
+        <section class="edit-card">
+          <!-- 面板標題列:focus-title 風 + 收合鈕 -->
+          <header class="edit-head">
+            <h2 class="edit-head-title" data-i18n="trip.edit">剪輯</h2>
+            <button class="edit-close" type="button" onclick="toggleEdit()" title="收合" aria-label="收合">✕</button>
+          </header>
+
+          <div class="edit-body">
+            <!-- 1) 時間軸(主角):共用入/出點,同時餵給「匯出片段」與「整趟裁剪」 -->
+            <div class="tl-head">
+              <span class="edit-label" data-i18n="trip.clip.selectTitle">選取片段</span>
+              <span class="tl-hint" data-i18n="trip.clip.selectHint">拖曳時間軸上的入點/出點把手,或按 I / O 把入點、出點設在目前畫面。</span>
+            </div>
+            <div class="clip-timeline" id="clip-timeline">
+              <div class="clip-tl-sel" id="clip-sel"></div>
+              <div class="clip-tl-playhead" id="clip-playhead"></div>
+              <div class="clip-tl-handle is-in" id="clip-h-in" style="left:0%"><span class="clip-tl-cap" data-i18n="trip.clip.in">入點</span></div>
+              <div class="clip-tl-handle is-out" id="clip-h-out" style="left:100%"><span class="clip-tl-cap" data-i18n="trip.clip.out">出點</span></div>
+            </div>
+            <div class="clip-readout">
+              <span class="ro-item"><span class="ro-lbl" data-i18n="trip.clip.in">入點</span><b id="sel-in">0:00</b></span>
+              <span class="ro-item"><span class="ro-lbl" data-i18n="trip.clip.out">出點</span><b id="sel-out">0:00</b></span>
+              <span class="ro-item"><span class="ro-lbl" data-i18n="trip.clip.length">長度</span><b id="sel-len">0:00</b></span>
+              <span class="clip-ro-actions">
+                <button class="btn btn--ghost btn--sm" type="button" onclick="setSelPoint('in')" data-i18n="trip.clip.setIn">設為入點 (I)</button>
+                <button class="btn btn--ghost btn--sm" type="button" onclick="setSelPoint('out')" data-i18n="trip.clip.setOut">設為出點 (O)</button>
+                <button class="btn btn--ghost btn--sm" type="button" id="clip-preview" onclick="togglePreview()" data-i18n="trip.clip.preview">▶ 預覽選取</button>
+              </span>
+            </div>
+
+            <!-- 分頁列:匯出片段(預設) / 整趟裁剪(破壞性,需切入) -->
+            <div class="edit-tabs" role="tablist">
+              <button class="edit-tab active" type="button" id="etab-clip" role="tab" onclick="switchEditTab('clip')" data-i18n="trip.clip.title">匯出片段</button>
+              <button class="edit-tab danger" type="button" id="etab-trim" role="tab" onclick="switchEditTab('trim')">
+                <span data-i18n="trip.trim.sectionTitle">整趟裁剪(破壞性)</span>
+                <span class="trimmed-badge" id="trimmed-badge" style="display:none;" data-i18n="trip.trimmedBadge">已裁剪</span>
+              </button>
+            </div>
+
+            <!-- 分頁內容:匯出片段(非破壞性另存;原旅程不動) -->
+            <div class="edit-tabpanel" id="tab-clip">
+              <p class="edit-hint" data-i18n="trip.clip.hint">把選取的區間另存成一支獨立影片(原旅程不受影響),可重複下載或刪除。</p>
+              <div class="clip-opts">
+                <div class="clip-opt-row">
+                  <span class="edit-label" data-i18n="trip.clip.layout">版面</span>
+                  <div class="seg" id="clip-layout"></div>
+                </div>
+                <div class="clip-opt-row">
+                  <span class="edit-label" data-i18n="trip.clip.quality">畫質</span>
+                  <div class="seg" id="clip-quality">
+                    <button class="seg-btn active" type="button" data-v="precise" data-i18n="trip.clip.qualityPrecise">精確</button>
+                    <button class="seg-btn" type="button" data-v="fast" data-i18n="trip.clip.qualityFast">快速</button>
+                  </div>
+                  <span class="clip-q-hint" id="clip-q-hint"></span>
+                </div>
+                <div class="clip-opt-row">
+                  <span class="edit-label" data-i18n="trip.clip.label">標題(選填)</span>
+                  <input class="form-input" id="clip-label" maxlength="100" data-i18n-attr="placeholder:trip.clip.labelPlaceholder" placeholder="例:超車、路口事故…">
+                </div>
+              </div>
+              <div class="clip-export-row">
+                <button class="clip-export-btn" type="button" id="clip-export" onclick="startClipExport()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                  <span data-i18n="trip.clip.export">匯出片段</span>
+                </button>
+                <span class="clip-cpu-note">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3M4 4h16v16H4z"/></svg>
+                  <span data-i18n="trip.clip.cpuNote">這裡為 CPU 硬解，請耐心等候</span>
+                </span>
+              </div>
+              <p class="edit-hint" style="margin:10px 0 0;" data-i18n="trip.clip.reportHint">檢舉用途建議:前鏡頭＋快速(無損)——受理單位要求原始畫面,無損模式不重新壓縮。</p>
+              <div class="trim-progress" id="clip-progress" style="display:none;">
+                <div class="progress-track"><div class="progress-fill" id="clip-bar" style="width:0%;"></div></div>
+                <div class="trim-progress-foot">
+                  <div class="edit-hint" id="clip-stage" style="margin:0;"></div>
+                  <button class="btn btn--ghost btn--sm" type="button" onclick="cancelClip()" data-i18n="common.cancel">取消</button>
+                </div>
+              </div>
+              <a class="clip-goto" id="clip-goto" href="/clips" style="display:none;" data-i18n="trip.clip.gotoPage">→ 前往片段頁查看</a>
+              <a class="clip-goto" id="clip-report-cta" href="/clips" style="display:none;margin-left:14px;" data-i18n="trip.clip.reportCta">⚑ 產生檢舉資料</a>
+            </div>
+
+            <!-- 分頁內容:整趟裁剪(破壞性,沿用既有 /api/trip-trim) -->
+            <div class="edit-tabpanel" id="tab-trim" style="display:none;">
+              <p class="edit-hint" data-i18n="trip.trim.sectionHint">把整趟旅程永久縮短成上方選取的區間(前後鏡頭一起,原始檔保留可還原)。多數情況請改用「匯出片段」。</p>
+              <div class="trim-actions">
+                <button class="btn btn--sm btn--danger" type="button" id="trim-apply" onclick="applyTrim()" data-i18n="trip.trim.apply">套用裁剪</button>
+                <button class="btn btn--ghost btn--sm" type="button" id="restore-btn" style="display:none;" onclick="restoreTrim()" data-i18n="trip.trim.restore">還原原始影片</button>
+              </div>
+              <div class="trim-progress" id="trim-progress" style="display:none;">
+                <div class="progress-track"><div class="progress-fill" id="trim-bar" style="width:0%;"></div></div>
+                <div class="trim-progress-foot">
+                  <div class="edit-hint" id="trim-stage" style="margin:0;"></div>
+                  <button class="btn btn--ghost btn--sm" type="button" id="trim-cancel" onclick="cancelTrim()" data-i18n="common.cancel">取消</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 緊湊資訊條；桌機的分享操作與統計資料並排 -->
+      <div class="trip-summary-row">
+        <div class="info-strip" id="info-strip"></div>
+        <div class="trip-media-actions" aria-label="旅程操作">
+          <button class="btn btn--ghost btn--sm trip-share-btn" id="btn-link" type="button"
+            title="複製連結(含目前時間)" data-i18n-attr="title:trip.copyLink">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span id="btn-link-label" data-i18n="trip.copyLink">複製連結(含目前時間)</span>
+          </button>
+        </div>
+      </div>
       <!-- 行內備註(緊接統計列;管理員點擊可編輯) -->
       <div class="note-inline" id="note-inline" style="display:none;"></div>
       <div class="other-row" id="other-row"></div>
@@ -314,8 +561,50 @@
   </div>
 </div>
 
+<div class="modal-scrim" id="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-modal-title" style="display:none;" onclick="shareScrimClick(event)">
+  <div class="modal-box share-modal-box">
+    <div class="modal-head">
+      <h3 id="share-modal-title" data-i18n="trip.share.title">快速分享這趟旅程</h3>
+      <button class="modal-close" id="share-close" type="button" onclick="closeShareModal()" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="share-lead" data-i18n="trip.share.lead">收件人不必登入；連結只會開啟這趟旅程的影片，不會看到其他旅程或私人備註。分享者可隨時撤銷。</p>
+      <div class="share-create-row">
+        <div class="share-field">
+          <label for="share-expiry" data-i18n="trip.share.expiry">連結有效期限</label>
+          <select class="form-input form-select" id="share-expiry">
+            <option value="1" data-i18n="trip.share.oneDay">1 天</option>
+            <option value="7" selected data-i18n="trip.share.sevenDays">7 天（建議）</option>
+            <option value="30" data-i18n="trip.share.thirtyDays">30 天</option>
+          </select>
+        </div>
+        <button class="btn btn--solid" id="share-create" type="button" onclick="createQuickShare()" data-i18n="trip.share.create">建立分享連結</button>
+      </div>
+      <div class="share-result" id="share-result" hidden>
+        <span class="share-result-label" data-i18n="trip.share.linkLabel">分享連結，直接傳給對方即可</span>
+        <div class="share-copy-row">
+          <input class="form-input" id="share-url" readonly aria-label="分享連結">
+          <button class="btn btn--ghost share-copy-btn" type="button" onclick="copyShareUrl()" title="複製分享連結" aria-label="複製分享連結">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+        <p class="share-once-note" data-i18n="trip.share.savedNote">連結會加密保管，關閉或換裝置後仍可再次複製。</p>
+      </div>
+      <section class="share-manage" aria-labelledby="share-manage-title">
+        <div class="share-manage-head">
+          <h4 id="share-manage-title" data-i18n="trip.share.manage">分享紀錄</h4>
+          <span id="share-count"></span>
+        </div>
+        <div class="share-list" id="share-list" aria-live="polite"></div>
+        <div class="share-list-empty" id="share-list-empty" data-i18n="trip.share.empty">尚未建立分享連結</div>
+      </section>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 <script src="/static/app.js"></script>
+<script src="/static/player-controls.js"></script>
 <script>
 const tt = t;   // 翻譯函式別名(本檔多處用 `const t = trip` 遮蔽全域 t)
 const tripId = decodeURIComponent(location.pathname.replace(/^\/trip\//, ''));
@@ -353,11 +642,12 @@ function render() {
   const t = trip;
   const brand = (__cfg.brand && __cfg.brand.title) || '行車記錄';
   document.title = `${t.date} ${tt('trip.tripOrder', { order: t.day_order })} — ${brand}`;
-  document.getElementById('trip-title').textContent = `${t.date}　第 ${t.day_order} 趟`;
+  document.getElementById('trip-title').textContent = `${t.date}　${tt('trip.tripOrder', { order: t.day_order })}`;
   document.getElementById('trip-sub').textContent =
     `${fmtTime(t.start_epoch)}–${fmtTime(t.end_epoch)} · ${fmtDuration(t.duration_sec)}`;
   // 返回時停在同一個日期(browse 以 hash 還原選取日期)
-  document.getElementById('back-link').href = '/browse#' + encodeURIComponent(t.date);
+  document.getElementById('back-link').href =
+    `/browse?owner=${encodeURIComponent(t.owner_id ?? '')}#${encodeURIComponent(t.date)}`;
 
   // 警告
   const g = t.peak_gforce || 0;
@@ -387,9 +677,10 @@ function render() {
   const camLabel = [t.has_front && tt('trip.camFrontShort'), t.has_rear && tt('trip.camRearShort')].filter(Boolean).join('+') + tt('trip.camSuffix');
   const gChip = g > 0 ? `<span class="chip"><b>${g.toFixed(2)}g</b><span>${tt('trip.chipPeakG')}</span></span>` : '';
   const emerChip = t.emer_count > 0 ? `<span class="chip"><b>${t.emer_count}</b><span>${tt('trip.chipEmer')}</span></span>` : '';
-  // 記錄器型號:來自登入者個人設定的「使用的行車記錄器」(填了才顯示),放在 G 值旁邊
-  const deviceChip = (currentUser && currentUser.device_note)
-    ? `<span class="chip"><b>${escapeHtml(currentUser.device_note)}</b><span>${tt('trip.chipDevice')}</span></span>`
+  // 使用旅程建立時保存的裝置快照；不讀觀看者的個人設定，避免公開旅程顯示錯人。
+  const deviceName = t.device && (t.device.model || t.device.nickname);
+  const deviceChip = deviceName
+    ? `<span class="chip"><b>${escapeHtml(deviceName)}</b><span>${tt('trip.chipDevice')}</span></span>`
     : '';
   document.getElementById('info-strip').innerHTML = `
     <span class="chip"><b>${fmtTime(t.start_epoch)}–${fmtTime(t.end_epoch)}</b><span>${tt('trip.chipTime')}</span></span>
@@ -397,7 +688,6 @@ function render() {
     <span class="chip"><b>${t.segment_count}</b><span>${tt('trip.chipSeg')}</span></span>
     <span class="chip"><b>${camLabel}</b></span>
     ${gChip}${deviceChip}${emerChip}`;
-
   loadOthers(t.date, t.trip_id);
   renderNote();
   setupEdit();
@@ -420,6 +710,8 @@ function fitStage() {
   if (!stage || !page || page.style.display === 'none') return;
   if (document.fullscreenElement) return;   // 全螢幕交給 CSS,勿用 inline 上限蓋掉
   stage.style.maxHeight = '';               // 先還原成 CSS 基準再量(上下內容不受影片高影響)
+  // 剪輯中:整頁鎖成一屏、影片以 flex 填滿(見 body.editing 樣式),不再用 inline 上限硬撐 → 清掉交給 flex
+  if (editPanelOpen) return;
   const sRect = stage.getBoundingClientRect();
   const pRect = page.getBoundingClientRect();
   const below = pRect.bottom - sRect.bottom; // 影片下方:資訊條+備註+同天趟次+提示+內距
@@ -466,8 +758,10 @@ function layoutCams() {
   } else {
     pip.style.display = 'none';
   }
-  // 音訊:只有主畫面出聲
+  // 音訊:只有主畫面出聲;音量同步滑桿值(新建的 video 預設 1.0,切換主鏡頭會突然變大聲)
   for (const c of cams) videos[c].muted = (c !== mainCam);
+  const volEl = document.getElementById('vol');
+  if (volEl && videos[mainCam]) videos[mainCam].volume = parseFloat(volEl.value);
   applyZoom();
 }
 
@@ -476,6 +770,14 @@ function swapCams() {
   mainCam = cams.find(c => c !== mainCam);
   resetZoom();
   layoutCams();
+  // 切換主鏡頭後更新總長 —— 前後鏡頭長度可能略有差異,否則進度條/時間顯示/逐格夾制會沿用
+  // 舊主鏡頭的長度而失準。
+  const md = videos[mainCam] && videos[mainCam].duration;
+  if (Number.isFinite(md) && md > 0) {
+    dur = md;
+    const tot = document.getElementById('t-tot');
+    if (tot) tot.textContent = fmtSecs(dur);
+  }
 }
 
 /* ── 播放器 ───────────────────────────────────────────────────────────────── */
@@ -485,8 +787,7 @@ function initPlayer() {
   const all = () => cams.map(c => videos[c]);
 
   const stage = document.getElementById('stage');
-  const icPlay = document.getElementById('ic-play');
-  const icPause = document.getElementById('ic-pause');
+  const playButton = document.getElementById('btn-play');
   const seek = document.getElementById('seek');
   const fill = document.getElementById('fill');
   const tCur = document.getElementById('t-cur');
@@ -508,11 +809,42 @@ function initPlayer() {
   m0.addEventListener('loadedmetadata', () => {
     dur = m0.duration || 0;
     tTot.textContent = fmtSecs(dur);
+    applyStartPosition();
   });
 
+  // ── 起始位置:#t=秒 深連結優先,否則續看上次位置(localStorage) ──
+  let startApplied = false;
+  function applyStartPosition() {
+    if (startApplied) return;
+    startApplied = true;
+    const hm = /[#&]t=(\d+(?:\.\d+)?)/.exec(location.hash);
+    if (hm) {
+      const sec = Math.min(Math.max(0, parseFloat(hm[1])), Math.max(0, dur - 0.5));
+      if (sec > 0) seekAll(sec);
+      return;
+    }
+    let saved = 0;
+    try { saved = parseFloat(localStorage.getItem('dc.resume.' + tripId)) || 0; } catch {}
+    if (saved > 30 && dur > 60 && saved < dur - 20) {
+      seekAll(saved);
+      showToast(tt('trip.resumed', { t: fmtSecs(saved) }));
+    }
+  }
+
+  // 續看記憶:播放中每 5 秒存一次位置;暫停立即存;看完清除。
+  let lastResumeSave = 0;
+  function saveResume(force) {
+    const m = main();
+    if (!m || !dur) return;
+    const nowMs = Date.now();
+    if (!force && nowMs - lastResumeSave < 5000) return;
+    lastResumeSave = nowMs;
+    try { localStorage.setItem('dc.resume.' + tripId, String(m.currentTime)); } catch {}
+  }
+  window.addEventListener('pagehide', () => saveResume(true));
+
   function setPlayIcon(playing) {
-    icPlay.style.display = playing ? 'none' : '';
-    icPause.style.display = playing ? '' : 'none';
+    DashcamPlayerControls.setPlaybackState(playButton, playing);
   }
   function toggle() {
     const m = main();
@@ -521,14 +853,18 @@ function initPlayer() {
   }
   function step(dir) {
     const m = main();
+    const total = dur || m.duration;
+    if (!Number.isFinite(total) || total <= 0) return;   // metadata 未載入:currentTime=NaN 會拋例外
     all().forEach(v => v.pause());
     setPlayIcon(false);
-    const nt = Math.max(0, Math.min(dur || m.duration, m.currentTime + dir / FPS));
+    const nt = Math.max(0, Math.min(total, m.currentTime + dir / FPS));
     all().forEach(v => { v.currentTime = nt; });
   }
   function seekBy(d) {
     const m = main();
-    const nt = Math.max(0, Math.min(dur || m.duration, m.currentTime + d));
+    const total = dur || m.duration;
+    if (!Number.isFinite(total) || total <= 0) return;
+    const nt = Math.max(0, Math.min(total, m.currentTime + d));
     all().forEach(v => { v.currentTime = nt; });
   }
 
@@ -537,6 +873,7 @@ function initPlayer() {
   document.getElementById('btn-fwd').onclick = () => step(1);
   document.getElementById('btn-full').onclick = toggleFull;
   document.getElementById('btn-snap').onclick = snapshot;
+  document.getElementById('btn-link').onclick = copyTimeLink;
   document.getElementById('pip').onclick = swapCams;
 
   const speeds = [1, 1.5, 2];
@@ -552,20 +889,43 @@ function initPlayer() {
     document.getElementById('btn-speed').textContent = speeds[si] + '×';
   };
 
-  // 進度 — 用主畫面驅動,其餘同步
+  // 以可見軌道的實際座標換算百分比，避開原生 range 滑塊兩端內縮造成的左右偏差。
+  // seek 完成前保持使用者指定的位置，不讓尚未更新的 currentTime 把指標拉回舊位置。
+  const seekControl = DashcamPlayerControls.bindPreciseSeek({
+    track: document.getElementById('track'), input: seek, fill,
+    onSeek(percent) {
+      const d = dur || main().duration || 0;
+      if (!d) return;
+      const nt = percent / 100 * d;
+      tCur.textContent = fmtSecs(nt);
+      all().forEach(v => { v.currentTime = nt; });
+    },
+  });
+
+  // 進度由主畫面驅動，其餘鏡頭同步。
   function tick() {
     const m = main();
     const d = dur || m.duration || 0;
     if (d) {
       const pct = m.currentTime / d * 100;
-      fill.style.width = pct + '%';
-      seek.value = pct;
-      tCur.textContent = fmtSecs(m.currentTime);
+      seekControl.render(pct);
+      if (!seekControl.seeking) tCur.textContent = fmtSecs(m.currentTime);
     }
     // 同步其他鏡頭
     others().forEach(v => {
-      if (Math.abs(v.currentTime - m.currentTime) > 0.25) v.currentTime = m.currentTime;
+      const targetCam = Object.keys(videos).find(c => videos[c] === v);
+      const sourceSpans = trip.timeline?.[mainCam];
+      const source = sourceSpans?.find(s => m.currentTime >= s.start && m.currentTime < s.start+s.duration);
+      const epoch = source ? source.epoch+m.currentTime-source.start : null;
+      const dest = epoch === null ? null : trip.timeline?.[targetCam]?.find(s => epoch >= s.epoch && epoch < s.epoch+s.duration);
+      const missing = sourceSpans && !dest;
+      v.style.visibility = missing ? 'hidden' : '';
+      v.parentElement.title = missing ? '此時段缺少鏡頭影片' : '';
+      const position = dest ? dest.start+epoch-dest.epoch : m.currentTime;
+      if (!missing && Math.abs(v.currentTime-position)>0.25) v.currentTime=position;
     });
+    if (!m.paused) saveResume(false);   // 續看記憶(內部 5 秒節流)
+    if (typeof onPlayerTick === 'function') onPlayerTick();   // 剪輯面板:更新播放頭 / 預覽循環
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
@@ -573,14 +933,14 @@ function initPlayer() {
   // 因為主畫面會切換,監聽用事件委派在 stage 上
   cams.forEach(c => {
     videos[c].addEventListener('play', () => { if (c === mainCam) { setPlayIcon(true); controlsWake(); } });
-    videos[c].addEventListener('pause', () => { if (c === mainCam) { setPlayIcon(false); controlsPin(); } });
-    videos[c].addEventListener('ended', () => { if (c === mainCam) { setPlayIcon(false); all().forEach(v=>{v.pause();v.currentTime=0;}); controlsPin(); } });
-  });
-
-  seek.addEventListener('input', () => {
-    const d = dur || main().duration || 0;
-    const nt = seek.value / 100 * d;
-    all().forEach(v => { v.currentTime = nt; });
+    videos[c].addEventListener('pause', () => { if (c === mainCam) { setPlayIcon(false); controlsPin(); saveResume(true); } });
+    videos[c].addEventListener('seeked', () => { if (c === mainCam) seekControl.settled(); });
+    videos[c].addEventListener('ended', () => {
+      if (c === mainCam) {
+        setPlayIcon(false); all().forEach(v=>{v.pause();v.currentTime=0;}); controlsPin();
+        try { localStorage.removeItem('dc.resume.' + tripId); } catch {}   // 看完:清續看記憶
+      }
+    });
   });
 
   vol.addEventListener('input', () => { videos[mainCam].volume = parseFloat(vol.value); });
@@ -601,7 +961,9 @@ function initPlayer() {
   initZoom(stage);
 
   document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'INPUT') return;
+    // 備註編輯用 <textarea>,也要豁免 —— 否則打空格會觸發播放、打 s 會截圖。
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
     switch (e.key) {
       case ' ': e.preventDefault(); toggle(); break;
       case 'ArrowLeft': seekBy(-5); break;
@@ -735,6 +1097,20 @@ function initZoom(stage) {
   });
 }
 
+/* ── 複製深連結(含目前時間;開啟後從該秒數續播) ─────────────────────────── */
+async function copyTimeLink() {
+  const v = videos[mainCam];
+  if (!v) return;
+  const url = location.origin + '/trip/' + encodeURIComponent(tripId) + '#t=' + Math.floor(v.currentTime);
+  try { await navigator.clipboard.writeText(url); }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = url; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+  }
+  showToast(tt('trip.linkCopied'), 'success');
+}
+
 /* ── 截圖 ─────────────────────────────────────────────────────────────────── */
 function snapshot() {
   const v = videos[mainCam];
@@ -764,7 +1140,10 @@ function toggleFull() {
 /* ── 同天其他旅程 ─────────────────────────────────────────────────────────── */
 async function loadOthers(date, currentId) {
   try {
-    const data = await apiFetch(`/api/trips?date=${date}&limit=50`);
+    // 帶 owner 參數:看別人的公開旅程時,「同天」列的要是**該擁有者**同日的旅程,
+    // 不帶時後端預設回「請求者自己」的旅程 → 張冠李戴。
+    const ownerQ = trip.owner_id != null ? `&owner=${encodeURIComponent(trip.owner_id)}` : '';
+    const data = await apiFetch(`/api/trips?date=${date}${ownerQ}&limit=50`);
     if (data.trips.length < 2) return;
     document.getElementById('other-row').innerHTML =
       `<span style="font-size:12px;color:var(--ink-3);align-self:center;margin-right:4px;">${tt('trip.sameDay')}</span>` +
@@ -785,13 +1164,34 @@ async function deleteTrip() {
   } catch (e) { showToast(tt('trip.deleteFail') + '：' + e.message, 'error'); }
 }
 
-/* ── 編輯工具:可見性 + 裁剪(擁有者或管理員) ─────────────────────────────── */
+/* ── 剪輯工具:可見性 + 選取/匯出片段 + 整趟裁剪(擁有者或管理員) ───────────────
+   共用一組選取(selStart/selEnd,秒)。「匯出片段」= 非破壞性另存獨立檔;
+   「整趟裁剪」= 既有破壞性 API(把整趟縮短),兩者吃同一組入/出點。 */
 let canEdit = false;
-let trimStart = 0, trimEnd = 0;
+let selStart = 0, selEnd = 0;
+let selInited = false;
+let editPanelOpen = false;
+let clipLayout = 'front', clipQuality = 'precise';
+let previewing = false;
+let clipES = null, clipJobId = null;
+
+function selDur() { return dur || (trip && trip.duration_sec) || 0; }
+
+/** 所有鏡頭同步 seek 到 sec(夾在 0..長度)。 */
+function seekAll(sec) {
+  const d = selDur();
+  const t = Math.max(0, Math.min(d || sec, sec));
+  for (const c of cams) if (videos[c]) videos[c].currentTime = t;
+}
 
 function setupEdit() {
   canEdit = isAdmin || !!(currentUser && trip.owner_id === currentUser.id);
   if (!canEdit) return;
+  const shareBtn = document.getElementById('btn-link');
+  shareBtn.onclick = openShareModal;
+  shareBtn.title = tt('trip.share.button');
+  shareBtn.setAttribute('aria-label', tt('trip.share.button'));
+  document.getElementById('btn-link-label').textContent = tt('trip.share.button');
   document.getElementById('edit-btn').style.display = '';
   // 可見性:標題列按鈕 + 下拉選單
   document.getElementById('vis-wrap').style.display = '';
@@ -800,18 +1200,247 @@ function setupEdit() {
   const trimmed = !!trip.trimmed;
   document.getElementById('trimmed-badge').style.display = trimmed ? '' : 'none';
   document.getElementById('restore-btn').style.display = trimmed ? '' : 'none';
-  // 返回頁面時若裁剪仍在進行(如 F5 後):展開面板、顯示進度並重新掛上 SSE。
+  // 建立版面/畫質分段控制 + 時間軸互動(片段元素恆在 DOM,只需綁一次)
+  buildLayoutSeg();
+  wireQualitySeg();
+  initTimeline();
+  // 返回頁面時若整趟裁剪仍在進行(如 F5 後):展開面板、顯示進度並重新掛上 SSE。
   if (trip.trimming) {
-    document.getElementById('edit-panel').style.display = '';
-    initTrimRange();
+    openEditPanel(true);
+    switchEditTab('trim');   // 裁剪進行中 → 直接切到裁剪分頁顯示進度
     document.getElementById('trim-apply').disabled = true;
     document.getElementById('trim-progress').style.display = '';
     setTrimProg(0, tt('trip.trim.processing'));
     showCancel(true);
     listenTrim();
-    scheduleFit();
   }
 }
+
+/* ── 快速分享：單趟 bearer 連結，匿名收件人不會取得站內其他權限 ─────────── */
+let shareReturnFocus = null;
+
+function presentShareUrl(url) {
+  const input = document.getElementById('share-url');
+  input.value = url;
+  document.getElementById('share-result').hidden = !url;
+}
+
+function fmtShareDate(epoch) {
+  if (!epoch) return tt('trip.share.never');
+  return new Date(epoch * 1000).toLocaleString('zh-TW', {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+async function openShareModal() {
+  if (!canEdit) return copyTimeLink();
+  shareReturnFocus = document.activeElement;
+  document.getElementById('share-result').hidden = true;
+  document.getElementById('share-url').value = '';
+  const modal = document.getElementById('share-modal');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  document.getElementById('share-close').focus();
+  await loadTripShares(true);
+}
+
+function closeShareModal() {
+  document.getElementById('share-modal').style.display = 'none';
+  presentShareUrl('');
+  document.body.style.overflow = '';
+  if (shareReturnFocus && shareReturnFocus.focus) shareReturnFocus.focus();
+}
+
+function shareScrimClick(event) {
+  if (event.target === event.currentTarget) closeShareModal();
+}
+
+async function loadTripShares(restoreLatest = false) {
+  const list = document.getElementById('share-list');
+  const empty = document.getElementById('share-list-empty');
+  const count = document.getElementById('share-count');
+  list.innerHTML = '<div class="loading-row"><div class="spinner"></div></div>';
+  empty.textContent = tt('trip.share.empty');
+  empty.hidden = true;
+  count.textContent = '';
+  try {
+    const data = await apiFetch('/api/trip-shares/' + encodeURIComponent(tripId));
+    const shares = Array.isArray(data.shares) ? data.shares : [];
+    const activeCount = shares.filter(s => s.active).length;
+    count.textContent = tt('trip.share.activeCount', { n: activeCount });
+    list.replaceChildren();
+    empty.hidden = shares.length > 0;
+    let latestRecoverableId = null;
+    for (const share of shares) {
+      const row = document.createElement('div');
+      row.className = 'share-row';
+      row.dataset.shareId = String(share.id);
+      const main = document.createElement('div');
+      main.className = 'share-row-main';
+      const title = document.createElement('div');
+      title.className = 'share-row-title';
+      const created = document.createElement('span');
+      created.textContent = tt('trip.share.createdAt', { time: fmtShareDate(share.created_at) });
+      const status = document.createElement('span');
+      status.className = 'share-status' + (share.active ? '' : ' off');
+      status.textContent = share.active ? tt('trip.share.active') : tt('trip.share.inactive');
+      title.append(created, status);
+      const meta = document.createElement('div');
+      meta.className = 'share-row-meta';
+      meta.textContent = tt('trip.share.rowMeta', {
+        expiry: share.expires_at ? fmtShareDate(share.expires_at) : tt('trip.share.never'),
+        count: share.access_count || 0,
+      });
+      main.append(title, meta);
+      row.appendChild(main);
+      if (share.active) {
+        const actions = document.createElement('div');
+        actions.className = 'share-row-actions';
+        if (share.recoverable) {
+          if (!latestRecoverableId) latestRecoverableId = share.id;
+          const copy = document.createElement('button');
+          copy.type = 'button';
+          copy.className = 'btn btn--ghost btn--sm share-row-copy';
+          copy.dataset.shareCopy = '';
+          copy.title = tt('trip.share.copyAgain');
+          copy.setAttribute('aria-label', tt('trip.share.copyAgain'));
+          copy.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+          copy.onclick = () => retrieveTripShare(share.id, copy, true);
+          actions.appendChild(copy);
+        } else {
+          const rotate = document.createElement('button');
+          rotate.type = 'button';
+          rotate.className = 'btn btn--ghost btn--sm share-rotate';
+          rotate.dataset.shareRotate = '';
+          rotate.textContent = tt('trip.share.rotate');
+          rotate.onclick = () => rotateTripShare(share.id, share.token_version, rotate);
+          actions.appendChild(rotate);
+        }
+        const revoke = document.createElement('button');
+        revoke.type = 'button';
+        revoke.className = 'btn btn--ghost btn--sm share-revoke';
+        revoke.textContent = tt('trip.share.revoke');
+        revoke.onclick = () => revokeTripShare(share.id, revoke);
+        actions.appendChild(revoke);
+        row.appendChild(actions);
+      }
+      list.appendChild(row);
+    }
+    if (restoreLatest && latestRecoverableId) {
+      await retrieveTripShare(latestRecoverableId, null, false);
+    }
+  } catch (error) {
+    list.replaceChildren();
+    empty.hidden = false;
+    empty.textContent = error.message;
+  }
+}
+
+async function createQuickShare() {
+  const button = document.getElementById('share-create');
+  button.disabled = true;
+  try {
+    const days = Number(document.getElementById('share-expiry').value);
+    const data = await apiFetch('/api/trip-shares/' + encodeURIComponent(tripId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expires_in_days: days }),
+    });
+    const url = new URL(data.share_url, location.origin).href;
+    presentShareUrl(url);
+    await copyShareUrl(false);
+    showToast(tt('trip.share.created'), 'success');
+    await loadTripShares();
+  } catch (error) {
+    showToast(tt('trip.share.createFail') + '：' + error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function retrieveTripShare(id, button, copyNow) {
+  if (button) button.disabled = true;
+  try {
+    const data = await apiFetch('/api/trip-shares/' + encodeURIComponent(id) + '/link', { method: 'POST' });
+    const url = new URL(data.share_url, location.origin).href;
+    presentShareUrl(url);
+    if (copyNow) {
+      await copyShareUrl(false);
+      showToast(tt('trip.share.copied'), 'success');
+    }
+    return url;
+  } catch (error) {
+    if (copyNow) showToast(tt('trip.share.retrieveFail') + '：' + error.message, 'error');
+    return '';
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function rotateTripShare(id, tokenVersion, button) {
+  if (!confirm(tt('trip.share.rotateConfirm'))) return;
+  button.disabled = true;
+  try {
+    const data = await apiFetch('/api/trip-shares/' + encodeURIComponent(id) + '/rotate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token_version: tokenVersion }),
+    });
+    const url = new URL(data.share_url, location.origin).href;
+    presentShareUrl(url);
+    await copyShareUrl(false);
+    showToast(tt('trip.share.rotated'), 'success');
+    await loadTripShares(false);
+  } catch (error) {
+    button.disabled = false;
+    showToast(tt('trip.share.rotateFail') + '：' + error.message, 'error');
+  }
+}
+
+async function copyShareUrl(showSuccess = true) {
+  const input = document.getElementById('share-url');
+  if (!input.value) return;
+  try { await navigator.clipboard.writeText(input.value); }
+  catch { input.select(); document.execCommand('copy'); }
+  if (showSuccess) showToast(tt('trip.share.copied'), 'success');
+}
+
+async function revokeTripShare(id, button) {
+  if (!confirm(tt('trip.share.revokeConfirm'))) return;
+  button.disabled = true;
+  try {
+    await apiFetch('/api/trip-shares/' + encodeURIComponent(id), { method: 'DELETE' });
+    showToast(tt('trip.share.revoked'), 'success');
+    presentShareUrl('');
+    await loadTripShares(true);
+  } catch (error) {
+    button.disabled = false;
+    showToast(tt('trip.share.revokeFail') + '：' + error.message, 'error');
+  }
+}
+
+document.addEventListener('keydown', event => {
+  const modal = document.getElementById('share-modal');
+  if (modal.style.display === 'none') return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeShareModal();
+    return;
+  }
+  if (event.key === 'Tab') {
+    const focusable = [...modal.querySelectorAll('button:not([disabled]), select:not([disabled]), input:not([disabled])')]
+      .filter(element => element.getClientRects().length > 0);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault(); first.focus();
+    }
+  }
+});
+
 function showCancel(v) {
   const b = document.getElementById('trim-cancel');
   b.style.display = v ? '' : 'none';
@@ -827,30 +1456,257 @@ async function cancelTrim() {
 }
 
 function toggleEdit() {
-  const p = document.getElementById('edit-panel');
-  const open = p.style.display === 'none' || !p.style.display;
-  p.style.display = open ? '' : 'none';
-  if (open) initTrimRange();
+  // 用狀態旗標判斷開合。舊寫法檢查 style.display,但開啟後 display='' 使
+  // `!p.style.display` 恆為 true → 面板一開就永遠關不掉。
+  openEditPanel(!editPanelOpen);
+}
+function openEditPanel(open) {
+  document.getElementById('edit-panel').style.display = open ? '' : 'none';
+  document.body.classList.toggle('editing', open);   // 進入/離開專注剪輯工作區(整頁鎖一屏)
+  editPanelOpen = open;
+  if (open) {
+    switchEditTab('clip');   // 預設停在「匯出片段」(破壞性裁剪需手動切入)
+    if (!selInited) { initSelection(); selInited = true; } else { updateSelUI(); updatePlayhead(); }
+  } else {
+    stopPreview();
+  }
   scheduleFit();
 }
 
-function initTrimRange() {
-  const d = dur || trip.duration_sec || 0;
-  trimStart = 0; trimEnd = d;
-  updateTrimLabels();
+/* 動作分頁:匯出片段(clip) / 整趟裁剪(trim)。共用上方時間軸選取。 */
+function switchEditTab(name) {
+  const isTrim = name === 'trim';
+  document.getElementById('tab-clip').style.display = isTrim ? 'none' : '';
+  document.getElementById('tab-trim').style.display = isTrim ? '' : 'none';
+  document.getElementById('etab-clip').classList.toggle('active', !isTrim);
+  document.getElementById('etab-trim').classList.toggle('active', isTrim);
+  scheduleFit();
 }
-function updateTrimLabels() {
-  document.getElementById('trim-start-val').textContent = fmtSecs(trimStart);
-  document.getElementById('trim-end-val').textContent = fmtSecs(trimEnd);
-  document.getElementById('trim-len-val').textContent = fmtSecs(Math.max(0, trimEnd - trimStart));
+
+/* ── 共用選取(入/出點) ─────────────────────────────────────────────────────── */
+function initSelection() {
+  selStart = 0; selEnd = selDur();
+  updateSelUI(); updatePlayhead();
 }
-function setTrimPoint(which) {
+function updateSelUI() {
+  const d = selDur() || 1;
+  const a = Math.max(0, Math.min(1, selStart / d)) * 100;
+  const b = Math.max(0, Math.min(1, selEnd / d)) * 100;
+  const sel = document.getElementById('clip-sel');
+  sel.style.left = a + '%'; sel.style.width = Math.max(0, b - a) + '%';
+  document.getElementById('clip-h-in').style.left = a + '%';
+  document.getElementById('clip-h-out').style.left = b + '%';
+  document.getElementById('sel-in').textContent = fmtSecs(selStart);
+  document.getElementById('sel-out').textContent = fmtSecs(selEnd);
+  document.getElementById('sel-len').textContent = fmtSecs(Math.max(0, selEnd - selStart));
+}
+function updatePlayhead() {
+  const d = selDur() || 1;
+  const v = videos[mainCam];
+  const pct = v ? Math.max(0, Math.min(1, v.currentTime / d)) * 100 : 0;
+  const ph = document.getElementById('clip-playhead');
+  if (ph) ph.style.left = pct + '%';
+}
+function setSelPoint(which) {
   const v = videos[mainCam];
   const cur = v ? v.currentTime : 0;
-  if (which === 'start') trimStart = Math.min(cur, trimEnd);
-  else trimEnd = Math.max(cur, trimStart);
-  updateTrimLabels();
+  if (which === 'in') selStart = Math.max(0, Math.min(cur, selEnd));
+  else selEnd = Math.min(selDur(), Math.max(cur, selStart));
+  updateSelUI();
 }
+
+/* 時間軸拖曳:入/出把手 + 空白處 scrub。 */
+function initTimeline() {
+  const tl = document.getElementById('clip-timeline');
+  const hIn = document.getElementById('clip-h-in');
+  const hOut = document.getElementById('clip-h-out');
+  let drag = null;
+  const d = () => selDur() || 1;
+  const posToSec = (clientX) => {
+    const r = tl.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * d();
+  };
+  const move = (e) => {
+    if (!drag) return;
+    const sec = posToSec(e.clientX);
+    // 拖入/出把手時同步 seek 影片 → 影片在上方即時顯示該格畫面(Premiere in/out 行為)
+    if (drag === 'in') { selStart = Math.max(0, Math.min(sec, selEnd)); seekAll(selStart); }
+    else if (drag === 'out') { selEnd = Math.min(d(), Math.max(sec, selStart)); seekAll(selEnd); }
+    else seekAll(sec);
+    updateSelUI(); updatePlayhead();
+  };
+  const down = (e, which) => {
+    e.preventDefault(); e.stopPropagation();
+    drag = which;
+    try { tl.setPointerCapture(e.pointerId); } catch (_) {}
+    move(e);
+  };
+  hIn.addEventListener('pointerdown', (e) => down(e, 'in'));
+  hOut.addEventListener('pointerdown', (e) => down(e, 'out'));
+  tl.addEventListener('pointerdown', (e) => { if (e.target === hIn || e.target === hOut) return; down(e, 'scrub'); });
+  tl.addEventListener('pointermove', move);
+  const up = (e) => { if (!drag) return; drag = null; try { tl.releasePointerCapture(e.pointerId); } catch (_) {} };
+  tl.addEventListener('pointerup', up);
+  tl.addEventListener('pointercancel', up);
+}
+
+/* 預覽選取:於 in→out 間循環播放。 */
+function togglePreview() {
+  if (previewing) { stopPreview(); return; }
+  previewing = true;
+  seekAll(selStart);
+  for (const c of cams) if (videos[c]) videos[c].play().catch(() => {});
+  document.getElementById('clip-preview').textContent = tt('trip.clip.previewStop');
+}
+function stopPreview() {
+  if (!previewing) return;
+  previewing = false;
+  for (const c of cams) if (videos[c]) videos[c].pause();
+  const b = document.getElementById('clip-preview');
+  if (b) b.textContent = tt('trip.clip.preview');
+}
+
+/* 由播放器 tick 每幀呼叫:更新播放頭 + 預覽循環。 */
+function onPlayerTick() {
+  if (!editPanelOpen) return;
+  updatePlayhead();
+  if (previewing) {
+    const v = videos[mainCam];
+    if (v && (v.currentTime >= selEnd || v.currentTime < selStart - 0.05)) seekAll(selStart);
+  }
+}
+
+/* ── 匯出片段(版面 / 畫質) ─────────────────────────────────────────────────── */
+function buildLayoutSeg() {
+  const wrap = document.getElementById('clip-layout');
+  const opts = [];
+  if (videos.front) opts.push(['front', tt('trip.clip.layoutFront')]);
+  if (videos.rear) opts.push(['rear', tt('trip.clip.layoutRear')]);
+  if (videos.front && videos.rear) opts.push(['pip', tt('trip.clip.layoutPip')]);
+  wrap.innerHTML = opts.map(([v, l]) => `<button type="button" class="seg-btn" data-v="${v}">${l}</button>`).join('');
+  clipLayout = videos[mainCam] ? mainCam : (opts[0] ? opts[0][0] : 'front');
+  wrap.querySelectorAll('.seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.v === clipLayout);
+    b.onclick = () => selectLayout(b.dataset.v);
+  });
+  updateQualityAvail();
+}
+function selectLayout(v) {
+  clipLayout = v;
+  document.querySelectorAll('#clip-layout .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+  updateQualityAvail();
+}
+function wireQualitySeg() {
+  document.querySelectorAll('#clip-quality .seg-btn').forEach(b => {
+    b.onclick = () => { if (!b.disabled) selectQuality(b.dataset.v); };
+  });
+}
+function selectQuality(v) {
+  clipQuality = v;
+  document.querySelectorAll('#clip-quality .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+}
+/** pip 只能精確 → 停用「快速」;提示文字隨版面切換。 */
+function updateQualityAvail() {
+  const fastBtn = document.querySelector('#clip-quality .seg-btn[data-v="fast"]');
+  const hint = document.getElementById('clip-q-hint');
+  if (clipLayout === 'pip') {
+    if (clipQuality === 'fast') selectQuality('precise');
+    fastBtn.disabled = true;
+    hint.textContent = tt('trip.clip.qualityPipHint');
+  } else {
+    fastBtn.disabled = false;
+    hint.textContent = clipQuality === 'fast' ? tt('trip.clip.qualityFastHint') : '';
+  }
+}
+
+async function startClipExport() {
+  if (!(selEnd - selStart >= 1)) { showToast(tt('trip.clip.badRange'), 'error'); return; }
+  const btn = document.getElementById('clip-export');
+  btn.disabled = true;
+  document.getElementById('clip-goto').style.display = 'none';   // 新一輪匯出:先收起上次的 CTA
+  document.getElementById('clip-report-cta').style.display = 'none';
+  showClipProg(0, tt('trip.clip.exporting'));
+  const body = {
+    start: selStart, end: selEnd, layout: clipLayout, quality: clipQuality,
+    label: document.getElementById('clip-label').value || '',
+  };
+  if (clipLayout === 'pip') body.main = videos[mainCam] ? mainCam : 'front';
+  try {
+    const res = await apiFetch('/api/trip-clips/' + encodeURIComponent(tripId), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    clipJobId = res.job_id;
+    listenClip(res.job_id);
+  } catch (e) {
+    btn.disabled = false; hideClipProg();
+    showToast(e.status === 429 ? tt('trip.clip.tooMany') : (tt('trip.clip.fail') + '：' + e.message), 'error');
+  }
+}
+function listenClip(jobId) {
+  clipES = new EventSource('/api/trip-clip-events/' + encodeURIComponent(jobId));
+  clipES.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    if (d.stage === 'done') {
+      showClipProg(100, tt('trip.clip.done'));
+      closeClipES();
+      document.getElementById('clip-goto').style.display = '';   // 匯出完成 → 顯示前往片段頁 CTA
+      if (d.clip && d.clip.id) {
+        // 檢舉 CTA:帶著新片段 id 跳到片段頁,自動開啟檢舉資料對話框
+        const cta = document.getElementById('clip-report-cta');
+        cta.href = '/clips#report-' + d.clip.id;
+        cta.style.display = '';
+      }
+      showToast(tt('trip.clip.done'), 'success');
+      setTimeout(() => { hideClipProg(); document.getElementById('clip-export').disabled = false; }, 700);
+      scheduleFit();
+      return;
+    }
+    if (d.stage === 'cancelled') { closeClipES(); endClipUI(); showToast(tt('trip.clip.cancelled'), ''); return; }
+    if (d.stage === 'error') { closeClipES(); endClipUI(); showToast(tt('trip.clip.fail') + '：' + (d.message || ''), 'error'); return; }
+    const pct = d.total ? Math.round((d.done / d.total) * 100) : 0;
+    showClipProg(pct, clipProgText(pct, d));
+  };
+  // 連線中斷(網路瞬斷 / 伺服器提前結束):不要只默默關閉而讓匯出鈕永久 disabled。
+  // 匯出仍在背景進行,解除 UI 卡死並提示使用者稍後重新整理查看結果。
+  clipES.onerror = () => {
+    closeClipES();
+    endClipUI();
+    showToast(tt('trip.clipConnLost'), '');
+  };
+}
+function closeClipES() { if (clipES) { clipES.close(); clipES = null; } clipJobId = null; }
+function endClipUI() { hideClipProg(); document.getElementById('clip-export').disabled = false; }
+function showClipProg(pct, text) {
+  document.getElementById('clip-progress').style.display = '';
+  document.getElementById('clip-bar').style.width = pct + '%';
+  document.getElementById('clip-stage').textContent = text;
+}
+function hideClipProg() { document.getElementById('clip-progress').style.display = 'none'; }
+async function cancelClip() {
+  if (!clipJobId) return;
+  try { await apiFetch('/api/trip-clip-cancel/' + encodeURIComponent(clipJobId), { method: 'POST' }); } catch (e) {}
+}
+
+/** 進度文字:百分比 +(若後端有帶秒數)已處理時間碼 / 來源時間碼。缺欄位時退回純百分比。 */
+function clipProgText(pct, d) {
+  let s = tt('trip.clip.exporting') + ' ' + pct + '%';
+  if (typeof d.cur === 'number' && typeof d.dur === 'number' && d.dur > 0) {
+    s += ' · ' + tt('trip.clip.processed') + ' ' + fmtSecs(d.cur) + ' / ' + fmtSecs(d.dur);
+    if (typeof d.start === 'number') {
+      s += '（' + tt('trip.clip.sourceRange') + ' ' + fmtSecs(d.start + d.cur) + '→' + fmtSecs(d.start + d.dur) + '）';
+    }
+  }
+  return s;
+}
+
+/* I / O 快捷鍵:面板開啟且非輸入框時,把入/出點設在目前畫面。 */
+document.addEventListener('keydown', (e) => {
+  if (!editPanelOpen) return;
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (e.key === 'i' || e.key === 'I') { e.preventDefault(); setSelPoint('in'); }
+  else if (e.key === 'o' || e.key === 'O') { e.preventDefault(); setSelPoint('out'); }
+});
 
 /** 更新按鈕圓點與選單勾選狀態以反映目前值(不打 API)。 */
 function reflectVis(val) {
@@ -893,7 +1749,7 @@ async function pickVis(val) {
 }
 
 async function applyTrim() {
-  if (!(trimEnd - trimStart >= 1)) { showToast(tt('trip.trim.badRange'), 'error'); return; }
+  if (!(selEnd - selStart >= 1)) { showToast(tt('trip.trim.badRange'), 'error'); return; }
   if (!confirm(tt('trip.trim.confirmApply'))) return;
   const btn = document.getElementById('trim-apply');
   btn.disabled = true;
@@ -903,7 +1759,7 @@ async function applyTrim() {
   try {
     await apiFetch('/api/trip-trim/' + encodeURIComponent(tripId), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ start: trimStart, end: trimEnd }),
+      body: JSON.stringify({ start: selStart, end: selEnd }),
     });
     listenTrim();
   } catch (e) {
@@ -946,7 +1802,12 @@ function listenTrim() {
     const pct = d.total ? Math.round((d.done / d.total) * 100) : 0;
     setTrimProg(pct, tt('trip.trim.processing') + ' ' + pct + '%');
   };
-  es.onerror = () => es.close();
+  // 連線中斷:解除按鈕/進度卡死。裁剪仍在背景進行,提示稍後重新整理查看結果。
+  es.onerror = () => {
+    es.close();
+    endTrimUI();
+    showToast(tt('trip.trimConnLost'), '');
+  };
 }
 function setTrimProg(pct, text) {
   document.getElementById('trim-bar').style.width = pct + '%';

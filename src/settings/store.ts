@@ -143,6 +143,10 @@ export function buildPublicConfig(store: SettingsStore): Record<string, unknown>
     defaults: {
       gapMin: store.defaultGapMin(),
     },
+    report: {
+      url: s.report_url,
+      name: s.report_name,
+    },
     titleTemplate: "{page} — {brand}",
   };
 }

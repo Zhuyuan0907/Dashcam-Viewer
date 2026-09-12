@@ -8,12 +8,13 @@
   <link rel="stylesheet" href="/static/style.css">
   <style>
     /* ── 個人設定 scoped(只吃全域 token) ─────────────────────────────────────── */
-    .acct { max-width: 640px; display: flex; flex-direction: column; gap: 18px; }
+    .acct { max-width: 720px; display: flex; flex-direction: column; gap: 18px; }
     .acct .panel-title { font-size: 14px; }
     .acct-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
     .acct-row:last-child { margin-bottom: 0; }
     .acct-hint { font-size: 12px; color: var(--ink-3); line-height: 1.5; }
     .acct-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+    #devices { scroll-margin-top: 88px; }
     /* Email 區:頭像 + 輸入 */
     .acct-id { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
     .acct-avatar { width: 56px; height: 56px; flex: none; border-radius: 50%;
@@ -35,6 +36,98 @@
     .vis-toggle input:checked + .vis-switch::after { transform: translateX(18px); }
     .vis-toggle input:focus-visible + .vis-switch { box-shadow: 0 0 0 3px var(--accent-soft); }
     .vis-label { font-size: 14px; font-weight: 500; color: var(--ink); }
+    /* 多台行車記錄器 */
+    .device-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .device-section-head .panel-title { justify-content: flex-start; align-items: baseline; flex-wrap: wrap;
+      gap: 3px 7px; margin-bottom: 5px; }
+    .device-section-copy { min-width: 0; }
+    .device-section-copy .acct-hint { display: block; max-width: 54ch; }
+    .device-count { display: inline-flex; flex: none; margin-left: 0; color: var(--ink-3); font-weight: 500;
+      font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .device-list { margin: 15px -18px -16px; }
+    .device-item { padding: 16px 18px; border-top: 1px solid var(--line); }
+    .device-item-top { display: flex; align-items: flex-start; gap: 12px; }
+    .device-icon { width: 38px; height: 38px; flex: none; display: grid; place-items: center;
+      border-radius: 8px; background: var(--accent-soft); color: var(--accent); }
+    .device-icon svg { width: 20px; height: 20px; }
+    .device-main { flex: 1; min-width: 0; }
+    .device-name { font-size: 15px; line-height: 1.35; font-weight: 700; color: var(--ink);
+      overflow-wrap: anywhere; }
+    .device-model { margin-top: 2px; font-size: 13px; line-height: 1.45; color: var(--ink-2);
+      overflow-wrap: anywhere; }
+    .device-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+    .device-pill { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 8px;
+      border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font-size: 11.5px;
+      font-weight: 600; line-height: 1.35; }
+    .device-pill--default { background: var(--accent-soft); color: var(--accent); }
+    .device-pill--public { color: var(--ok); }
+    .device-note { margin: 12px 0 0 50px; font-size: 13px; line-height: 1.6; color: var(--ink-2);
+      white-space: pre-wrap; overflow-wrap: anywhere; }
+    .device-note-label { display: block; margin-bottom: 2px; color: var(--ink-3); font-size: 11.5px;
+      font-weight: 600; }
+    .device-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap;
+      gap: 4px 12px; margin: 10px 0 0 46px; }
+    .device-actions .btn { min-height: 34px; }
+    .device-actions .btn:disabled, #device-add:disabled { cursor: not-allowed; opacity: .5; transform: none;
+      text-decoration: none; }
+    .device-empty { border-top: 1px solid var(--line); padding: 30px 22px 28px; text-align: center; }
+    .device-empty-icon { width: 44px; height: 44px; margin: 0 auto 10px; display: grid; place-items: center;
+      border-radius: 8px; background: var(--surface-2); color: var(--ink-3); }
+    .device-empty-icon svg { width: 23px; height: 23px; }
+    .device-empty h3 { font-size: 15px; letter-spacing: 0; margin-bottom: 4px; }
+    .device-empty p { margin: 0 auto 13px; max-width: 40ch; font-size: 13px; color: var(--ink-3); }
+    .device-load-error { border-top: 1px solid var(--line); padding: 22px 18px; text-align: center;
+      color: var(--crit); font-size: 13px; }
+    .device-load-error .btn { margin-top: 6px; }
+    .device-limit { display: block; margin-top: 12px; }
+
+    /* 裝置編輯對話框 */
+    body.device-modal-open { overflow: hidden; }
+    .device-modal[hidden] { display: none; }
+    .device-dialog { max-width: 560px; max-height: min(760px, calc(100dvh - 48px)); display: flex;
+      flex-direction: column; }
+    .device-dialog .modal-head { flex: none; }
+    .device-dialog .modal-head h2 { font-size: 16px; letter-spacing: 0; }
+    .device-dialog form { min-height: 0; display: flex; flex-direction: column; }
+    .device-dialog .modal-body { min-height: 0; overflow-y: auto; }
+    .device-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+    .device-form-grid .acct-row { margin-bottom: 14px; }
+    .device-form-grid .device-field-wide { grid-column: 1 / -1; }
+    .device-required { color: var(--crit); }
+    .device-char-count { display: block; margin-top: -2px; text-align: right; color: var(--ink-3);
+      font-size: 11.5px; font-variant-numeric: tabular-nums; }
+    .device-options { margin-top: 2px; border-top: 1px solid var(--line); }
+    .device-option { display: flex; align-items: flex-start; gap: 11px; padding: 13px 0;
+      cursor: pointer; }
+    .device-option + .device-option { border-top: 1px solid var(--line); }
+    .device-option input { width: 17px; height: 17px; margin: 3px 0 0; flex: none; accent-color: var(--accent); }
+    .device-option-copy { min-width: 0; }
+    .device-option-title { display: block; color: var(--ink); font-size: 13.5px; font-weight: 600; }
+    .device-option-hint { display: block; margin-top: 1px; color: var(--ink-3); font-size: 12px;
+      line-height: 1.5; }
+    .device-modal-actions { flex: none; display: flex; align-items: center; justify-content: flex-end;
+      gap: 8px; padding: 14px 20px calc(14px + var(--safe-bottom)); border-top: 1px solid var(--line); }
+    .device-modal-actions .btn { min-height: 38px; }
+    .device-modal-actions .btn:disabled, .modal-close:disabled { cursor: wait; opacity: .55; }
+
+    @media (max-width: 559px) {
+      .device-section-head { gap: 12px; }
+      .device-section-head #device-add { flex: none; }
+      .device-item-top { align-items: flex-start; }
+      .device-note { margin-left: 0; }
+      .device-actions { margin-left: 0; justify-content: flex-start; }
+      .device-actions .btn { min-height: 40px; }
+      .device-modal { align-items: flex-end; padding: max(12px, var(--safe-top)) 0 0; }
+      .device-dialog { max-width: none; max-height: calc(100dvh - max(12px, var(--safe-top)));
+        border-radius: 14px 14px 0 0; }
+      .device-form-grid { grid-template-columns: 1fr; }
+      .device-form-grid .device-field-wide { grid-column: auto; }
+    }
+    @media (max-width: 380px) {
+      .device-section-head { flex-direction: column; }
+      .device-section-head #device-add { width: 100%; min-height: 42px; }
+      .device-modal-actions .btn { flex: 1; }
+    }
   </style>
 </head>
 <body>
@@ -48,6 +141,7 @@
     <nav class="hdr-nav">
       <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
       <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/clips" href="/clips" data-i18n="nav.clips">片段</a>
       <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
       <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
       <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
@@ -69,25 +163,26 @@
       <section class="panel">
         <div class="panel-title" data-i18n="account.section.account">帳號</div>
         <div class="acct-row">
-          <label class="form-label" data-i18n="account.username">帳號</label>
+          <label class="form-label" for="acct-username" data-i18n="account.username">帳號</label>
           <input class="form-input" id="acct-username" type="text" readonly disabled>
           <span class="acct-hint" data-i18n="account.usernameHint">登入帳號,無法更改。</span>
         </div>
         <div class="acct-row">
-          <label class="form-label" data-i18n="account.currentPassword">目前密碼</label>
+          <label class="form-label" for="pw-current" data-i18n="account.currentPassword">目前密碼</label>
           <input class="form-input" id="pw-current" type="password" autocomplete="current-password">
         </div>
         <div class="acct-grid2">
           <div class="acct-row">
-            <label class="form-label" data-i18n="account.newPassword">新密碼</label>
+            <label class="form-label" for="pw-new" data-i18n="account.newPassword">新密碼</label>
             <input class="form-input" id="pw-new" type="password" autocomplete="new-password">
           </div>
           <div class="acct-row">
-            <label class="form-label" data-i18n="account.confirmPassword">確認新密碼</label>
+            <label class="form-label" for="pw-confirm" data-i18n="account.confirmPassword">確認新密碼</label>
             <input class="form-input" id="pw-confirm" type="password" autocomplete="new-password">
           </div>
         </div>
         <div class="form-error" id="pw-error"></div>
+        <span class="acct-hint" data-i18n="account.pwPrivacy">密碼只保存加鹽後的單向雜湊，系統無法還原明文。</span>
         <span class="acct-hint" data-i18n="account.pwHint">更新後,其他已登入的裝置會被登出。</span>
         <div class="acct-actions">
           <button type="button" class="btn btn--solid btn--sm" onclick="changePassword()" data-i18n="account.changePassword">更新密碼</button>
@@ -98,14 +193,14 @@
       <section class="panel">
         <div class="panel-title" data-i18n="account.section.email">Email(頭像)</div>
         <div class="acct-row">
-          <label class="form-label" data-i18n="account.displayName">顯示名稱</label>
-          <input class="form-input" id="acct-display" type="text" maxlength="60" placeholder="例如 小明">
+          <label class="form-label" for="acct-display" data-i18n="account.displayName">顯示名稱</label>
+          <input class="form-input" id="acct-display" type="text" maxlength="60" placeholder="例如 Zhuyuan">
           <span class="acct-hint" data-i18n="account.displayNameHint">各處介面(頁首、瀏覽選單、管理列表)會優先顯示此名稱;留空則顯示帳號。</span>
         </div>
         <div class="acct-id">
           <div class="acct-avatar" id="acct-avatar">?</div>
           <div class="grow">
-            <label class="form-label" data-i18n="account.email">Email</label>
+            <label class="form-label" for="acct-email" data-i18n="account.email">Email</label>
             <input class="form-input" id="acct-email" type="email" autocomplete="email" placeholder="you@example.com">
           </div>
         </div>
@@ -120,7 +215,7 @@
         <div class="panel-title" data-i18n="account.section.viewing">看片偏好</div>
         <div class="acct-grid2">
           <div class="acct-row">
-            <label class="form-label" data-i18n="account.camera">預設主鏡頭</label>
+            <label class="form-label" for="acct-camera" data-i18n="account.camera">預設主鏡頭</label>
             <select class="form-input form-select" id="acct-camera">
               <option value="" data-i18n="account.cameraGlobal">跟隨全域設定</option>
               <option value="front" data-i18n="account.front">前鏡頭</option>
@@ -128,7 +223,7 @@
             </select>
           </div>
           <div class="acct-row">
-            <label class="form-label" data-i18n="account.speed">預設播放速度</label>
+            <label class="form-label" for="acct-speed" data-i18n="account.speed">預設播放速度</label>
             <select class="form-input form-select" id="acct-speed">
               <option value="" data-i18n="account.speedDefault">預設(1×)</option>
               <option value="1">1×</option>
@@ -157,7 +252,7 @@
       <section class="panel">
         <div class="panel-title" data-i18n="account.section.theme">介面主題</div>
         <div class="acct-row">
-          <label class="form-label" data-i18n="account.theme">主題</label>
+          <label class="form-label" for="acct-theme" data-i18n="account.theme">主題</label>
           <select class="form-input form-select" id="acct-theme" onchange="onThemeChange(this.value)">
             <option value="auto" data-i18n="account.themeAuto">自動(跟隨系統)</option>
             <option value="light" data-i18n="account.themeLight">淺色</option>
@@ -167,19 +262,83 @@
       </section>
 
       <!-- 使用的行車記錄器 -->
-      <section class="panel">
-        <div class="panel-title" data-i18n="account.section.device">使用的行車記錄器</div>
-        <div class="acct-row">
-          <label class="form-label" data-i18n="account.deviceNote">型號 / 備註</label>
-          <textarea class="form-input" id="acct-device" rows="3" maxlength="500" placeholder=""></textarea>
-          <span class="acct-hint" data-i18n="account.deviceHint">選填,例如記錄器型號或安裝備註。</span>
+      <section class="panel" id="devices" aria-labelledby="device-section-title">
+        <div class="device-section-head">
+          <div class="device-section-copy">
+            <div class="panel-title" id="device-section-title">
+              <span data-i18n="account.section.device">使用的行車記錄器</span>
+              <span class="device-count" id="device-count" aria-live="polite"></span>
+            </div>
+            <span class="acct-hint">可管理多台記錄器；預設裝置會優先套用到新的上傳工作。</span>
+          </div>
+          <button type="button" class="btn btn--solid btn--sm" id="device-add" onclick="openDeviceModal()" disabled>
+            新增記錄器
+          </button>
         </div>
-        <div class="acct-actions">
-          <button type="button" class="btn btn--solid btn--sm" onclick="saveProfile()" data-i18n="account.save">儲存</button>
+        <div class="device-list" id="device-list" aria-live="polite" aria-busy="true">
+          <div class="loading-row"><span class="spinner" aria-hidden="true"></span><span>載入記錄器...</span></div>
         </div>
+        <span class="acct-hint device-limit" id="device-limit">每個帳號最多可管理 12 台記錄器。</span>
       </section>
 
     </div>
+  </div>
+</div>
+
+<div class="modal-scrim device-modal" id="device-modal" hidden onclick="onDeviceBackdrop(event)">
+  <div class="modal-box device-dialog" role="dialog" aria-modal="true" aria-labelledby="device-modal-title" aria-describedby="device-modal-desc">
+    <div class="modal-head">
+      <h2 id="device-modal-title">新增行車記錄器</h2>
+      <button type="button" class="modal-close" id="device-modal-close" onclick="closeDeviceModal()" aria-label="關閉" title="關閉">×</button>
+    </div>
+    <form id="device-form" novalidate>
+      <div class="modal-body">
+        <p class="acct-hint" id="device-modal-desc" style="margin-bottom:16px;">選擇對應的檔案解析類型，並記錄這台裝置的安裝方式。</p>
+        <div class="device-form-grid">
+          <div class="acct-row">
+            <label class="form-label" for="device-profile">記錄器類型 <span class="device-required" aria-hidden="true">*</span></label>
+            <select class="form-input form-select" id="device-profile" required aria-describedby="device-profile-hint"></select>
+            <span class="acct-hint" id="device-profile-hint">此設定會決定上傳檔案的辨識方式。</span>
+          </div>
+          <div class="acct-row">
+            <label class="form-label" for="device-model">型號 <span class="device-required" aria-hidden="true">*</span></label>
+            <input class="form-input" id="device-model" type="text" maxlength="120" required autocomplete="off" placeholder="例如 Polaroid MS279WG">
+          </div>
+          <div class="acct-row device-field-wide">
+            <label class="form-label" for="device-nickname">裝置名稱</label>
+            <input class="form-input" id="device-nickname" type="text" maxlength="60" autocomplete="off" placeholder="例如 機車主機、備用記錄器">
+            <span class="acct-hint">選填；有多台記錄器時可快速分辨。</span>
+          </div>
+          <div class="acct-row device-field-wide">
+            <label class="form-label" for="device-note">安裝備註</label>
+            <textarea class="form-input" id="device-note" rows="3" maxlength="500" placeholder="例如 固定於車頭，後鏡頭安裝於牌照上方" aria-describedby="device-note-hint device-note-count"></textarea>
+            <span class="acct-hint" id="device-note-hint">可記錄前後鏡頭位置、固定方式或其他辨識資訊。</span>
+            <span class="device-char-count" id="device-note-count">0 / 500</span>
+          </div>
+        </div>
+        <div class="device-options">
+          <label class="device-option" for="device-show-trips">
+            <input type="checkbox" id="device-show-trips" checked>
+            <span class="device-option-copy">
+              <span class="device-option-title">顯示於旅程與影片資訊</span>
+              <span class="device-option-hint">開啟後，型號、名稱與安裝備註會顯示在對應旅程；公開旅程的觀看者也能看到。關閉會立即套用到既有旅程。</span>
+            </span>
+          </label>
+          <label class="device-option" for="device-default">
+            <input type="checkbox" id="device-default">
+            <span class="device-option-copy">
+              <span class="device-option-title">設為預設記錄器</span>
+              <span class="device-option-hint" id="device-default-hint">新上傳工作會優先選擇這台裝置，仍可在上傳時改選。</span>
+            </span>
+          </label>
+        </div>
+        <div class="form-error" id="device-form-error" role="alert" tabindex="-1"></div>
+      </div>
+      <div class="device-modal-actions">
+        <button type="button" class="btn btn--ghost" id="device-cancel" onclick="closeDeviceModal()">取消</button>
+        <button type="submit" class="btn btn--solid" id="device-submit">新增記錄器</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -187,6 +346,18 @@
 <script src="/static/app.js"></script>
 <script>
 let user = null;
+let devices = [];
+let deviceProfiles = [];
+let editingDeviceId = null;
+let deviceReturnFocus = null;
+let deviceModalBusy = false;
+let deviceActionBusy = null;
+
+const DEVICE_LIMIT = 12;
+const DEVICE_MODEL_DEFAULTS = {
+  'mivue-mp20': 'MiVue™ MP20',
+  'polaroid-ms279wg': 'Polaroid MS279WG',
+};
 
 (async () => {
   await configReady;
@@ -194,13 +365,13 @@ let user = null;
   if (!user) return;
   renderHeader(user);
   fillForm();
+  await loadDevices();
 })();
 
 function fillForm() {
   document.getElementById('acct-username').value = user.username || '';
   document.getElementById('acct-display').value = user.display_name || '';
   document.getElementById('acct-email').value = user.email || '';
-  document.getElementById('acct-device').value = user.device_note || '';
   setAvatar(user.gravatar_url, user.username);
   document.getElementById('acct-camera').value = user.pref_camera || '';
   document.getElementById('acct-speed').value = user.pref_speed != null ? String(user.pref_speed) : '';
@@ -209,6 +380,367 @@ function fillForm() {
   document.getElementById('acct-theme').value = theme;
   document.getElementById('acct-public').checked = user.trips_public === 1;
 }
+
+function makeDeviceElement(tag, className, textValue) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (textValue !== undefined) node.textContent = textValue;
+  return node;
+}
+
+function deviceDisplayName(device) {
+  return (device.nickname || device.model || '未命名記錄器').trim();
+}
+
+function deviceProfileLabel(key) {
+  return deviceProfiles.find(profile => profile.key === key)?.label || '自訂記錄器';
+}
+
+function syncLegacyDeviceCache() {
+  if (!user) return;
+  const device = devices.find(item => item.is_default) || devices[0];
+  const legacyNote = device ? [device.model, device.note].filter(Boolean).join(' - ') : '';
+  if (user.device_note === legacyNote) return;
+  user = { ...user, device_note: legacyNote };
+  cacheSet('user', user);
+}
+
+function populateDeviceProfileSelect(selectedKey = '') {
+  const select = document.getElementById('device-profile');
+  const placeholder = makeDeviceElement('option', '', '請選擇記錄器類型');
+  placeholder.value = '';
+  placeholder.disabled = true;
+  select.replaceChildren(placeholder);
+  deviceProfiles.forEach(profile => {
+    const option = makeDeviceElement('option', '', profile.label);
+    option.value = profile.key;
+    select.appendChild(option);
+  });
+  select.value = selectedKey;
+  if (!select.value) placeholder.selected = true;
+  select.dataset.previous = selectedKey;
+}
+
+function renderDeviceLoading() {
+  const list = document.getElementById('device-list');
+  list.setAttribute('aria-busy', 'true');
+  const row = makeDeviceElement('div', 'loading-row');
+  const spinner = makeDeviceElement('span', 'spinner');
+  spinner.setAttribute('aria-hidden', 'true');
+  row.append(spinner, makeDeviceElement('span', '', '載入記錄器...'));
+  list.replaceChildren(row);
+}
+
+function renderDeviceLoadError(message) {
+  const list = document.getElementById('device-list');
+  list.setAttribute('aria-busy', 'false');
+  const box = makeDeviceElement('div', 'device-load-error');
+  box.setAttribute('role', 'alert');
+  box.appendChild(makeDeviceElement('div', '', message || '無法載入行車記錄器。'));
+  const retry = makeDeviceElement('button', 'btn btn--sm', '重新載入');
+  retry.type = 'button';
+  retry.addEventListener('click', () => loadDevices());
+  box.appendChild(retry);
+  list.replaceChildren(box);
+  document.getElementById('device-add').disabled = true;
+  document.getElementById('device-count').textContent = '';
+}
+
+async function loadDevices({ showLoading = true } = {}) {
+  if (showLoading) renderDeviceLoading();
+  try {
+    const response = await apiFetch('/api/account/devices');
+    deviceProfiles = Array.isArray(response.profiles)
+      ? response.profiles.filter(profile => profile && typeof profile.key === 'string' && typeof profile.label === 'string')
+      : [];
+    devices = Array.isArray(response.devices) ? response.devices : [];
+    syncLegacyDeviceCache();
+    renderDeviceList();
+    return true;
+  } catch (error) {
+    renderDeviceLoadError(error.message);
+    return false;
+  }
+}
+
+function renderDeviceList() {
+  const list = document.getElementById('device-list');
+  const addButton = document.getElementById('device-add');
+  const atLimit = devices.length >= DEVICE_LIMIT;
+  list.setAttribute('aria-busy', 'false');
+  document.getElementById('device-count').textContent = `${devices.length} / ${DEVICE_LIMIT} 台`;
+  document.getElementById('device-limit').textContent = atLimit
+    ? '已達每個帳號 12 台的管理上限；如需新增，請先封存不再使用的記錄器。'
+    : '每個帳號最多可管理 12 台記錄器。';
+  addButton.disabled = atLimit || deviceProfiles.length === 0 || deviceActionBusy !== null;
+
+  if (devices.length === 0) {
+    const empty = makeDeviceElement('div', 'device-empty');
+    const icon = makeDeviceElement('div', 'device-empty-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6 16 3h4l1.5 3"/><rect x="2" y="6" width="20" height="14" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M6 10h.01"/></svg>';
+    empty.append(icon, makeDeviceElement('h3', '', '尚未新增行車記錄器'));
+    empty.appendChild(makeDeviceElement('p', '', '新增後，上傳時即可指定影片來自哪一台記錄器。'));
+    const add = makeDeviceElement('button', 'btn btn--solid btn--sm', '新增第一台記錄器');
+    add.type = 'button';
+    add.disabled = deviceProfiles.length === 0;
+    add.addEventListener('click', () => openDeviceModal());
+    empty.appendChild(add);
+    list.replaceChildren(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  devices.forEach(device => fragment.appendChild(renderDeviceItem(device)));
+  list.replaceChildren(fragment);
+}
+
+function renderDeviceItem(device) {
+  const item = makeDeviceElement('article', 'device-item');
+  const name = deviceDisplayName(device);
+  item.setAttribute('aria-label', `行車記錄器：${name}`);
+
+  const top = makeDeviceElement('div', 'device-item-top');
+  const icon = makeDeviceElement('div', 'device-icon');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/><circle cx="8.5" cy="12" r="2.5"/></svg>';
+  const main = makeDeviceElement('div', 'device-main');
+  main.appendChild(makeDeviceElement('div', 'device-name', name));
+  if (device.nickname) main.appendChild(makeDeviceElement('div', 'device-model', device.model));
+
+  const meta = makeDeviceElement('div', 'device-meta');
+  meta.appendChild(makeDeviceElement('span', 'device-pill', deviceProfileLabel(device.profile_key)));
+  if (device.is_default) meta.appendChild(makeDeviceElement('span', 'device-pill device-pill--default', '預設'));
+  meta.appendChild(makeDeviceElement(
+    'span',
+    `device-pill${device.show_on_trips ? ' device-pill--public' : ''}`,
+    device.show_on_trips ? '顯示於旅程' : '不顯示於旅程',
+  ));
+  main.appendChild(meta);
+  top.append(icon, main);
+  item.appendChild(top);
+
+  if (device.note) {
+    const note = makeDeviceElement('div', 'device-note');
+    note.appendChild(makeDeviceElement('span', 'device-note-label', '安裝備註'));
+    note.appendChild(document.createTextNode(device.note));
+    item.appendChild(note);
+  }
+
+  const actions = makeDeviceElement('div', 'device-actions');
+  if (!device.is_default) {
+    const setDefault = makeDeviceElement('button', 'btn btn--sm', '設為預設');
+    setDefault.type = 'button';
+    setDefault.disabled = deviceActionBusy !== null;
+    setDefault.setAttribute('aria-label', `將 ${name} 設為預設記錄器`);
+    setDefault.addEventListener('click', () => setDefaultDevice(device.id));
+    actions.appendChild(setDefault);
+  }
+  const edit = makeDeviceElement('button', 'btn btn--ghost btn--sm', '編輯');
+  edit.type = 'button';
+  edit.disabled = deviceActionBusy !== null;
+  edit.setAttribute('aria-label', `編輯 ${name}`);
+  edit.addEventListener('click', () => openDeviceModal(device.id));
+  const archive = makeDeviceElement('button', 'btn btn--danger btn--sm', '封存');
+  archive.type = 'button';
+  archive.disabled = deviceActionBusy !== null;
+  archive.setAttribute('aria-label', `封存 ${name}`);
+  archive.addEventListener('click', () => archiveDevice(device.id));
+  actions.append(edit, archive);
+  item.appendChild(actions);
+  return item;
+}
+
+function openDeviceModal(deviceId = null) {
+  if (deviceModalBusy || deviceProfiles.length === 0) return;
+  const device = deviceId == null ? null : devices.find(item => item.id === deviceId);
+  if (deviceId != null && !device) {
+    showToast('找不到這台行車記錄器，請重新載入頁面。', 'error');
+    return;
+  }
+
+  editingDeviceId = device ? device.id : null;
+  const form = document.getElementById('device-form');
+  form.reset();
+  populateDeviceProfileSelect(device?.profile_key || '');
+  document.getElementById('device-model').value = device?.model || '';
+  document.getElementById('device-nickname').value = device?.nickname || '';
+  document.getElementById('device-note').value = device?.note || '';
+  document.getElementById('device-show-trips').checked = device ? device.show_on_trips === true : true;
+
+  const defaultInput = document.getElementById('device-default');
+  const automaticDefault = devices.length === 0 || device?.is_default === true;
+  defaultInput.checked = automaticDefault;
+  defaultInput.disabled = automaticDefault;
+  document.getElementById('device-default-hint').textContent = devices.length === 0
+    ? '第一台記錄器會自動設為預設。'
+    : device?.is_default
+      ? '這台目前是預設記錄器；請在清單中選擇另一台以更換。'
+      : '新上傳工作會優先選擇這台裝置，仍可在上傳時改選。';
+
+  document.getElementById('device-modal-title').textContent = device ? '編輯行車記錄器' : '新增行車記錄器';
+  document.getElementById('device-submit').textContent = device ? '儲存變更' : '新增記錄器';
+  const error = document.getElementById('device-form-error');
+  error.textContent = '';
+  error.classList.remove('show');
+  updateDeviceNoteCount();
+
+  deviceReturnFocus = document.activeElement;
+  const modal = document.getElementById('device-modal');
+  modal.hidden = false;
+  document.body.classList.add('device-modal-open');
+  document.addEventListener('keydown', onDeviceModalKeydown);
+  requestAnimationFrame(() => document.getElementById(device ? 'device-nickname' : 'device-profile').focus());
+}
+
+function closeDeviceModal() {
+  if (deviceModalBusy) return;
+  const modal = document.getElementById('device-modal');
+  if (modal.hidden) return;
+  modal.hidden = true;
+  document.body.classList.remove('device-modal-open');
+  document.removeEventListener('keydown', onDeviceModalKeydown);
+  editingDeviceId = null;
+  if (deviceReturnFocus && deviceReturnFocus.isConnected) deviceReturnFocus.focus();
+  deviceReturnFocus = null;
+}
+
+function onDeviceBackdrop(event) {
+  if (event.target === document.getElementById('device-modal')) closeDeviceModal();
+}
+
+function onDeviceModalKeydown(event) {
+  const modal = document.getElementById('device-modal');
+  if (modal.hidden) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeDeviceModal();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])')]
+    .filter(node => node.offsetParent !== null);
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function onDeviceProfileChange() {
+  const select = document.getElementById('device-profile');
+  const model = document.getElementById('device-model');
+  const previousKey = select.dataset.previous || '';
+  if (DEVICE_MODEL_DEFAULTS[select.value]) {
+    model.value = DEVICE_MODEL_DEFAULTS[select.value];
+  } else if (DEVICE_MODEL_DEFAULTS[previousKey] === model.value.trim()) {
+    model.value = '';
+  }
+  select.dataset.previous = select.value;
+}
+
+function updateDeviceNoteCount() {
+  const length = document.getElementById('device-note').value.length;
+  document.getElementById('device-note-count').textContent = `${length} / 500`;
+}
+
+function setDeviceFormBusy(busy) {
+  deviceModalBusy = busy;
+  const form = document.getElementById('device-form');
+  form.querySelectorAll('input, select, textarea, button').forEach(control => { control.disabled = busy; });
+  if (!busy) {
+    const current = devices.find(item => item.id === editingDeviceId);
+    document.getElementById('device-default').disabled = devices.length === 0 || current?.is_default === true;
+  }
+  document.getElementById('device-modal-close').disabled = busy;
+  document.getElementById('device-submit').textContent = busy
+    ? '儲存中...'
+    : editingDeviceId == null ? '新增記錄器' : '儲存變更';
+}
+
+async function saveDevice(event) {
+  event.preventDefault();
+  if (deviceModalBusy) return;
+  const form = document.getElementById('device-form');
+  if (!form.reportValidity()) return;
+
+  const targetId = editingDeviceId;
+  const isEditing = targetId != null;
+  const payload = {
+    profile_key: document.getElementById('device-profile').value,
+    model: document.getElementById('device-model').value.trim(),
+    nickname: document.getElementById('device-nickname').value.trim(),
+    note: document.getElementById('device-note').value.trim(),
+    show_on_trips: document.getElementById('device-show-trips').checked,
+    is_default: document.getElementById('device-default').checked,
+  };
+  const error = document.getElementById('device-form-error');
+  error.textContent = '';
+  error.classList.remove('show');
+  setDeviceFormBusy(true);
+
+  try {
+    await apiFetch(isEditing ? `/api/account/devices/${targetId}` : '/api/account/devices', {
+      method: isEditing ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    setDeviceFormBusy(false);
+    closeDeviceModal();
+    await loadDevices({ showLoading: false });
+    showToast(isEditing ? '行車記錄器已更新。' : '行車記錄器已新增。', 'success');
+  } catch (requestError) {
+    error.textContent = requestError.message;
+    error.classList.add('show');
+    setDeviceFormBusy(false);
+    error.focus();
+  }
+}
+
+async function setDefaultDevice(deviceId) {
+  if (deviceActionBusy !== null) return;
+  deviceActionBusy = deviceId;
+  renderDeviceList();
+  try {
+    await apiFetch(`/api/account/devices/${deviceId}/default`, { method: 'PUT' });
+    deviceActionBusy = null;
+    await loadDevices({ showLoading: false });
+    showToast('預設行車記錄器已更新。', 'success');
+  } catch (error) {
+    deviceActionBusy = null;
+    renderDeviceList();
+    showToast(error.message, 'error');
+  }
+}
+
+async function archiveDevice(deviceId) {
+  if (deviceActionBusy !== null) return;
+  const device = devices.find(item => item.id === deviceId);
+  if (!device) return;
+  const message = `確定封存「${deviceDisplayName(device)}」？\n\n既有旅程仍會保留當時的裝置資訊，但新上傳將無法再選擇這台記錄器。`;
+  if (!confirm(message)) return;
+  deviceActionBusy = deviceId;
+  renderDeviceList();
+  try {
+    await apiFetch(`/api/account/devices/${deviceId}`, { method: 'DELETE' });
+    deviceActionBusy = null;
+    await loadDevices({ showLoading: false });
+    showToast('行車記錄器已封存。', 'success');
+  } catch (error) {
+    deviceActionBusy = null;
+    renderDeviceList();
+    showToast(error.message, 'error');
+  }
+}
+
+document.getElementById('device-form').addEventListener('submit', saveDevice);
+document.getElementById('device-profile').addEventListener('change', onDeviceProfileChange);
+document.getElementById('device-note').addEventListener('input', updateDeviceNoteCount);
 
 async function saveVisibility(pub) {
   try {
@@ -227,21 +759,28 @@ async function saveVisibility(pub) {
 }
 
 function setAvatar(url, username) {
-  const el = document.getElementById('acct-avatar');
+  const avatar = document.getElementById('acct-avatar');
   const initial = ((username || '?')[0] || '?').toUpperCase();
-  el.innerHTML = url
-    ? `<img src="${url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.parentNode.textContent='${initial}'">`
-    : initial;
+  avatar.replaceChildren();
+  if (!url) {
+    avatar.textContent = initial;
+    return;
+  }
+  const image = document.createElement('img');
+  image.src = url;
+  image.alt = '';
+  image.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit';
+  image.addEventListener('error', () => { avatar.textContent = initial; }, { once: true });
+  avatar.appendChild(image);
 }
 
 async function saveProfile() {
   const email = document.getElementById('acct-email').value.trim();
-  const device_note = document.getElementById('acct-device').value.trim();
   const display_name = document.getElementById('acct-display').value.trim();
   try {
     const r = await apiFetch('/api/account/profile', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, device_note, display_name }),
+      body: JSON.stringify({ email, display_name }),
     });
     user = { ...user, email: r.email, device_note: r.device_note, display_name: r.display_name, gravatar_url: r.gravatar_url };
     cacheSet('user', user);

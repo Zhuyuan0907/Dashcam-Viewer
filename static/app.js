@@ -57,6 +57,8 @@ function showToast(msg, type = '') {
     container = Object.assign(document.createElement('div'), { id: 'toast-container' });
     document.body.appendChild(container);
   }
+  container.setAttribute('role', 'status');
+  container.setAttribute('aria-live', 'polite');
   const t = Object.assign(document.createElement('div'), {
     className: `toast${type ? ' ' + type : ''}`,
     textContent: msg,
@@ -81,6 +83,10 @@ function renderTripCard(trip) {
   const cams = [];
   if (trip.has_front) cams.push(t('trip.camFrontShort'));
   if (trip.has_rear)  cams.push(t('trip.camRearShort'));
+  const deviceName = trip.device && (trip.device.nickname || trip.device.model);
+  const deviceMeta = deviceName
+    ? `<span class="trip-meta-item" title="${escapeHtml(trip.device.model)}">${escapeHtml(deviceName)}</span>`
+    : '';
 
   // dashcam 畫格 + OSD 時間碼;序號用 day_order(真實序列)
   const size = trip.bytes ? `<span class="trip-meta-item">${fmtBytes(trip.bytes)}</span>` : '';
@@ -108,6 +114,7 @@ function renderTripCard(trip) {
         <div class="trip-time">${start} — ${end}</div>
         <div class="trip-meta">
           <span class="trip-meta-item">${cams.join('+')||'—'}${t('trip.camSuffix')}</span>
+          ${deviceMeta}
           ${size}
           <span class="trip-meta-item">${trip.segment_count} ${t('common.segUnit')}</span>
         </div>
@@ -263,6 +270,11 @@ async function checkAuth({ redirect = true, adminOnly = false } = {}) {
     cacheSet('user', user);
     // 依登入者的跨裝置主題偏好同步(未設定則保留本機 localStorage 的選擇)
     if (user.pref_theme) applyTheme(user.pref_theme);
+    // 首次登入須改密碼:一律導到強制改密碼頁(改密碼頁本身豁免以免迴圈)
+    if (user.must_change_password && !location.pathname.startsWith('/change-password')) {
+      location.href = '/change-password';
+      return null;
+    }
     if (adminOnly && user.role !== 'admin') {
       if (redirect) location.href = '/';
       return null;
@@ -343,6 +355,7 @@ function initNavActive() {
 const MNAV = [
   { href: '/',       key: 'nav.home',   fb: '首頁' },
   { href: '/browse', key: 'nav.browse', fb: '瀏覽旅程' },
+  { href: '/clips',  key: 'nav.clips',  fb: '片段' },
   { href: '/upload', key: 'nav.upload', fb: '上傳' },
   { href: '/admin',  key: 'nav.admin',  fb: '管理', admin: true },
   { href: '/ops',    key: 'nav.ops',    fb: '維運', admin: true },

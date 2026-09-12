@@ -91,3 +91,28 @@ test("rehydrate:新 manager 從 DB 載回既有 session", () => {
   assert.ok(got, "重啟後仍應看到 session");
   assert.equal(got!.conns, 0, "重啟後連線數歸零");
 });
+
+test("beginRevokeForUser:傳輸中拒絕；刪帳臨界區阻止建立新憑證", async () => {
+  const mgr = setup();
+  const first = mgr.create({ id: 1, username: "alice" }, 600);
+  const second = mgr.create({ id: 1, username: "alice" }, 600);
+  mgr.connOpened(first.id);
+
+  assert.deepEqual(await mgr.beginRevokeForUser(1), { ok: false, removed: 0 });
+  assert.ok(mgr.get(first.id));
+  assert.ok(mgr.get(second.id));
+
+  mgr.connClosed(first.id);
+  assert.deepEqual(await mgr.beginRevokeForUser(1), { ok: true, removed: 2 });
+  assert.equal(mgr.get(first.id), undefined);
+  assert.equal(mgr.get(second.id), undefined);
+  assert.ok(!existsSync(path.join(UPLOAD_DIR, first.id)));
+  assert.ok(!existsSync(path.join(UPLOAD_DIR, second.id)));
+  assert.throws(
+    () => mgr.create({ id: 1, username: "alice" }, 600),
+    /帳號正在刪除/,
+    "檔案清理完成到 users 列刪除前仍不可建立新憑證",
+  );
+  mgr.finishRevokeForUser(1);
+  assert.ok(mgr.create({ id: 1, username: "alice" }, 600));
+});

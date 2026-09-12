@@ -59,6 +59,7 @@
     <nav class="hdr-nav">
       <a class="hdr-link" data-href="/" href="/" data-i18n="nav.home">首頁</a>
       <a class="hdr-link" data-href="/browse" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/clips" href="/clips" data-i18n="nav.clips">片段</a>
       <a class="hdr-link" data-href="/upload" href="/upload" data-i18n="nav.upload">上傳</a>
       <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none" data-i18n="nav.admin">管理</a>
       <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none" data-i18n="nav.ops">維運</a>
@@ -128,6 +129,17 @@
             <div class="cfg-field"><label>SFTP 顯示埠 <span class="hint">(僅顯示;實際綁定走環境變數)</span></label><input class="form-input" id="cfg-sftp_port" type="number" min="1" max="65535"></div>
             <div class="cfg-field"><label>上傳閒置逾時 (秒)</label><input class="form-input" id="cfg-upload_session_idle_sec" type="number" min="60" max="86400"></div>
             <div class="cfg-field"><label>預設處理間隔 (分)</label><input class="form-input" id="cfg-default_gap_min" type="number" min="1" max="120"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 檢舉輔助 -->
+      <div class="cfg-section">
+        <div class="cfg-section-head">檢舉輔助</div>
+        <div class="cfg-section-body">
+          <div class="cfg-grid">
+            <div class="cfg-field"><label>檢舉系統網址 <span class="hint">(所在縣市,如 https://tvrs.ntpd.gov.tw/Home/Report)</span></label><input class="form-input" id="cfg-report_url" type="text" maxlength="300" placeholder="留空 = 只顯示常用入口清單"></div>
+            <div class="cfg-field"><label>檢舉系統名稱 <span class="hint">(顯示在片段頁檢舉對話框的按鈕上)</span></label><input class="form-input" id="cfg-report_name" type="text" maxlength="100" placeholder="如 新北市交通違規檢舉系統"></div>
           </div>
         </div>
       </div>
@@ -258,6 +270,13 @@
           <label class="form-label" data-i18n="admin.modal.password">密碼</label>
           <input class="form-input" id="new-password" type="password"
                  autocomplete="new-password" placeholder="至少 8 個字元" data-i18n-attr="placeholder:admin.modal.passwordPlaceholder" required minlength="8">
+        </div>
+        <div class="form-field">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:400;cursor:pointer;">
+            <input type="checkbox" id="new-require-change" onchange="toggleRequireChange()">
+            <span data-i18n="admin.modal.requireChange">首次登入時要求變更密碼</span>
+          </label>
+          <span class="acct-hint" style="display:block;margin-top:4px;color:var(--ink-3);font-size:12.5px;" data-i18n="admin.modal.requireChangeHint">勾選後可不填密碼；使用者首次登入（密碼留空）後需自行設定新密碼。</span>
         </div>
         <div class="form-field">
           <label class="form-label" data-i18n="admin.modal.role">角色</label>
@@ -601,6 +620,8 @@ function openCreateModal() {
   document.getElementById('new-email').value = '';
   document.getElementById('new-password').value = '';
   document.getElementById('new-role').value = 'viewer';
+  document.getElementById('new-require-change').checked = false;
+  toggleRequireChange();   // 還原密碼欄為必填
   // 只有總管理員能新增管理員:非總管理員時隱藏 admin 選項。
   const adminOpt = document.querySelector('#new-role option[value="admin"]');
   if (adminOpt) adminOpt.hidden = !(currentUser && currentUser.is_owner);
@@ -609,6 +630,21 @@ function openCreateModal() {
   document.getElementById('create-btn').textContent = t('admin.modal.create');
   document.getElementById('create-modal').style.display = 'flex';
   setTimeout(() => document.getElementById('new-username').focus(), 80);
+}
+
+/** 勾選「首次登入須改密碼」→ 密碼欄改為選填(可留空);取消勾選則還原必填。 */
+function toggleRequireChange() {
+  const cb = document.getElementById('new-require-change');
+  const pw = document.getElementById('new-password');
+  if (cb.checked) {
+    pw.required = false;
+    pw.removeAttribute('minlength');
+    pw.placeholder = t('admin.modal.passwordOptional');
+  } else {
+    pw.required = true;
+    pw.setAttribute('minlength', '8');
+    pw.placeholder = t('admin.modal.passwordPlaceholder');
+  }
 }
 
 async function doCreate(e) {
@@ -622,12 +658,13 @@ async function doCreate(e) {
   const email    = document.getElementById('new-email').value.trim();
   const password = document.getElementById('new-password').value;
   const role     = document.getElementById('new-role').value;
+  const mustChange = document.getElementById('new-require-change').checked;
 
   try {
     await apiFetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password, role }),
+      body: JSON.stringify({ username, email, password, role, must_change_password: mustChange }),
     });
     closeModal('create-modal');
     showToast(t('admin.toast.created', { name: username }), 'success');
@@ -716,7 +753,8 @@ function closeModal(id) {
 /* ── 外觀與品牌設定 ──────────────────────────────────────────────────────── */
 const SCALAR_KEYS = ['site_title','footer_text','login_tagline',
   'locale','units','items_per_page','default_camera','sftp_public_host',
-  'sftp_port','upload_session_idle_sec','default_gap_min','login_bg'];
+  'sftp_port','upload_session_idle_sec','default_gap_min','login_bg',
+  'report_url','report_name'];
 let iconDataUrl = '', faviconDataUrl = '';
 
 async function loadSettingsForm() {

@@ -342,9 +342,16 @@ a.trip-card:hover .trip-thumb-img { transform: scale(1.03); }
 .ctrl-btn.wide { width: auto; padding: 0 13px; gap: 5px; font-family: var(--font-mono); font-size: 13px; font-weight: 600; border-radius: 999px; }
 .ctrl-seek { flex: 1; display: flex; align-items: center; gap: 10px; }
 .ctrl-time { font-family: var(--font-mono); font-size: 13px; color: #fff; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.ctrl-track { flex: 1; position: relative; height: 6px; background: rgba(255,255,255,.28); border-radius: 99px; cursor: pointer; }
-.ctrl-fill { position: absolute; left: 0; top: 0; bottom: 0; background: #fff; border-radius: 99px; width: 0; }
-.ctrl-track input { position: absolute; inset: -8px 0; width: 100%; opacity: 0; cursor: pointer; }
+.ctrl-track { flex: 1; position: relative; height: 22px; background: transparent; cursor: pointer; touch-action: none; }
+.ctrl-track::before { content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 6px;
+  background: rgba(255,255,255,.28); border-radius: 99px; pointer-events: none; }
+.ctrl-fill { position: absolute; left: 0; top: 8px; height: 6px; background: #fff;
+  border-radius: 99px; width: 0; pointer-events: none; }
+.ctrl-fill::after { content: ''; position: absolute; right: -6px; top: 50%; width: 12px; height: 12px;
+  border-radius: 50%; background: #fff; transform: translateY(-50%); box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+.ctrl-track input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  opacity: 0; cursor: pointer; pointer-events: none; }
+.ctrl-track:has(input:focus-visible) { outline: 2px solid rgba(255,255,255,.9); outline-offset: 2px; border-radius: 5px; }
 .ctrl-vol { display: flex; align-items: center; gap: 6px; color: #fff; }
 .ctrl-vol input { width: 72px; accent-color: #fff; cursor: pointer; }
 @media (max-width: 640px) { .ctrl-vol { display: none; } .stage { max-height: calc(100vh - var(--hdr-h) - 260px); } }

@@ -7,6 +7,7 @@ import { createDb } from "../src/db.js";
 import { SftpSessionManager } from "../src/sftp/sessions.js";
 import { SSERegistry } from "../src/uploads/sse.js";
 import { SettingsStore } from "../src/settings/store.js";
+import { JobRegistry } from "../src/jobs.js";
 import { buildApp } from "../src/app.js";
 import { newSessionToken } from "../src/auth.js";
 import type { AppContext } from "../src/context.js";
@@ -28,6 +29,7 @@ export async function makeAdminApp(dataDir: string) {
     sessions: new SftpSessionManager(db),
     sse: new SSERegistry(),
     settings: new SettingsStore(db),
+    jobs: new JobRegistry(),
   };
   const app = await buildApp(ctx);
   return { app, ctx, cookie: `session_token=${token}` };

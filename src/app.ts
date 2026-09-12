@@ -6,7 +6,7 @@ import cookie from "@fastify/cookie";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
-import { STATIC_DIR } from "./config.js";
+import { STATIC_DIR, TRUST_PROXY } from "./config.js";
 import type { AppContext } from "./context.js";
 import { registerPages } from "./routes/pages.js";
 import { registerAuth } from "./routes/auth.js";
@@ -18,8 +18,10 @@ import { registerUploadSessions } from "./routes/upload.js";
 import { registerProcess } from "./routes/process.js";
 import { registerTrips } from "./routes/trips.js";
 import { registerEdit } from "./routes/edit.js";
+import { registerClips } from "./routes/clips.js";
 import { registerConfig } from "./routes/config.js";
 import { registerOps } from "./routes/ops.js";
+import { registerShares } from "./routes/shares.js";
 
 export interface BuildOptions {
   logger?: boolean;
@@ -29,7 +31,15 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
   const app = Fastify({
     logger: opts.logger ?? false,
     bodyLimit: 1 * 1024 * 1024, // JSON body 上限 1MB(檔案走 multipart 串流,不受此限)
-    trustProxy: true,
+    // 只有在確實部署於會覆寫 X-Forwarded-For 的可信反向代理後方時才信任 XFF(env 控制,預設 false)。
+    // 預設直連部署下 req.ip 取自實際 socket 位址,防止偽造 XFF 繞過登入速率限制。
+    trustProxy: TRUST_PROXY,
+  });
+
+  // 瀏覽器直傳上傳(PUT /api/upload-sessions/:id/files/*):原始位元組串流直接交給路由層,
+  // 不緩衝進記憶體(行車影片單檔可達數 GB)。
+  app.addContentTypeParser("application/octet-stream", (_req, payload, done) => {
+    done(null, payload);
   });
 
   await app.register(cookie);
@@ -67,10 +77,12 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
   registerAccount(app, ctx);
   registerAdmin(app, ctx);
   registerVideo(app, ctx);
+  registerShares(app, ctx);
   registerUploadSessions(app, ctx);
   registerProcess(app, ctx);
   registerTrips(app, ctx);
   registerEdit(app, ctx);
+  registerClips(app, ctx);
   registerConfig(app, ctx);
   registerOps(app, ctx);
 

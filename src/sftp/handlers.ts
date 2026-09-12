@@ -16,6 +16,18 @@ export interface OnActivity {
   (delta: { bytes?: number; files?: number }): void;
 }
 
+/** 上傳配額(全部 0 表示不限);防止單一(含訪客)工作階段灌爆磁碟。 */
+export interface SftpQuota {
+  /** 單檔上限(bytes),0=不限。 */
+  maxFileBytes: number;
+  /** 單一工作階段總量上限(bytes),0=不限。 */
+  maxSessionBytes: number;
+  /** 磁碟可用空間下限(bytes),0=不檢查。 */
+  minFreeBytes: number;
+  /** 目前工作階段已寫入的總量(bytes)。 */
+  sessionBytes(): number;
+}
+
 /** SFTP 子系統物件(ssh2 的 SFTPWrapper,server 端);用 any 以避免其龐雜型別。 */
 type Sftp = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -77,7 +89,12 @@ function statusFromErr(sftp: Sftp, reqid: number, err: unknown): void {
 
 type Handle =
   | { type: "file"; fd: number; write: boolean; wrote: boolean }
-  | { type: "dir"; entries: FileEntry[] | null; sent: boolean };
+  | { type: "dir"; entries: FileEntry[] | null; pos: number };
+
+/** 每次 READDIR 回應的項目數上限。行車記錄器一次上傳常有數千個細碎片段,
+ *  一口氣塞進單一 SFTP NAME 回應會超過常見客戶端(OpenSSH/FileZilla)的 256KB 訊息上限,
+ *  導致「列目錄失敗」;分批直到 EOF 是協定的標準作法。 */
+const READDIR_BATCH = 128;
 
 /**
  * 把所有 SFTP 請求綁到一個沙箱化的處理器。
@@ -85,9 +102,30 @@ type Handle =
  * @param root 此 session 的根目錄(絕對路徑)
  * @param onActivity 上傳活動回呼
  */
-export function bindSftpHandlers(sftp: Sftp, root: string, onActivity: OnActivity): void {
+export function bindSftpHandlers(
+  sftp: Sftp,
+  root: string,
+  onActivity: OnActivity,
+  quota?: SftpQuota,
+): void {
   const handles = new Map<string, Handle>();
   let nextHandle = 0;
+
+  // 磁碟可用空間檢查(節流:每寫入約 64MB 才重新 statfs 一次,避免每個 WRITE 都 syscall)。
+  let bytesSinceFreeCheck = Number.POSITIVE_INFINITY; // 首個 WRITE 強制檢查一次
+  let freeOk = true;
+  function diskHasSpace(): boolean {
+    if (!quota || quota.minFreeBytes <= 0) return true;
+    if (bytesSinceFreeCheck < 64 * 1024 * 1024) return freeOk;
+    bytesSinceFreeCheck = 0;
+    try {
+      const st = fs.statfsSync(root);
+      freeOk = st.bavail * st.bsize >= quota.minFreeBytes;
+    } catch {
+      freeOk = true; // 平台不支援 statfs → 不因此擋上傳
+    }
+    return freeOk;
+  }
 
   function alloc(h: Handle): Buffer {
     const key = String(nextHandle++);
@@ -171,7 +209,7 @@ export function bindSftpHandlers(sftp: Sftp, root: string, onActivity: OnActivit
           /* 略過讀不到的項目 */
         }
       }
-      sftp.handle(reqid, alloc({ type: "dir", entries, sent: false }));
+      sftp.handle(reqid, alloc({ type: "dir", entries, pos: 0 }));
     } catch (err) {
       statusFromErr(sftp, reqid, err);
     }
@@ -180,9 +218,10 @@ export function bindSftpHandlers(sftp: Sftp, root: string, onActivity: OnActivit
   sftp.on("READDIR", (reqid: number, handle: Buffer) => {
     const { h } = lookup(handle);
     if (!h || h.type !== "dir") return sftp.status(reqid, STATUS_CODE.FAILURE);
-    if (h.sent || !h.entries) return sftp.status(reqid, STATUS_CODE.EOF);
-    h.sent = true;
-    sftp.name(reqid, h.entries);
+    if (!h.entries || h.pos >= h.entries.length) return sftp.status(reqid, STATUS_CODE.EOF);
+    const batch = h.entries.slice(h.pos, h.pos + READDIR_BATCH);
+    h.pos += batch.length;
+    sftp.name(reqid, batch);
   });
 
   sftp.on("OPEN", (reqid: number, filename: string, flags: number, _attrs: unknown) => {
@@ -200,30 +239,43 @@ export function bindSftpHandlers(sftp: Sftp, root: string, onActivity: OnActivit
     }
   });
 
+  // READ / WRITE 走非同步 fs(以明確 position,不依賴 fd 游標),把實際磁碟 I/O
+  // 卸載到執行緒池,避免同步 I/O 阻塞整個 event loop(影響同時的影片串流/其他請求)。
   sftp.on("READ", (reqid: number, handle: Buffer, offset: number, length: number) => {
     const { h } = lookup(handle);
     if (!h || h.type !== "file") return sftp.status(reqid, STATUS_CODE.FAILURE);
-    try {
-      const buf = Buffer.allocUnsafe(length);
-      const bytes = fs.readSync(h.fd, buf, 0, length, offset);
+    const buf = Buffer.allocUnsafe(length);
+    fs.read(h.fd, buf, 0, length, offset, (err, bytes) => {
+      if (err) return statusFromErr(sftp, reqid, err);
       if (bytes === 0) return sftp.status(reqid, STATUS_CODE.EOF);
       sftp.data(reqid, buf.subarray(0, bytes));
-    } catch (err) {
-      statusFromErr(sftp, reqid, err);
-    }
+    });
   });
 
   sftp.on("WRITE", (reqid: number, handle: Buffer, offset: number, data: Buffer) => {
     const { h } = lookup(handle);
     if (!h || h.type !== "file") return sftp.status(reqid, STATUS_CODE.FAILURE);
-    try {
-      fs.writeSync(h.fd, data, 0, data.length, offset);
+    // 配額防線(灌爆磁碟):單檔上限、單 session 總量、磁碟可用空間下限。逾限一律 FAILURE。
+    if (quota) {
+      const fileEnd = offset + data.length;
+      if (quota.maxFileBytes > 0 && fileEnd > quota.maxFileBytes) {
+        return sftp.status(reqid, STATUS_CODE.FAILURE);
+      }
+      if (
+        quota.maxSessionBytes > 0 &&
+        quota.sessionBytes() + data.length > quota.maxSessionBytes
+      ) {
+        return sftp.status(reqid, STATUS_CODE.FAILURE);
+      }
+      bytesSinceFreeCheck += data.length;
+      if (!diskHasSpace()) return sftp.status(reqid, STATUS_CODE.FAILURE);
+    }
+    fs.write(h.fd, data, 0, data.length, offset, (err) => {
+      if (err) return statusFromErr(sftp, reqid, err);
       h.wrote = true;
       onActivity({ bytes: data.length });
       sftp.status(reqid, STATUS_CODE.OK);
-    } catch (err) {
-      statusFromErr(sftp, reqid, err);
-    }
+    });
   });
 
   sftp.on("CLOSE", (reqid: number, handle: Buffer) => {

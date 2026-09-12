@@ -112,7 +112,7 @@
         <div class="form-field">
           <label class="form-label" for="password" data-i18n="auth.login.password">密碼</label>
           <input class="form-input" id="password" name="password" type="password" autocomplete="current-password"
-                 placeholder="輸入密碼" data-i18n-attr="placeholder:auth.login.passwordPlaceholder" required>
+                 placeholder="輸入密碼" data-i18n-attr="placeholder:auth.login.passwordPlaceholder">
         </div>
         <div class="form-error" id="login-error"></div>
         <button class="btn btn--solid btn--lg" type="submit" id="submit-btn" style="width:100%;margin-top:6px;" data-i18n="auth.login.submit">登入</button>
@@ -145,11 +145,12 @@ async function performLogin() {
   const username = document.getElementById('username').value.trim();
   const password = document.getElementById('password').value;
   try {
-    await apiFetch('/api/auth/login', {
+    const res = await apiFetch('/api/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    location.href = '/';
+    // 首次登入須改密碼:直接導到強制改密碼頁(以登入回應為準,不依賴可能被快取的 app.js)。
+    location.href = (res && res.must_change_password) ? '/change-password' : '/';
   } catch (ex) {
     err.textContent = (ex.message.includes('401') || ex.message.includes('403')) ? t('auth.login.errBad') : t('auth.login.errFail');
     err.classList.add('show');

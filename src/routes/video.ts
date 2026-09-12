@@ -8,15 +8,8 @@ import { createReadStream } from "node:fs";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getTrip, canViewTrip } from "../trips/repo.js";
 import { extractFrame } from "../media/ffmpeg.js";
-import { TRIPS_DIR } from "../config.js";
+import { withinTrips } from "../util/paths.js";
 import { makeRequireUser, type AppContext } from "../context.js";
-
-/** 確認 DB 來的絕對路徑確實落在旅程目錄內(防 info.json 被植入 ../ 造成任意檔讀取)。 */
-function withinTrips(p: string): boolean {
-  const base = path.resolve(TRIPS_DIR);
-  const rp = path.resolve(p);
-  return rp === base || rp.startsWith(base + path.sep);
-}
 
 export function registerVideo(app: FastifyInstance, ctx: AppContext): void {
   const { db } = ctx;
@@ -62,14 +55,22 @@ export function registerVideo(app: FastifyInstance, ctx: AppContext): void {
       if (!ready) return reply.code(404).send({ detail: "無法產生縮圖" });
 
       let size: number;
+      let mtimeMs: number;
       try {
-        ({ size } = await fsp.stat(thumbPath));
+        ({ size, mtimeMs } = await fsp.stat(thumbPath));
       } catch {
         return reply.code(404).send({ detail: "縮圖不存在" });
       }
+      // 整趟裁剪/還原會刪掉重生縮圖(同 URL、內容改變)→ 不能用長效 max-age,
+      // 改 ETag 條件請求:未變 304(幾乎零流量),變了立即拿到新圖。
+      const etag = `"${size}-${Math.floor(mtimeMs)}"`;
+      if (req.headers["if-none-match"] === etag) {
+        return reply.code(304).header("ETag", etag).header("Cache-Control", "no-cache").send();
+      }
       reply
         .header("Content-Type", "image/jpeg")
-        .header("Cache-Control", "public, max-age=86400")
+        .header("Cache-Control", "no-cache")
+        .header("ETag", etag)
         .header("Content-Length", String(size));
       return reply.send(createReadStream(thumbPath));
     },
@@ -100,27 +101,44 @@ export function registerVideo(app: FastifyInstance, ctx: AppContext): void {
   );
 }
 
-async function sendRange(req: FastifyRequest, reply: FastifyReply, filePath: string): Promise<FastifyReply> {
-  const { size } = await fsp.stat(filePath);
-  const range = req.headers.range;
+/**
+ * 解析 Range 標頭(純函式,便於單元測試 byte 數學)。
+ *   - 無 Range 或格式不符 → 全檔(full)。
+ *   - `bytes=start-end`(end 可省=到檔尾);夾 end 至 size-1。
+ *   - start > end 或 start ≥ size → 不可滿足(416)。
+ */
+export type RangeResult =
+  | { type: "full" }
+  | { type: "partial"; start: number; end: number }
+  | { type: "unsatisfiable" };
 
-  if (range) {
-    const m = /bytes=(\d+)-(\d*)/.exec(range);
-    if (m) {
-      const start = Number.parseInt(m[1]!, 10);
-      let end = m[2] ? Number.parseInt(m[2], 10) : size - 1;
-      end = Math.min(end, size - 1);
-      if (start > end || start >= size) {
-        return reply.code(416).header("Content-Range", `bytes */${size}`).send();
-      }
-      reply
-        .code(206)
-        .header("Content-Type", "video/mp4")
-        .header("Content-Range", `bytes ${start}-${end}/${size}`)
-        .header("Accept-Ranges", "bytes")
-        .header("Content-Length", String(end - start + 1));
-      return reply.send(createReadStream(filePath, { start, end }));
-    }
+export function resolveRange(rangeHeader: string | undefined, size: number): RangeResult {
+  if (!rangeHeader) return { type: "full" };
+  const m = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
+  if (!m) return { type: "full" };
+  const start = Number.parseInt(m[1]!, 10);
+  let end = m[2] ? Number.parseInt(m[2], 10) : size - 1;
+  end = Math.min(end, size - 1);
+  if (start > end || start >= size) return { type: "unsatisfiable" };
+  return { type: "partial", start, end };
+}
+
+/** 以 HTTP Range 串流本機檔案(供影片/片段拖曳)。呼叫端負責授權與路徑檢查。 */
+export async function sendRange(req: FastifyRequest, reply: FastifyReply, filePath: string): Promise<FastifyReply> {
+  const { size } = await fsp.stat(filePath);
+  const r = resolveRange(req.headers.range, size);
+
+  if (r.type === "unsatisfiable") {
+    return reply.code(416).header("Content-Range", `bytes */${size}`).send();
+  }
+  if (r.type === "partial") {
+    reply
+      .code(206)
+      .header("Content-Type", "video/mp4")
+      .header("Content-Range", `bytes ${r.start}-${r.end}/${size}`)
+      .header("Accept-Ranges", "bytes")
+      .header("Content-Length", String(r.end - r.start + 1));
+    return reply.send(createReadStream(filePath, { start: r.start, end: r.end }));
   }
 
   reply

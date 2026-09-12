@@ -13,7 +13,10 @@ import type { FastifyInstance } from "fastify";
 import { TRIPS_DIR } from "../config.js";
 import { makeRequireAdmin, type AppContext } from "../context.js";
 import { processBatch } from "../trips/organizer.js";
-import { upsertTrip, type TripInfo } from "../trips/repo.js";
+import { upsertTrip, tripDirOf, renumberDay } from "../trips/repo.js";
+import { parseDeviceSnapshot, type DashcamDeviceSnapshot } from "../devices/repo.js";
+import { pathExists } from "../util/fsx.js";
+import { clampInt } from "../util/num.js";
 import {
   listIncidents,
   getIncident,
@@ -31,20 +34,6 @@ const SENSITIVE: Record<string, Set<string>> = {
 };
 const REDACTED = "••• redacted";
 
-function tripDirOf(info: TripInfo): string | null {
-  const p = info.front_path ?? info.rear_path;
-  return p ? path.dirname(p) : null;
-}
-
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fs.stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function fileSize(p: string | null): Promise<number> {
   if (!p) return 0;
   try {
@@ -55,7 +44,7 @@ async function fileSize(p: string | null): Promise<number> {
 }
 
 export function registerOps(app: FastifyInstance, ctx: AppContext): void {
-  const { db, sse, settings } = ctx;
+  const { db, sse, settings, sessions, jobs } = ctx;
   const requireAdmin = makeRequireAdmin(ctx);
 
   // ── 事件清單 ──
@@ -112,7 +101,12 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
       if (!inc) return reply.code(404).send({ detail: "事件不存在" });
       if (inc.quarantine_dir) {
         await fs.rm(inc.quarantine_dir, { recursive: true, force: true }).catch(() => {});
-        clearQuarantine(db, id);
+        // 只有確實刪成功(目錄已消失)才清空欄位,避免 DB 與磁碟不符。
+        if (!(await pathExists(inc.quarantine_dir))) {
+          clearQuarantine(db, id);
+        } else {
+          return reply.code(500).send({ detail: "刪除隔離素材失敗(檔案系統錯誤),請稍後再試" });
+        }
       }
       return { status: "ok" };
     },
@@ -128,6 +122,10 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
       if (!inc) return reply.code(404).send({ detail: "事件不存在" });
       if (inc.quarantine_dir) {
         await fs.rm(inc.quarantine_dir, { recursive: true, force: true }).catch(() => {});
+        // 隔離夾刪不掉就別刪事件列,否則目錄變成無人引用的孤兒、永久佔用磁碟。
+        if (await pathExists(inc.quarantine_dir)) {
+          return reply.code(500).send({ detail: "刪除隔離素材失敗(檔案系統錯誤),事件已保留,請稍後再試" });
+        }
       }
       db.prepare("DELETE FROM incidents WHERE id = ?").run(id);
       return { status: "deleted" };
@@ -149,7 +147,66 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
       const existing = sse.get(key);
       if (existing && !existing.closed) return reply.code(409).send({ detail: "此事件正在重試中" });
       const tolerant = req.query.mode === "tolerant";
-      startRetry(id, inc.quarantine_dir, tolerant);
+      // 沿用原上傳的切趟、擁有者與裝置快照。舊事件沒有這些欄位時才採用執行重試者，
+      // 避免管理員代為重試後把使用者的旅程錯誤轉到自己名下。
+      let gapMin = settings.defaultGapMin();
+      let ownerId = req.user!.id;
+      let ownerUsername = req.user!.username;
+      let deviceId: number | null = null;
+      let device: DashcamDeviceSnapshot | null = null;
+      let idNamespace: string | undefined;
+      let restoredOwner = false;
+      try {
+        const ctxObj = JSON.parse(inc.context_json) as Record<string, unknown>;
+        if (typeof ctxObj.gap_min === "number" && ctxObj.gap_min > 0) gapMin = ctxObj.gap_min;
+        if (
+          typeof ctxObj.owner_id === "number" && Number.isInteger(ctxObj.owner_id) &&
+          typeof ctxObj.owner_username === "string" && ctxObj.owner_username.length > 0
+        ) {
+          const matched = db.prepare("SELECT id, username FROM users WHERE id = ? AND username = ?")
+            .get(ctxObj.owner_id, ctxObj.owner_username) as { id: number; username: string } | undefined;
+          if (matched) {
+            ownerId = matched.id;
+            ownerUsername = matched.username;
+            restoredOwner = true;
+          }
+        }
+        if (typeof ctxObj.device_id === "number" && Number.isInteger(ctxObj.device_id)) {
+          deviceId = ctxObj.device_id;
+        }
+        device = parseDeviceSnapshot(ctxObj.device);
+        if (typeof ctxObj.id_namespace === "string" && ctxObj.id_namespace.length <= 100) {
+          idNamespace = ctxObj.id_namespace;
+        }
+      } catch {
+        /* 用預設 */
+      }
+      if (!restoredOwner) idNamespace = undefined;
+      if (deviceId !== null) {
+        const ownedDevice = db.prepare("SELECT 1 FROM dashcam_devices WHERE id = ? AND user_id = ?")
+          .get(deviceId, ownerId);
+        if (!ownedDevice) deviceId = null;
+      }
+      const ownerStillExists = db.prepare("SELECT 1 FROM users WHERE id = ? AND username = ?")
+        .get(ownerId, ownerUsername);
+      if (!ownerStillExists) {
+        return reply.code(409).send({ detail: "旅程擁有者帳號已不存在，無法啟動重試" });
+      }
+      // 與刪帳號形成同步互斥：刪除先開始時 revoking 會擋重試；重試先登記時
+      // users route 的 hasOwnerProcess 會擋刪除，避免背景 processBatch 寫回孤兒 owner。
+      if (sessions.isUserRevoking(ownerId)) {
+        return reply.code(409).send({ detail: "旅程擁有者帳號正在刪除，無法啟動重試" });
+      }
+      jobs.registerOwnerProcess(ownerId);
+      try {
+        startRetry(
+          id, inc.quarantine_dir, tolerant, gapMin, ownerId, ownerUsername,
+          deviceId, device, idNamespace,
+        );
+      } catch (error) {
+        jobs.unregisterOwnerProcess(ownerId);
+        throw error;
+      }
       return { status: "started", mode: tolerant ? "tolerant" : "copy" };
     },
   );
@@ -263,31 +320,63 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
   );
 
   /** 對隔離素材重跑合併;成功則清素材並標記事件已解決。 */
-  function startRetry(id: number, quarantineDir: string, tolerant: boolean): void {
+  function startRetry(
+    id: number,
+    quarantineDir: string,
+    tolerant: boolean,
+    gapMin: number,
+    ownerId: number,
+    ownerUsername: string,
+    deviceId: number | null,
+    device: DashcamDeviceSnapshot | null,
+    idNamespace?: string,
+  ): void {
     const key = `inc${id}`;
     const channel = sse.create(key);
     void (async () => {
       let produced = 0;
+      let failures = 0;
+      const touchedDates = new Set<string>();
       try {
         channel.push({ stage: "scan", message: tolerant ? "容錯重合開始…" : "重新合併開始…" });
         const doneIds = new Set(
           (db.prepare("SELECT trip_id FROM trips").all() as Array<{ trip_id: string }>).map((r) => r.trip_id),
         );
+        const tripsDir = idNamespace
+          ? path.join(TRIPS_DIR, "by-user", String(ownerId), "by-device", String(deviceId ?? 0))
+          : TRIPS_DIR;
         for await (const ev of processBatch({
           uploadDir: quarantineDir,
-          tripsDir: TRIPS_DIR,
-          gapSec: settings.defaultGapMin() * 60,
+          tripsDir,
+          gapSec: gapMin * 60,
           doneTripIds: doneIds,
           tolerant,
+          idNamespace,
+          ownerId,
+          ownerUsername,
+          deviceId,
+          device,
         })) {
           if (ev.tripInfo) {
-            upsertTrip(db, ev.tripInfo, tripDirOf(ev.tripInfo));
+            // 指定 ownerId:重試產物必須有歸屬,否則 owner_id 為 NULL 在瀏覽介面對所有人隱形。
+            upsertTrip(db, ev.tripInfo, tripDirOf(ev.tripInfo), ownerId);
+            touchedDates.add(ev.tripInfo.date);
             produced++;
           }
+          if (ev.incident) failures++;
           const { tripInfo: _t, incident: _i, ...wire } = ev;
           channel.push(wire);
         }
-        if (produced > 0) {
+        for (const d of touchedDates) {
+          try {
+            renumberDay(db, d, ownerId);
+          } catch {
+            /* 略 */
+          }
+        }
+        if (produced > 0 && failures === 0) {
+          // 全部成功才刪素材;部分成功時素材必須保留(失敗趟次的原始片段還在裡面,
+          // 刪了就永久遺失、無法用容錯模式再試)。
           await fs.rm(quarantineDir, { recursive: true, force: true }).catch(() => {});
           resolveIncident(db, id, {
             status: "resolved",
@@ -295,6 +384,13 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
           });
           clearQuarantine(db, id);
           channel.push({ stage: "done", message: `重試完成,產生 ${produced} 趟旅程`, done: 1, total: 1 });
+        } else if (produced > 0) {
+          channel.push({
+            stage: "done",
+            message: `重試部分成功:產生 ${produced} 趟,仍有 ${failures} 趟失敗;素材已保留,可改用容錯模式再試`,
+            done: 1,
+            total: 1,
+          });
         } else {
           channel.push({
             stage: "done",
@@ -306,6 +402,7 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
       } catch (err) {
         channel.push({ stage: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {
+        jobs.unregisterOwnerProcess(ownerId);
         channel.close();
       }
     })();
@@ -336,11 +433,4 @@ function listTableNames(db: AppContext["db"]): string[] {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
       .all() as Array<{ name: string }>
   ).map((r) => r.name);
-}
-
-function clampInt(raw: string | undefined, dflt: number, min: number, max: number): number {
-  if (raw === undefined) return dflt;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n)) return dflt;
-  return Math.min(max, Math.max(min, n));
 }

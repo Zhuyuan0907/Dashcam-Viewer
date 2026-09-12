@@ -2,13 +2,19 @@
  * 行車記錄器旅程整理器(移植自 organizer.py)。
  * 把細碎影片依「日期/趟次」整理、用 ffmpeg 無損合併成完整旅程。
  *
- * 檔名格式: (FILE|EMER)(YYMMDD)-(HHMMSS)-(seq)(F|R).mp4
- * 例: FILE240115-083000-001F.mp4
+ * 支援 MiVue `(FILE|EMER)(YYMMDD)-(HHMMSS)-(seq)(F|R).mp4`，以及
+ * Polaroid MS279WG `YYYY_MMDD_HHMMSS_seq(A|B).TS`（A=前鏡頭、B=後鏡頭）。
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { probeDuration, probeReadable, concatCopy, FALLBACK_DURATION } from "../media/ffmpeg.js";
 import type { TripInfo } from "./repo.js";
+import type { DashcamDeviceSnapshot } from "../devices/repo.js";
+import type { Span } from '../media/timeline.js';
+import {
+  findPolaroidMs279wgRear,
+  parsePolaroidMs279wgFilename,
+} from "../dashcams/polaroid-ms279wg.js";
 
 // ── 常數(regex 與舊版完全一致) ──────────────────────────────────────────────
 export const FILENAME_RE = /^(FILE|EMER)(\d{6})-(\d{6})-(\d+)(F|R)\.mp4$/i;
@@ -20,10 +26,16 @@ export const GAP_SECONDS = 15 * 60; // 15 分鐘 → 新旅程
 export interface Segment {
   base: string; // "FILE240115-083000-001"
   prefix: string; // "FILE" | "EMER"
-  epoch: number; // 起始時間(Unix,本地時區,與 Python naive timestamp 一致)
+  epoch: number; // 起始時間(把記錄器檔名牆鐘以 UTC 儲存,顯示端同樣用 UTC)
   seq: number;
   duration: number;
   isEmergency: boolean;
+  /** 非舊版 F/R.mp4 命名時,保存實際來源 basename。 */
+  frontFilename?: string;
+  rearFilename?: string;
+  rearEpoch?: number;
+  nmeaFilename?: string;
+  sourceProfile?: string;
 }
 
 export interface Trip {
@@ -42,6 +54,8 @@ export interface IncidentPayload {
   title: string;
   detail: string;
   context: Record<string, unknown>;
+  /** 此事件專屬的隔離素材路徑(覆寫 session 層級的預設);未設則沿用 session 的隔離夾。 */
+  quarantine_dir?: string | null;
 }
 
 /** 進度事件;完成一趟時夾帶 tripInfo 供呼叫端寫入 DB;失敗時夾帶 incident。 */
@@ -110,29 +124,62 @@ export function tripId(trip: Trip): string {
 }
 
 /** 掃描 F/ 資料夾,回傳依(epoch, seq)排序的前鏡頭片段。 */
-export async function scanSegments(frontDir: string): Promise<Segment[]> {
+export async function scanSegments(frontDir: string, rearDir?: string): Promise<Segment[]> {
   let names: string[];
   try {
     names = await fs.readdir(frontDir);
   } catch {
     return [];
   }
+  let rearNames: string[] = [];
+  if (rearDir) {
+    try {
+      rearNames = await fs.readdir(rearDir);
+    } catch {
+      rearNames = [];
+    }
+  }
+  const polaroidRears = rearNames
+    .map(parsePolaroidMs279wgFilename)
+    .filter(
+      (f): f is NonNullable<ReturnType<typeof parsePolaroidMs279wgFilename>> =>
+        f?.camera === "R",
+    );
+  const usedPolaroidRears = new Set<string>();
   const segments: Segment[] = [];
   for (const name of names) {
-    if (!name.toLowerCase().endsWith(".mp4")) continue;
     const m = FILENAME_RE.exec(name);
-    if (!m) continue;
-    const [, prefix, yymmdd, hhmmss, seqStr, camera] = m;
-    if (camera!.toUpperCase() !== "F") continue;
-    const epoch = parseEpoch(yymmdd!, hhmmss!);
-    if (epoch === null) continue;
+    if (m) {
+      const [, prefix, yymmdd, hhmmss, seqStr, camera] = m;
+      if (camera!.toUpperCase() !== "F") continue;
+      const epoch = parseEpoch(yymmdd!, hhmmss!);
+      if (epoch === null) continue;
+      segments.push({
+        base: `${prefix}${yymmdd}-${hhmmss}-${seqStr}`,
+        prefix: prefix!,
+        epoch,
+        seq: Number.parseInt(seqStr!, 10),
+        duration: FALLBACK_DURATION,
+        isEmergency: prefix!.toUpperCase() === "EMER",
+      });
+      continue;
+    }
+
+    const polaroid = parsePolaroidMs279wgFilename(name);
+    if (!polaroid || polaroid.camera !== "F") continue;
+    const rear = findPolaroidMs279wgRear(polaroid, polaroidRears, usedPolaroidRears);
+    if (rear) usedPolaroidRears.add(rear.normalizedName);
     segments.push({
-      base: `${prefix}${yymmdd}-${hhmmss}-${seqStr}`,
-      prefix: prefix!,
-      epoch,
-      seq: Number.parseInt(seqStr!, 10),
+      base: polaroid.segmentId,
+      prefix: "FILE",
+      epoch: polaroid.epoch,
+      seq: polaroid.sequence,
       duration: FALLBACK_DURATION,
-      isEmergency: prefix!.toUpperCase() === "EMER",
+      isEmergency: false,
+      frontFilename: name,
+      rearFilename: rear?.originalName,
+      rearEpoch: rear?.epoch,
+      sourceProfile: polaroid.profile,
     });
   }
   segments.sort((a, b) => a.epoch - b.epoch || a.seq - b.seq);
@@ -220,6 +267,12 @@ export interface ProcessOptions {
    * 用於「容錯重合」修復 —— 對應 ffmpeg「第一段壞掉就整個失敗」的情形。
    */
   tolerant?: boolean;
+  /** 新產物使用 owner/device namespace;省略時維持舊 CLI/測試 id。 */
+  idNamespace?: string;
+  ownerId?: number | null;
+  ownerUsername?: string | null;
+  deviceId?: number | null;
+  device?: DashcamDeviceSnapshot | null;
 }
 
 /**
@@ -235,7 +288,7 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
 
   // Step 1: 掃描
   yield { stage: "scan", message: "掃描影片檔案中…" };
-  const segments = await scanSegments(frontDir);
+  const segments = await scanSegments(frontDir, rearDir);
   if (segments.length === 0) {
     yield {
       stage: "error",
@@ -244,7 +297,9 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
         kind: "processing_error",
         severity: "warn",
         title: "找不到可處理的前鏡頭片段",
-        detail: `掃描 ${frontDir} 後沒有符合命名規則((FILE|EMER)YYMMDD-HHMMSS-seqF.mp4)的影片。`,
+        detail:
+          `掃描 ${frontDir} 後沒有符合命名規則的影片。支援 ` +
+          `(FILE|EMER)YYMMDD-HHMMSS-seqF.mp4 與 Polaroid MS279WG YYYY_MMDD_HHMMSS_seqA.TS。`,
         context: { frontDir },
       },
     };
@@ -252,26 +307,34 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
   }
   yield { stage: "scan", message: `找到 ${segments.length} 個前鏡頭片段` };
 
-  // Step 2: 取時長(ffprobe,非阻塞)
+  // Step 2: 取時長(ffprobe,非阻塞)。以小批併發(每個 probe 各 spawn 一個獨立子程序、
+  // 彼此無依賴),避免大批上傳時逐段串行讓時長階段耗時線性放大。
   yield { stage: "duration", message: `讀取影片時長(共 ${segments.length} 個)…` };
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i]!;
-    const f = path.join(frontDir, `${seg.base}F.mp4`);
-    if (await fileExists(f)) seg.duration = await probeDuration(f);
-    if ((i + 1) % 10 === 0 || i === segments.length - 1) {
-      yield {
-        stage: "duration",
-        message: `時長讀取中… ${i + 1}/${segments.length}`,
-        progress: Math.round(((i + 1) / segments.length) * 100),
-      };
-    }
+  const PROBE_CONCURRENCY = 4;
+  let probed = 0;
+  for (let i = 0; i < segments.length; i += PROBE_CONCURRENCY) {
+    const chunk = segments.slice(i, i + PROBE_CONCURRENCY);
+    await Promise.all(
+      chunk.map(async (seg) => {
+        const f = path.join(frontDir, sourceFilename(seg, "F"));
+        if (await fileExists(f)) seg.duration = await probeDuration(f);
+      }),
+    );
+    probed += chunk.length;
+    yield {
+      stage: "duration",
+      message: `時長讀取中… ${probed}/${segments.length}`,
+      progress: Math.round((probed / segments.length) * 100),
+    };
   }
 
   // Step 3: 偵測旅程
   const trips = detectTrips(segments, gapSec);
   yield { stage: "detect", message: `偵測到 ${trips.length} 趟旅程(間隔閾值 ${Math.floor(gapSec / 60)} 分鐘)` };
 
-  const toProcess = trips.filter((t) => !doneTripIds.has(tripId(t)));
+  const effectiveTripId = (t: Trip): string =>
+    opts.idNamespace ? `${opts.idNamespace}|${tripId(t)}` : tripId(t);
+  const toProcess = trips.filter((t) => !doneTripIds.has(effectiveTripId(t)));
   yield {
     stage: "detect",
     message: `其中 ${toProcess.length} 趟需要處理`,
@@ -307,10 +370,10 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
 
     // 合併前後鏡頭(成功與否以實際合併結果為準,而非檔案是否存在)。
     const frontRes: MergeResult = { ok: false, found: 0, dropped: 0 };
-    for await (const ev of mergeCameraEvents(bases, frontDir, "F", frontOut, frontRes, tolerant)) yield ev;
+    for await (const ev of mergeCameraEvents(trip.segments, frontDir, "F", frontOut, frontRes, tolerant)) yield ev;
     const frontOk = frontRes.ok;
     const rearRes: MergeResult = { ok: false, found: 0, dropped: 0 };
-    for await (const ev of mergeCameraEvents(bases, rearDir, "R", rearOut, rearRes, tolerant)) yield ev;
+    for await (const ev of mergeCameraEvents(trip.segments, rearDir, "R", rearOut, rearRes, tolerant)) yield ev;
     const rearOk = rearRes.ok;
 
     // 前後鏡頭都沒合成出有效影片:不寫入空旅程(否則介面會出現無法播放的項目),
@@ -335,6 +398,9 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
             folder: folderName(trip),
             segment_count: trip.segments.length,
             segment_bases: bases,
+            owner_id: opts.ownerId ?? null,
+            device_id: opts.deviceId ?? null,
+            device: opts.device ?? null,
             front: { found: frontRes.found, dropped: frontRes.dropped, error: frontRes.error },
             rear: { found: rearRes.found, dropped: rearRes.dropped, error: rearRes.error },
           },
@@ -347,8 +413,8 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
     let peakG = 0;
     let gEvents = 0;
     if (await dirExists(nmeaDir)) {
-      for (const base of bases) {
-        const nf = path.join(nmeaDir, `${base}F.NMEA`);
+      for (const seg of trip.segments) {
+        const nf = path.join(nmeaDir, seg.nmeaFilename ?? `${seg.base}F.NMEA`);
         if (await fileExists(nf)) {
           const r = await analyzeNmea(nf);
           if (r.peakG > peakG) peakG = r.peakG;
@@ -358,12 +424,13 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
     }
 
     const info: TripInfo = {
-      trip_id: tripId(trip),
+      trip_id: effectiveTripId(trip),
       date: trip.date,
       day_order: trip.dayOrder,
       start_epoch: trip.startEpoch,
       end_epoch: trip.endEpoch,
-      duration_sec: trip.endEpoch - trip.startEpoch,
+      duration_sec: (frontRes.timeline ?? rearRes.timeline ?? []).reduce((n,s)=>n+s.duration,0),
+      timeline: {front:frontRes.timeline ?? [],rear:rearRes.timeline ?? []},
       segment_count: trip.segments.length,
       emer_count: trip.segments.filter((s) => s.isEmergency).length,
       has_front: frontOk,
@@ -372,6 +439,10 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
       gforce_events: gEvents,
       front_path: frontOk ? frontOut : null,
       rear_path: rearOk ? rearOut : null,
+      owner_id: opts.ownerId ?? null,
+      owner_username: opts.ownerUsername ?? null,
+      device_id: opts.deviceId ?? null,
+      device: opts.device ?? null,
     };
     await fs.writeFile(path.join(tripDir, "info.json"), JSON.stringify(info, null, 2));
 
@@ -391,6 +462,7 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
  * `fileExists()` 判斷,會把這種空檔誤記成有效影片,導致旅程在介面上出現卻無法播放。
  */
 interface MergeResult {
+  timeline?: Span[];
   /** 來源片段數(過濾後實際送入合併的)。0 表示沒有來源。 */
   ok: boolean;
   /** 失敗原因(成功時 undefined)。 */
@@ -402,7 +474,7 @@ interface MergeResult {
 }
 
 async function* mergeCameraEvents(
-  bases: string[],
+  segments: Segment[],
   srcDir: string,
   camera: "F" | "R",
   outPath: string,
@@ -411,9 +483,10 @@ async function* mergeCameraEvents(
 ): AsyncGenerator<ProgressEvent> {
   const label = camera === "F" ? "前鏡頭" : "後鏡頭";
   let entries: string[] = [];
-  for (const base of bases) {
-    const src = path.join(srcDir, `${base}${camera}.mp4`);
-    if (await fileExists(src)) entries.push(src);
+  const epochs = new Map<string,number>();
+  for (const seg of segments) {
+    const src = path.join(srcDir, sourceFilename(seg, camera));
+    if (await fileExists(src)) { entries.push(src); epochs.set(src,camera === 'R' ? seg.rearEpoch ?? seg.epoch : seg.epoch); }
   }
   result.found = entries.length;
   if (entries.length === 0) {
@@ -423,11 +496,16 @@ async function* mergeCameraEvents(
     return;
   }
 
-  // 容錯模式:先過濾掉 ffprobe 讀不到的壞段,避免一段壞檔拖垮整支合併。
+  // 容錯模式:先過濾掉 ffprobe 讀不到的壞段,避免一段壞檔拖垮整支合併。以小批併發探測。
   if (tolerant) {
     const good: string[] = [];
-    for (const e of entries) {
-      if (await probeReadable(e)) good.push(e);
+    const READ_CONCURRENCY = 4;
+    for (let i = 0; i < entries.length; i += READ_CONCURRENCY) {
+      const chunk = entries.slice(i, i + READ_CONCURRENCY);
+      const oks = await Promise.all(chunk.map((e) => probeReadable(e)));
+      chunk.forEach((e, j) => {
+        if (oks[j]) good.push(e);
+      });
     }
     result.dropped = entries.length - good.length;
     if (result.dropped > 0) {
@@ -446,6 +524,13 @@ async function* mergeCameraEvents(
   const r = await concatCopy(entries, outPath);
   const sizeBytes = r.sizeBytes ?? 0;
   if (r.ok && sizeBytes > 0) {
+    result.timeline = [];
+    let cursor = 0;
+    for (const file of entries) {
+      const duration = await probeDuration(file);
+      result.timeline.push({start:cursor,duration,epoch:epochs.get(file)!});
+      cursor += duration;
+    }
     result.ok = true;
     yield { stage: "merge", message: `  ${label} 完成 (${(sizeBytes / 1_048_576).toFixed(1)} MB)` };
   } else {
@@ -455,6 +540,10 @@ async function* mergeCameraEvents(
     result.error = r.ok ? "輸出為空(0 bytes)" : r.error ?? "未知錯誤";
     yield { stage: "merge", message: `  ${label} 失敗:${result.error}` };
   }
+}
+
+function sourceFilename(seg: Segment, camera: "F" | "R"): string {
+  return (camera === "F" ? seg.frontFilename : seg.rearFilename) ?? `${seg.base}${camera}.mp4`;
 }
 
 function fmtHM(epoch: number): string {

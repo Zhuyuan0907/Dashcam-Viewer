@@ -82,6 +82,62 @@ test("deleteTrip 移除列與磁碟目錄", async () => {
   await fs.rm(dir, { recursive: true, force: true });
 });
 
+test("upsertTrip 重覆寫入不得毀掉備註/匯出片段,也不清空可見性覆寫與裁剪還原資料", async () => {
+  const { db, dir } = await tmpDb();
+  const tid = "keep|1";
+  upsertTrip(db, sampleTrip({ trip_id: tid }), "/data", 7);
+
+  // 加上備註、匯出片段、公開覆寫、裁剪原始值(模擬使用者累積的狀態)。
+  db.prepare(
+    "INSERT INTO trip_notes (trip_id, note, updated_at, updated_by) VALUES (?,?,?,?)",
+  ).run(tid, "重要:這段有擦撞", 1_700_000_000, 7);
+  db.prepare(
+    `INSERT INTO trip_clips (trip_id, owner_id, label, start_sec, end_sec, layout, quality, main_cam, file_path, size_bytes, duration_sec, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+  ).run(tid, 7, "精華", 1, 5, "front", "precise", null, "/data/clips/x.mp4", 123, 4, 1_700_000_000);
+  db.prepare(
+    "UPDATE trips SET public_override = 1, orig_start_epoch = 100, orig_end_epoch = 200, orig_duration_sec = 100 WHERE trip_id = ?",
+  ).run(tid);
+
+  // 重新處理(重新 upsert 同一趟,例如分批補傳)。舊的 INSERT OR REPLACE 會 CASCADE 刪掉
+  // note/clip 並把 override/orig_* 重置 —— 這裡驗證改用真 UPSERT 後這些都被保留。
+  upsertTrip(db, sampleTrip({ trip_id: tid, peak_gforce: 2.9 }), "/data");
+
+  const note = db.prepare("SELECT note FROM trip_notes WHERE trip_id=?").get(tid) as { note: string } | undefined;
+  assert.equal(note?.note, "重要:這段有擦撞", "備註不應被 CASCADE 刪除");
+  assert.equal(
+    (db.prepare("SELECT COUNT(*) c FROM trip_clips WHERE trip_id=?").get(tid) as { c: number }).c,
+    1,
+    "匯出片段不應被 CASCADE 刪除",
+  );
+  const row = getTrip(db, tid)!;
+  assert.equal(row.public_override, 1, "public_override 應保留");
+  assert.equal(row.orig_duration_sec, 100, "裁剪還原資料應保留");
+  assert.equal(row.owner_id, 7, "既有 owner 應保留(COALESCE)");
+  assert.equal(row.peak_gforce, 2.9, "其他欄位仍正常更新");
+
+  db.close();
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("deleteTrip:共用同一 trip_dir 的另一列存在時,不刪磁碟目錄", async () => {
+  const { db, dir } = await tmpDb();
+  const shared = path.join(dir, "shared");
+  await fs.mkdir(shared, { recursive: true });
+  await fs.writeFile(path.join(shared, "front.mp4"), "video");
+  upsertTrip(db, sampleTrip({ trip_id: "A" }), shared);
+  upsertTrip(db, sampleTrip({ trip_id: "B" }), shared); // 兩列共用同一目錄
+
+  assert.equal(await deleteTrip(db, "A"), true);
+  assert.equal(await fileExists(path.join(shared, "front.mp4")), true, "B 仍在,不可刪共用目錄");
+  // 刪掉最後一列 → 目錄才真正清除
+  assert.equal(await deleteTrip(db, "B"), true);
+  assert.equal(await fileExists(path.join(shared, "front.mp4")), false, "最後一列刪除後目錄清除");
+
+  db.close();
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
 test("SQL injection:惡意 trip_id 被當成資料,不破壞 table", async () => {
   const { db, dir } = await tmpDb();
   const evil = "'; DROP TABLE trips;--";
