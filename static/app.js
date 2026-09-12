@@ -236,26 +236,10 @@ function applyFooter(b) {
   f.style.display = hasContent ? '' : 'none';
 }
 
-/* ── 主題(深/淺色) ───────────────────────────────────────────────────────────────
- * 無閃爍由各頁 <head> 的 inline 片段負責(在 CSS 套用前先設 data-theme)。
- * 這裡負責「切換」與「依登入者偏好同步」。style.css 只有 [data-theme="dark"],
- * 故 auto 需用 matchMedia 解析,而非單純移除屬性。 */
-function resolveDark(mode) {
-  return mode === 'dark' || (mode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-}
+/* Shared semantic palettes; legacy preference values are normalized by themes.js. */
 function applyTheme(mode) {
-  const m = mode || 'auto';
-  try { localStorage.setItem('dc.theme', m); } catch {}
-  if (resolveDark(m)) document.documentElement.setAttribute('data-theme', 'dark');
-  else document.documentElement.removeAttribute('data-theme');
+  window.DashcamThemes?.apply(mode);
 }
-// auto 模式下,系統深淺色切換即時反映
-try {
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    let m = 'auto'; try { m = localStorage.getItem('dc.theme') || 'auto'; } catch {}
-    if (m === 'auto') applyTheme('auto');
-  });
-} catch {}
 
 /* ── 認證 ─────────────────────────────────────────────────────────────────────── */
 

@@ -203,7 +203,6 @@
 
     /* ── 剪輯純電腦版:窄螢幕(< 960px)完全隱藏剪輯鈕,避免上下堆疊壓縮影片 ────────
        setupEdit() 以 inline style.display='' 開啟,這裡的 !important 在窄螢幕時勝出。 */
-    @media (max-width: 959.98px) { #edit-btn { display: none !important; } }
 
     /* ── 剪輯左右並排(≥ 960px):面板在左、影片在右吃滿剩餘寬與整段高。
        解決「面板在影片下方 → 影片被嚴重壓縮 / 匯出進度要捲動」:面板變高 → 選項＋進度一屏內全見;
@@ -445,12 +444,21 @@
               <span class="edit-label" data-i18n="trip.clip.selectTitle">選取片段</span>
               <span class="tl-hint" data-i18n="trip.clip.selectHint">拖曳時間軸上的入點/出點把手,或按 I / O 把入點、出點設在目前畫面。</span>
             </div>
-            <div class="clip-timeline" id="clip-timeline">
+            <div class="editor-tools">
+              <label>入點（秒）<input id="sel-start-input" type="number" min="0" step="0.001" onchange="inputSelection('in', this.value)"></label>
+              <label>出點（秒）<input id="sel-end-input" type="number" min="0" step="0.001" onchange="inputSelection('out', this.value)"></label>
+              <label>時間軸倍率 <select aria-label="時間軸倍率" onchange="document.getElementById('clip-timeline').style.width=(Number(this.value)*100)+'%'">
+                <option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+              </select></label>
+              <a href="/jobs">背景作業與結果 ↗</a>
+              <span id="draft-note" role="status"></span>
+            </div>
+            <div class="timeline-scroll"><div class="clip-timeline" id="clip-timeline">
               <div class="clip-tl-sel" id="clip-sel"></div>
               <div class="clip-tl-playhead" id="clip-playhead"></div>
               <div class="clip-tl-handle is-in" id="clip-h-in" style="left:0%"><span class="clip-tl-cap" data-i18n="trip.clip.in">入點</span></div>
               <div class="clip-tl-handle is-out" id="clip-h-out" style="left:100%"><span class="clip-tl-cap" data-i18n="trip.clip.out">出點</span></div>
-            </div>
+            </div></div>
             <div class="clip-readout">
               <span class="ro-item"><span class="ro-lbl" data-i18n="trip.clip.in">入點</span><b id="sel-in">0:00</b></span>
               <span class="ro-item"><span class="ro-lbl" data-i18n="trip.clip.out">出點</span><b id="sel-out">0:00</b></span>
@@ -777,6 +785,11 @@ function swapCams() {
     dur = md;
     const tot = document.getElementById('t-tot');
     if (tot) tot.textContent = fmtSecs(dur);
+  }
+  if (editPanelOpen) {
+    if (clipLayout !== 'pip') selectLayout(mainCam);
+    initSelection();
+    showToast('已切換時間軸來源，請重新確認入點與出點。', '');
   }
 }
 
@@ -1181,7 +1194,15 @@ function selDur() { return dur || (trip && trip.duration_sec) || 0; }
 function seekAll(sec) {
   const d = selDur();
   const t = Math.max(0, Math.min(d || sec, sec));
-  for (const c of cams) if (videos[c]) videos[c].currentTime = t;
+  if (videos[mainCam]) videos[mainCam].currentTime = t;
+  const spans = trip.timeline?.[mainCam] || [];
+  const span = spans.find(s => t >= s.start && t <= s.start + s.duration);
+  const epoch = span ? span.epoch + t - span.start : null;
+  for (const c of cams) {
+    if (c === mainCam || !videos[c]) continue;
+    const other = (trip.timeline?.[c] || []).find(s => epoch !== null && epoch >= s.epoch && epoch <= s.epoch + s.duration);
+    if (other) videos[c].currentTime = other.start + epoch - other.epoch;
+  }
 }
 
 function setupEdit() {
@@ -1485,11 +1506,30 @@ function switchEditTab(name) {
 
 /* ── 共用選取(入/出點) ─────────────────────────────────────────────────────── */
 function initSelection() {
-  selStart = 0; selEnd = selDur();
+  selStart = 0; selEnd = Math.min(selDur(), 30);
+  try {
+    const draft = JSON.parse(localStorage.getItem(editorDraftKey()) || 'null');
+    if (draft && Number.isFinite(draft.start) && Number.isFinite(draft.end) && draft.start >= 0 && draft.start < selDur() && draft.end > draft.start) {
+      selStart = draft.start; selEnd = Math.min(draft.end, selDur());
+      document.getElementById('clip-label').value = draft.label || '';
+      document.getElementById('draft-note').textContent = '已恢復此鏡頭的本機剪輯草稿';
+    }
+  } catch {}
   updateSelUI(); updatePlayhead();
+}
+function editorDraftKey() {
+  return `dc.editor:${currentUser?.id}:${tripId}:${trip.start_epoch}:${trip.duration_sec}:${mainCam}`;
+}
+function inputSelection(which, value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return updateSelUI();
+  if (which === 'in') selStart = Math.max(0, Math.min(n, selEnd));
+  else selEnd = Math.min(selDur(), Math.max(n, selStart));
+  updateSelUI(); seekAll(which === 'in' ? selStart : selEnd);
 }
 function updateSelUI() {
   const d = selDur() || 1;
+  selEnd = Math.min(selEnd, d); selStart = Math.min(selStart, selEnd);
   const a = Math.max(0, Math.min(1, selStart / d)) * 100;
   const b = Math.max(0, Math.min(1, selEnd / d)) * 100;
   const sel = document.getElementById('clip-sel');
@@ -1499,6 +1539,14 @@ function updateSelUI() {
   document.getElementById('sel-in').textContent = fmtSecs(selStart);
   document.getElementById('sel-out').textContent = fmtSecs(selEnd);
   document.getElementById('sel-len').textContent = fmtSecs(Math.max(0, selEnd - selStart));
+  for (const [which, value] of [['start', selStart], ['end', selEnd]]) {
+    const input = document.getElementById('sel-' + which + '-input');
+    input.value = value.toFixed(3); input.max = String(selDur());
+    const handle = document.getElementById(which === 'start' ? 'clip-h-in' : 'clip-h-out');
+    handle.setAttribute('aria-valuenow', value.toFixed(3));
+    handle.setAttribute('aria-valuemax', String(selDur()));
+  }
+  try { localStorage.setItem(editorDraftKey(), JSON.stringify({start:selStart,end:selEnd,label:document.getElementById('clip-label').value})); } catch {}
 }
 function updatePlayhead() {
   const d = selDur() || 1;
@@ -1520,6 +1568,18 @@ function initTimeline() {
   const tl = document.getElementById('clip-timeline');
   const hIn = document.getElementById('clip-h-in');
   const hOut = document.getElementById('clip-h-out');
+  document.getElementById('clip-label').addEventListener('input', updateSelUI);
+  for (const [handle, which] of [[hIn, 'in'], [hOut, 'out']]) {
+    handle.tabIndex = 0;
+    handle.setAttribute('role', 'slider'); handle.setAttribute('aria-valuemin', '0');
+    handle.setAttribute('aria-label', which === 'in' ? '片段入點（秒）' : '片段出點（秒）');
+    handle.addEventListener('keydown', e => {
+      if (!['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+      e.preventDefault(); e.stopPropagation();
+      const delta = (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 1 : 0.1);
+      inputSelection(which, e.key === 'Home' ? 0 : e.key === 'End' ? selDur() : (which === 'in' ? selStart : selEnd) + delta);
+    });
+  }
   let drag = null;
   const d = () => selDur() || 1;
   const posToSec = (clientX) => {
@@ -1592,6 +1652,13 @@ function buildLayoutSeg() {
   updateQualityAvail();
 }
 function selectLayout(v) {
+  if (v !== 'pip' && v !== mainCam) {
+    mainCam = v; layoutCams();
+    const duration = videos[v]?.duration;
+    if (Number.isFinite(duration)) dur = duration;
+    initSelection();
+    showToast('已切換時間軸來源，請確認選取範圍。', '');
+  }
   clipLayout = v;
   document.querySelectorAll('#clip-layout .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.v === v));
   updateQualityAvail();
@@ -1604,6 +1671,7 @@ function wireQualitySeg() {
 function selectQuality(v) {
   clipQuality = v;
   document.querySelectorAll('#clip-quality .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+  updateQualityAvail();
 }
 /** pip 只能精確 → 停用「快速」;提示文字隨版面切換。 */
 function updateQualityAvail() {
@@ -1669,9 +1737,7 @@ function listenClip(jobId) {
   // 連線中斷(網路瞬斷 / 伺服器提前結束):不要只默默關閉而讓匯出鈕永久 disabled。
   // 匯出仍在背景進行,解除 UI 卡死並提示使用者稍後重新整理查看結果。
   clipES.onerror = () => {
-    closeClipES();
-    endClipUI();
-    showToast(tt('trip.clipConnLost'), '');
+    showClipProg(0, '連線中斷，正在重新連線；背景工作不受影響，可至背景作業查看。');
   };
 }
 function closeClipES() { if (clipES) { clipES.close(); clipES = null; } clipJobId = null; }

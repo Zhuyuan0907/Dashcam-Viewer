@@ -124,6 +124,7 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
     const strings = settings.readStrings();
     const brandTitle = settings.get("site_title");
     let html = injectStrings(rawHtml(name), strings, brandTitle, "{page} — {brand}");
+    html=html.replace('</head>','<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css"></head>');
 
     // 注入該頁需要的字串給動態 JS(t() 讀 window.__S);只含該頁命名空間,避免外洩。
     // `<` 一律轉成 <:字串值(可由管理員自訂)含 </script> 時才不會提前關閉標籤。

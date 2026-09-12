@@ -197,9 +197,9 @@ export function registerAccount(app: FastifyInstance, ctx: AppContext): void {
         vals.push(s);
       }
       if ("theme" in body) {
-        const t = body.theme;
-        if (t !== "auto" && t !== "light" && t !== "dark") {
-          return reply.code(400).send({ detail: "主題須為 auto / light / dark" });
+        const t = body.theme ?? null;
+        if (t !== null && !['harbor','terracotta','slate','auto','light','dark'].includes(t)) {
+          return reply.code(400).send({ detail: "請選擇港灣、陶土或暮山主題" });
         }
         sets.push("pref_theme = ?");
         vals.push(t);

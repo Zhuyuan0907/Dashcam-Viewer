@@ -6,7 +6,7 @@
    注意:保留所有既有 class 名與 CSS 變數「名稱」(多頁 inline style / JS 依賴),僅改值與外觀。
    ════════════════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Self-hosted by default: use installed system fonts, no third-party font requests. */
 
 /* ── Design tokens(淺色,從 simple.taipei 擷取) ─────────────────────────────── */
 :root {

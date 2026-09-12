@@ -254,9 +254,9 @@
         <div class="acct-row">
           <label class="form-label" for="acct-theme" data-i18n="account.theme">主題</label>
           <select class="form-input form-select" id="acct-theme" onchange="onThemeChange(this.value)">
-            <option value="auto" data-i18n="account.themeAuto">自動(跟隨系統)</option>
-            <option value="light" data-i18n="account.themeLight">淺色</option>
-            <option value="dark" data-i18n="account.themeDark">深色</option>
+            <option value="harbor">港灣 · 墨綠與暖霧</option>
+            <option value="terracotta">陶土 · 棕銅與亞麻</option>
+            <option value="slate">暮山 · 岩灰與鳶尾</option>
           </select>
         </div>
       </section>
@@ -376,8 +376,8 @@ function fillForm() {
   document.getElementById('acct-camera').value = user.pref_camera || '';
   document.getElementById('acct-speed').value = user.pref_speed != null ? String(user.pref_speed) : '';
   let theme = user.pref_theme;
-  if (!theme) { try { theme = localStorage.getItem('dc.theme') || 'auto'; } catch { theme = 'auto'; } }
-  document.getElementById('acct-theme').value = theme;
+  if (!theme) { try { theme = localStorage.getItem('dc.palette') || 'harbor'; } catch { theme = 'harbor'; } }
+  document.getElementById('acct-theme').value = DashcamThemes.normalize(theme);
   document.getElementById('acct-public').checked = user.trips_public === 1;
 }
 

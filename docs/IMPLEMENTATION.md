@@ -14,7 +14,11 @@ Seven ordered releases, one commit per stage. No production database or media is
    disk reservation for editing. Tests verify byte identity after resume, wrong offsets, mismatched
    file identity, checksum rejection and incomplete-batch rejection. Browsers must remain open until
    transfer finishes; restart may require reselecting files, never a promise of closed-browser upload.
-4. Editor experience and shared theme system — pending.
+4. Editor experience and shared theme system — implemented: fractional numeric selection,
+   keyboard-accessible handles, zoomable timeline, version/camera-scoped local drafts, camera
+   source switching, reconnecting export progress and mobile editor access. Shared semantic
+   palettes (harbor/terracotta/slate) replace binary theme switching; no remote font dependency.
+   Browser regressions exercise mobile editing, draft recovery and every palette.
 5. Device compatibility and personal media management — pending.
 6. Self-hosted installation, diagnostics, backup and recovery — pending.
 7. Integration verification, cleanup and release documentation — pending.

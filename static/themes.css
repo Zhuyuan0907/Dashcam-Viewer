@@ -1,0 +1,55 @@
+/* Semantic tokens shared by every page. Add palettes here, never duplicate components. */
+:root[data-palette] {
+  color-scheme:light; --bg:#e9eeeb; --surface:#fdfcf8; --surface-2:#f1f3ee; --surface-3:#e5ebe6;
+  --ink:#172e31; --ink-1:var(--ink); --ink-2:#405b5b; --ink-3:#526966;
+  --line:#cbd8d0; --line-2:#acbeb3; --border:var(--line);
+  --accent:#17655a; --accent-2:#124a43; --accent-ink:#fff; --accent-soft:#deeee4; --accent-line:#8cb6a7;
+  --ok:#176449; --warn:#875200; --crit:#ad3542;
+  --chrome:#142c30; --chrome-ink:#eef6ef; --chrome-muted:#bad1c6;
+  --radius:18px; --radius-sm:10px; --radius-lg:24px;
+  --font-body:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif;
+  --font-display:var(--font-body); --font-mono:ui-monospace,"SFMono-Regular",Consolas,monospace;
+  --shadow-sm:0 3px 14px #183a2910; --shadow-md:0 10px 30px #183a2915;
+}
+:root[data-palette="terracotta"] {
+  --bg:#eee8df; --surface:#fffbf4; --surface-2:#f5ede2; --surface-3:#ecdfce;
+  --ink:#392e2b; --ink-2:#695147; --ink-3:#756156; --line:#deceba; --line-2:#c2aa91;
+  --accent:#934c30; --accent-2:#723821; --accent-soft:#f5e3d5; --accent-line:#c8997d;
+  --chrome:#302a29; --chrome-ink:#fff6e9; --chrome-muted:#dcc6ae;
+}
+:root[data-palette="slate"] {
+  --bg:#dfe4ed; --surface:#f4f5fc; --surface-2:#e9edf6; --surface-3:#dce2ef;
+  --ink:#272d46; --ink-2:#47516b; --ink-3:#59617c; --line:#c4cce0; --line-2:#a7b2d0;
+  --accent:#53539e; --accent-2:#3b3b7a; --accent-soft:#e2e2f7; --accent-line:#aaa6d6;
+  --chrome:#23283d; --chrome-ink:#f1f2ff; --chrome-muted:#c1c7e2;
+}
+body {background:radial-gradient(ellipse at 90% 0%,var(--accent-soft),transparent 65%),var(--bg);}
+.hdr,.hdr.is-scrolled {background:var(--chrome);color:var(--chrome-ink);border-color:transparent;box-shadow:0 3px 18px #0002;}
+.hdr .hdr-brand,.hdr .hdr-link,.hdr .user-chip,.hdr .btn,.hdr .hdr-burger {color:var(--chrome-ink)!important;}
+.hdr .hdr-nav {background:#ffffff0c;border-color:#ffffff18;}
+.hdr .hdr-link:hover,.hdr .hdr-link.active {background:#ffffff18;color:#fff;}
+.hdr .role-badge {color:var(--chrome-ink);background:#ffffff18;}
+.info-card,.edit-card,.panel,.clip-card {border:1px solid var(--line);box-shadow:var(--shadow-sm);}
+.stage,.clip-frame {background:var(--chrome);}
+.form-input:focus-visible,.btn:focus-visible,button:focus-visible,a:focus-visible {outline:3px solid var(--accent);outline-offset:3px;}
+input,select,textarea,button {accent-color:var(--accent);}
+progress {width:100%;height:8px;accent-color:var(--accent);}
+.palette-preview {display:flex;flex-wrap:wrap;gap:12px;margin:14px 0;}
+.palette-preview button {border:2px solid var(--line);border-radius:14px;padding:16px;text-align:left;background:var(--surface);color:var(--ink);}
+.palette-preview button[aria-pressed="true"] {border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+.editor-tools {display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0;}
+.editor-tools label {display:flex;gap:6px;align-items:center;font-size:13px;}
+.editor-tools input[type="number"] {width:100px;}
+.timeline-scroll {overflow-x:auto;}
+.clip-timeline {touch-action:pan-x;}
+body.editing .page-body {min-height:0;}
+@media(max-width:700px){
+  body.editing {overflow:auto!important;}
+  body.editing #page-main>.wrap {height:auto!important;min-height:calc(100dvh - var(--hdr-h));}
+  body.editing #page-main .viewer {display:flex;flex-direction:column;}
+  body.editing #page-main .stage {min-height:210px;flex:none;aspect-ratio:16/9;}
+  body.editing #page-main .edit-tabpanel {max-height:none;overflow:visible;}
+  .editor-tools input[type="number"] {width:86px;}
+  .clip-export-btn,.btn {min-height:40px;}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important;}}
