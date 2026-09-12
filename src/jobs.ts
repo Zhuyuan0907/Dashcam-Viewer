@@ -9,6 +9,7 @@
 export class JobRegistry {
   private readonly committing = new Set<string>();
   beginCommit(tripId: string): void { this.committing.add(tripId); }
+  isCommitting(tripId: string): boolean { return this.committing.has(tripId); }
   hasClips(tripId: string): boolean { return [...this.clips.values()].some(c => c.tripId === tripId); }
   busy(tripId: string): boolean { return this.hasTrim(tripId) || this.hasClips(tripId); }
   /** tripId → 整趟裁剪的 controller(一趟同時只允許一個)。 */

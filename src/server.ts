@@ -145,6 +145,8 @@ async function main(): Promise<void> {
     force.unref();
     try {
       clearInterval(sweep);
+      ctx.tasks?.stop();
+      while (ctx.tasks?.active()) await new Promise(resolve=>setTimeout(resolve,100));
       if (sftp) await sftp.stop();
       await app.close();
     } catch (e) {

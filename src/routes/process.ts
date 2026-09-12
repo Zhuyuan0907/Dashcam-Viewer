@@ -86,7 +86,8 @@ export function startProcessing(
   // 本次寫入旅程涉及的日期(結束後重新編號 day_order,避免同日分批的重複「第N趟」)。
   const touchedDates = new Set<string>();
 
-  void runSession();
+  if (ctx.tasks) ctx.tasks.enqueue({type:'import',owner:ownerId,target:sessionId,payload:{gapMin,uploadType},key:sessionId},channel,runSession);
+  else void runSession();
 
   async function forward(ev: ProgressEvent): Promise<void> {
     if (ev.tripInfo) {
@@ -95,10 +96,12 @@ export function startProcessing(
     }
     if (ev.incident) incidents.push(ev.incident);
     const { tripInfo: _omitT, incident: _omitI, ...wire } = ev;
-    channel.push(wire);
+    // A child pipeline finishing is a step result, not the batch terminal event.
+    channel.push({...wire,stage:wire.stage==='done'?'finalizing':wire.stage});
   }
 
   async function runSession(): Promise<void> {
+    let finalEvent: Record<string,unknown> = {stage:'done',message:'完成',incidents:0};
     let prebuiltCount = 0;
     let quarantined: string | null = null;
     // 任何一段素材該隔離卻隔離失敗(磁碟滿等)且仍留在 session 區:結束時不可 remove session。
@@ -192,16 +195,16 @@ export function startProcessing(
       const rawSuffix = hasRaw ? "＋原始片段已整理" : "";
       const warn = incidents.length > 0 ? `(有 ${incidents.length} 筆問題待處理)` : "";
       // 帶結構化 incidents 數:前端據此決定「完成但有問題 → 不自動跳走、顯示警告」。
-      channel.push({
+      finalEvent = {
         stage: "done",
         message: `完成${suffix}${rawSuffix}${warn}`,
         done: 1,
         total: 1,
         incidents: incidents.length,
-      });
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      channel.push({ stage: "error", message: msg });
+      finalEvent = { stage: "error", message: msg };
       incidents.push({
         kind: "processing_error",
         severity: "error",
@@ -279,6 +282,7 @@ export function startProcessing(
       } else {
         await sessions.remove(sessionId);
       }
+      channel.push(finalEvent);
       channel.close();
     }
   }
@@ -318,7 +322,6 @@ export function registerProcess(app: FastifyInstance, ctx: AppContext): void {
 
       const unsub = channel.subscribe((event) => {
         if (event === null) {
-          reply.raw.write('data: {"stage":"done"}\n\n');
           reply.raw.end();
         } else {
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);

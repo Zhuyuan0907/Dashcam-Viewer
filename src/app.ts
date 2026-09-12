@@ -22,12 +22,15 @@ import { registerClips } from "./routes/clips.js";
 import { registerConfig } from "./routes/config.js";
 import { registerOps } from "./routes/ops.js";
 import { registerShares } from "./routes/shares.js";
+import { BackgroundTasks } from './background.js';
+import { registerBackground } from './routes/background.js';
 
 export interface BuildOptions {
   logger?: boolean;
 }
 
 export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promise<FastifyInstance> {
+  ctx.tasks ??= new BackgroundTasks(ctx.db, Math.max(1,Number(process.env.DASHCAM_JOB_CONCURRENCY)||2),Math.max(1,Number(process.env.DASHCAM_JOBS_PER_USER)||1));
   const app = Fastify({
     logger: opts.logger ?? false,
     bodyLimit: 1 * 1024 * 1024, // JSON body 上限 1MB(檔案走 multipart 串流,不受此限)
@@ -78,6 +81,7 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
   registerAdmin(app, ctx);
   registerVideo(app, ctx);
   registerShares(app, ctx);
+  registerBackground(app, ctx);
   registerUploadSessions(app, ctx);
   registerProcess(app, ctx);
   registerTrips(app, ctx);

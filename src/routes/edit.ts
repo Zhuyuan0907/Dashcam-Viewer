@@ -173,7 +173,7 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
       if (available.some(s => !continuous(s,start,end)) || available.some(s => Math.abs(timeAt(s,start)!-timeAt(available[0]!,start)!)>0.1)) {
         return reply.code(400).send({detail:'選取包含錄影空檔或鏡頭時間差，請先匯出單鏡頭片段'});
       }
-      startTrim(row, start, end);
+      startTrim(row, start, end, req.user!.id);
       return { status: "started", trip_id: tripId };
     },
   );
@@ -201,7 +201,6 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
       });
       const unsub = channel.subscribe((event) => {
         if (event === null) {
-          reply.raw.write('data: {"stage":"done"}\n\n');
           reply.raw.end();
         } else {
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -224,7 +223,8 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
       if (jobs.busy(tripId)) return reply.code(409).send({ detail: "此旅程仍有工作進行中" });
       const controller = new AbortController();
       jobs.registerTrim(tripId, controller);
-      try {
+      const channel=sse.create(`restore:${tripId}`,req.user!.id);
+      const restore=async()=>{try {
         const cams = [row.front_path, row.rear_path].filter((p): p is string => !!p);
         for (const p of cams) await inspectMedia(origPath(p));
         for (const p of cams) await fsp.copyFile(origPath(p), tmpPath(p));
@@ -235,9 +235,16 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
         end: row.orig_end_epoch ?? row.end_epoch,
         dur: row.orig_duration_sec ?? row.duration_sec,
         }));
+        channel.push({stage:'done',message:'還原完成'});
       } catch (error) {
-        return reply.code(409).send({ detail: `還原未完成，備份已保留：${error instanceof Error ? error.message : error}` });
-      } finally { jobs.unregisterTrim(tripId); }
+        channel.push({stage:'error',message:'還原未完成，原始備份已保留'});
+        throw error;
+      } finally { jobs.unregisterTrim(tripId);channel.close(); }};
+      try {
+        if(ctx.tasks) await new Promise<void>((resolve,reject)=>{
+          ctx.tasks!.enqueue({type:'restore',owner:req.user!.id,target:tripId,payload:{},key:`restore:${tripId}`},channel,async()=>{try{await restore();resolve();}catch(e){reject(e);throw e;}},()=>jobs.abortTrim(tripId),()=>jobs.isCommitting(tripId));
+        }); else await restore();
+      } catch(error) {return reply.code(409).send({detail:`還原未完成，備份已保留：${error instanceof Error?error.message:error}`});}
       if (row.trip_dir) await fsp.rm(path.join(row.trip_dir, "thumb.jpg"), { force: true }).catch(() => {});
       return { status: "ok" };
     },
@@ -263,12 +270,13 @@ export function registerEdit(app: FastifyInstance, ctx: AppContext): void {
    * 覆蓋播放檔並更新 DB。任一失敗/取消:只清 .trim.tmp(播放檔全程未動);首次裁剪失敗再刪掉
    * 剛建立的 .orig 備份(回到未裁剪)。
    */
-  function startTrim(row: TripRow, start: number, end: number): void {
+  function startTrim(row: TripRow, start: number, end: number, actor: number): void {
     const controller = new AbortController();
     jobs.registerTrim(row.trip_id, controller);
     const channel = sse.create(trimKey(row.trip_id));
     const wasFirstTrim = row.orig_duration_sec === null;
-    void run();
+    if (ctx.tasks) ctx.tasks.enqueue({type:'trim',owner:actor,target:row.trip_id,payload:{start,end},key:trimKey(row.trip_id)},channel,run,()=>jobs.abortTrim(row.trip_id),()=>jobs.isCommitting(row.trip_id));
+    else void run();
 
     async function run(): Promise<void> {
       const cams = [row.front_path, row.rear_path].filter((p): p is string => !!p);

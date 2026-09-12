@@ -6,7 +6,9 @@ Seven ordered releases, one commit per stage. No production database or media is
    immutable clip selection timestamps, output probing, camera timelines and gap-aware playback.
    Validation: baseline 144 cases plus 4 media safety regressions; updated the explicit DTO contract
    for the public timeline field. Legacy clips without source timestamps require manual verification.
-2. Persistent background work and job center — pending.
+2. Persistent background work and job center — implemented: SQLite history, global/per-owner queue,
+   cancellation, safe retry routing, duplicate export suppression, restart interruption status and
+   finalization-aware results. Tests cover queue admission, finalization, history isolation and restart.
 3. Resumable uploads and server handoff — pending.
 4. Editor experience and shared theme system — pending.
 5. Device compatibility and personal media management — pending.

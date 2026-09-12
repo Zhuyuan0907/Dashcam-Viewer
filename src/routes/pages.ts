@@ -18,6 +18,7 @@ const PAGE_NS: Record<string, string[]> = {
   "index.html": ["common", "nav", "title", "index", "trip"],
   "browse.html": ["common", "nav", "title", "browse", "trip", "index"],
   "trip.html": ["common", "nav", "title", "trip"],
+  "jobs.html": ["common", "nav", "title"],
   "login.html": ["common", "nav", "title", "auth"],
   "setup.html": ["common", "nav", "title", "auth"],
   "change-password.html": ["common", "nav", "title", "auth"],
@@ -155,6 +156,7 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
   app.get("/trip/*", page("trip.html"));
   app.get("/upload", page("upload.html"));
   app.get("/clips", page("clips.html"));
+  app.get("/jobs", page("jobs.html"));
   app.get("/admin", adminPage("admin.html"));
   app.get("/ops", adminPage("ops.html"));
   app.get("/account", page("account.html"));

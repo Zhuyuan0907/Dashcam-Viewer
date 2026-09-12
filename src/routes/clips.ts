@@ -206,7 +206,7 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
       }
     }
 
-    if (running.size >= CLIP_CONCURRENCY) {
+    if (running.size >= 100) {
       return reply.code(429).send({ detail: "匯出佇列已滿,請待其他片段完成後再試" });
     }
     // 整趟裁剪會在完成瞬間 rename 覆蓋播放檔;此時開始的匯出可能讀到新舊混合的位元組。
@@ -220,6 +220,8 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
       return reply.code(409).send({ detail: '影片已更新，請重新載入選取範圍' });
     }
     const label = (typeof req.body?.label === "string" ? req.body.label : "").trim().slice(0, 100);
+    const duplicate=ctx.tasks?.findActive({type:'clip',owner:req.user!.id,target:tripId,payload:{start,end,layout,quality,label,main:mainCam}});
+    if(duplicate)return {status:'started',job_id:duplicate.channel_key.slice(5)};
     const jobId = startExport({
       row,
       start,
@@ -499,7 +501,8 @@ export function registerClips(app: FastifyInstance, ctx: AppContext): void {
     const outPath = path.join(clipsDir, `${jobId}.mp4`);
     const dur = p.end - p.start;
 
-    void run();
+    if (ctx.tasks) ctx.tasks.enqueue({type:'clip',owner:p.ownerId,target:p.row.trip_id,payload:{start:p.start,end:p.end,layout:p.layout,quality:p.quality,label:p.label,main:p.mainCam},key:clipKey(jobId)},channel,run,()=>{controller.abort();return true;});
+    else void run();
     return jobId;
 
     async function run(): Promise<void> {

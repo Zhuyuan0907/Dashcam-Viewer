@@ -8,8 +8,10 @@ import { SSERegistry } from "./uploads/sse.js";
 import { lookupSession, type SessionUser } from "./auth.js";
 import { SettingsStore } from "./settings/store.js";
 import { JobRegistry } from "./jobs.js";
+import type { BackgroundTasks } from './background.js';
 
 export interface AppContext {
+  tasks?: BackgroundTasks;
   db: DB;
   sessions: SftpSessionManager;
   sse: SSERegistry;
