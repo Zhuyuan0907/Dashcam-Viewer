@@ -1,0 +1,28 @@
+services:
+  dashcam:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${DASHCAM_BIND_IP:-127.0.0.1}:8080:8080"
+      - "${DASHCAM_BIND_IP:-127.0.0.1}:2022:2022"
+    environment:
+      DASHCAM_COOKIE_SECURE: "${DASHCAM_COOKIE_SECURE:-false}"
+      DASHCAM_TRUST_PROXY: "${DASHCAM_TRUST_PROXY:-false}"
+      DASHCAM_SFTP_ENABLED: "${DASHCAM_SFTP_ENABLED:-false}"
+      DASHCAM_SFTP_PUBLIC_HOST: "${DASHCAM_SFTP_PUBLIC_HOST:-localhost}"
+      DASHCAM_JOB_CONCURRENCY: "${DASHCAM_JOB_CONCURRENCY:-1}"
+      DASHCAM_JOBS_PER_USER: "${DASHCAM_JOBS_PER_USER:-1}"
+      DASHCAM_TRIM_THREADS: "${DASHCAM_TRIM_THREADS:-2}"
+      DASHCAM_MIN_FREE_DISK_BYTES: "${DASHCAM_MIN_FREE_DISK_BYTES:-1073741824}"
+      DASHCAM_MAX_SESSION_BYTES: "${DASHCAM_MAX_SESSION_BYTES:-53687091200}"
+    volumes:
+      - dashcam-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+
+volumes:
+  dashcam-data:

@@ -24,7 +24,12 @@ Seven ordered releases, one commit per stage. No production database or media is
    measured frame-rate stepping, SHA-256 duplicate identity, paged/searchable clips, rename and
    paged daily journeys. Unknown filenames are rejected; arbitrary camera metadata guessing and
    automatic incompatible-codec transcoding are intentionally not enabled. 26 scoped tests pass.
-6. Self-hosted installation, diagnostics, backup and recovery — pending.
+6. Self-hosted installation, diagnostics, backup and recovery — implemented: non-root Docker/
+   Compose configuration, native environment loading, safe local defaults, public minimal health,
+   admin/CLI diagnostics, offline full-data bundles with SHA-256 and SQLite verification, restore
+   that refuses overwrite or path relocation, and deployment/upgrade/recovery documentation.
+   Native build and bundle round-trip tests run locally; Docker is unavailable in this workspace,
+   so container execution remains a CI/deployer verification item, not a claimed local result.
 7. Integration verification, cleanup and release documentation — pending.
 
 The remote repository originally lacked clips, devices and shares. Stage 1 integrates the audited

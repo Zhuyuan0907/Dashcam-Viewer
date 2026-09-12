@@ -1,0 +1,10 @@
+.git
+node_modules
+dist
+data
+.env*
+test-results
+playwright-report
+legacy-python
+*.db*
+*.log

@@ -6,7 +6,7 @@
 #   3. (選用)把環境變數寫進 /etc/dashcam.env,並啟用下方 EnvironmentFile
 #   4. sudo systemctl daemon-reload && sudo systemctl enable --now dashcam.service
 #
-# 提醒:先 `npm install && npm run build` 產生 dist/。
+# 提醒:先 `npm ci && npm run build` 產生 dist/；Node.js 22+。
 
 [Unit]
 Description=Dashcam 行車記錄器網頁系統
@@ -17,9 +17,13 @@ Wants=network-online.target
 Type=simple
 User=<YOUR_USER>
 WorkingDirectory=<PATH_TO_REPO>
-ExecStart=/usr/bin/node dist/server.js
+ExecStart=/usr/bin/node --env-file-if-exists=.env dist/server.js
 Restart=on-failure
 RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+TimeoutStopSec=30
 Environment=NODE_ENV=production
 # 自訂設定改用環境變數(見 .env.example);建議指向獨立資料碟:
 #Environment=DASHCAM_DATA_DIR=/mnt/data/dashcam

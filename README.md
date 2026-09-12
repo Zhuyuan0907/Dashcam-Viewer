@@ -1,138 +1,162 @@
-# Dashcam 行車記錄器網頁系統
+# Dashcam Viewer
 
-## 主題與剪輯工作區
+開源自架的行車記錄器影片管理系統：把記憶卡素材上傳、整理成旅程、同步檢視雙鏡頭，
+再匯出片段或建立限時分享。每個部署者管理自己的帳號、影片與儲存空間，無需外部雲端帳號。
 
-## 通用格式與個人管理
+Node.js 22+ · Fastify · TypeScript · SQLite · FFmpeg · 原生 HTML/CSS/JS · MIT
 
-除 MiVue MP20、Polaroid MS279WG 外，「其他 / 自訂」裝置可匯入
-`YYYYMMDD_HHMMSS_F.mp4`、`YYYYMMDD_HHMMSS_R_序號.mov`（也接受 TS）。
-時間必須由使用者確認，不能用上傳時間替代拍攝時間；F / R 為前 / 後鏡頭。
-三種格式皆可只匯入後鏡頭。不同編碼、解析度、幀率或音軌的素材會要求分批或預先轉檔，
-不會強行串接；HEVC 等編碼的瀏覽器相容性仍依裝置而定。
-片段頁提供名稱／日期搜尋、分頁、重新命名、下載與播放；每日旅程超過 100 趟可換頁。
-逐格使用探測到的平均幀率，探測失敗退回 30 fps；可變幀率仍是近似步進。
+## 快速開始
 
-帳號設定可選港灣、陶土、暮山：深色導覽搭配柔和內容區，不跟隨系統亮暗切換。
-色彩集中在 `static/themes.css`，名稱與舊偏好轉換在 `static/themes.js`；新增主題
-應擴充語意變數，不複製整份頁面。字型使用本機系統字型，不連線 Google Fonts。
-剪輯支援手機、0.001 秒輸入、鍵盤方向鍵微調（Shift 加速）、1–8 倍時間軸與
-本機草稿恢復。草稿依帳號、旅程版本與鏡頭隔離；切換鏡頭後請確認新選取範圍。
-小數秒輸入不代表任意時間都存在影格；精確輸出仍受實際幀率約束。
-
-## 分階段更新：剪輯安全
-
-### 背景作業
-
-### 大檔分塊續傳
-
-瀏覽器會先登記整批檔案，再以 4 MiB 分塊傳送；重開頁面後重新選取同一批檔案即可
-從伺服器已確認的位置接續。預設勾選「整批傳完後自動整理」，最後一塊落地、整批收齊後
-由伺服器接手；畫面顯示接手成功後就能關頁。未完成上傳仍需保持瀏覽器開啟。
-續傳工作階段至少保留 24 小時（管理員原有不限時設定保留）。來源以檔案大小、修改時間與
-首尾樣本識別，HTTPS／localhost 另提供逐塊 SHA-256 校驗；樣本識別不作為密碼學完整性保證。
-分塊模式與 SFTP 請使用不同工作階段，避免同一檔案被兩種傳輸方式覆寫。
-SFTP 仍需傳完、斷開連線後手動確認，不能以閒置時間推測整批完成。
-磁碟不足會保留已確認的分塊；影片編輯會預留備份及輸出所需的工作空間。
-
-「背景作業」頁會保存匯入、裁剪與匯出歷史，並提供狀態、取消、重試及結果入口。
-檔案完整送達且按下「確認並處理」後，即可關頁；僅上傳完成而未確認不會自動整理。
-`DASHCAM_JOB_CONCURRENCY=2` 控制全站同時工作數，`DASHCAM_JOBS_PER_USER=1` 控制每人同時工作數。
-待執行工作會排隊；相同參數的進行中匯出會回傳既有工作，避免重複產生片段。
-重啟後未完成工作標記「中斷」，可在來源仍存在時重新執行（不是從中斷影格續編碼）。
-匯入失敗且素材已隔離時，請管理員由維運頁處理。工作結果以整批收尾完成為準，
-不再將個別合併步驟的完成事件誤報為成功。
-
-此版本整合多裝置、片段匯出、匿名限時分享與權限回歸測試。
-裁剪／還原採可恢復的檔案提交紀錄：任一鏡頭或資料庫更新失敗會還原上一版，
-程序中斷則於啟動時恢復。原始備份不會在還原失敗時被消耗。工作提交期間不可取消；
-同趟匯出、裁剪與刪除互斥。裁剪位置保留小數秒，避免連續裁剪產生偏移。
-
-新片段保存選取區間的拍攝時間快照與實際輸出長度；舊片段缺少可靠來源時間時顯示「待確認」。
-快速匯出可能包含選取之外的畫面，實際時長以輸出檔為準；它不是原始檔的逐位元組副本。
-新整理旅程保存每鏡頭片段時間對照，播放遇到缺片會隱藏缺失鏡頭；
-跨錄影空檔的剪輯、未對齊的雙鏡頭合成會提示改為分段／單鏡頭匯出。
-
-升級前請備份完整資料目錄（含 SQLite、影片、分享金鑰和 strings.yml）。首次啟動會自動新增欄位。
-舊資料沒有來源片段時間表，不能自動推測其歷史錄影空檔。
-實作進度見 [implementation ledger](docs/IMPLEMENTATION.md)。
-
-把行車記錄器產生的細碎影片,依「日期 / 趟次」自動整理、用 ffmpeg 無損合併成完整旅程,並透過網頁瀏覽、縮放檢視前後雙鏡頭。後端 **Node.js + Fastify + TypeScript**,資料庫 **SQLite**,前端為零建置的原生 JS。
-
-> v2 起後端由 Python(FastAPI)改寫為 TypeScript。舊版保留於 `legacy-python/` 供參考。
-
-## 功能
-
-- **上傳(SFTP)**:每個網頁工作階段取得一組一次性 SFTP 連線資訊(如 Pterodactyl 面板),用 FileZilla / WinSCP / `sftp` 把片段直接傳到專屬資料夾,完成後在網頁按「確認並處理」。原始片段(`FILE/EMER…F|R.mp4` + `.NMEA`)與已整理旅程資料夾系統自動判別。閒置過久的工作階段自動回收。
-- **整理**:依停留間隔切趟,合併前後鏡頭,解析 NMEA 的 G-force。
-- **瀏覽 / 觀看**:雙鏡頭子母畫面、**滾輪縮放 + 拖曳平移**、逐格前進/後退、播放速度、截圖存檔、全螢幕、鍵盤快捷。
-- **帳號**:PBKDF2 雜湊、Session cookie、管理員 / 訪客分級。
-- **CLI**:`dashcam-import` 從資料夾批次匯入(支援遞迴巢狀日期夾)。
-
-## 需求
-
-- Node.js ≥ 20(建議 LTS)
-- `ffmpeg` 與 `ffprobe`(影片合併與時長偵測)
-- `ssh-keygen`(首次啟動自動產生 SFTP host key)
-- 對外開放 **SFTP 埠 2022**(防火牆 / port forward),使用者才能從外部連入上傳
-
-## 安裝與啟動
+### Docker Compose
 
 ```bash
-npm install          # 安裝相依(含原生模組 better-sqlite3,需編譯工具)
-npm run build        # 編譯 TypeScript → dist/
-npm start            # 啟動(預設 http://0.0.0.0:8080)
+git clone https://github.com/Zhuyuan0907/Dashcam-Viewer.git
+cd Dashcam-Viewer
+cp .env.example .env
+docker compose up -d --build
 ```
 
-開發模式:`npm run dev`(tsx 熱重載)。首次開啟瀏覽器到 `/setup` 建立管理員帳號。
+開啟 http://localhost:8080/setup 建立擁有者，再由管理員建立使用者。
+預設只開放 localhost、SFTP 關閉。遠端主機可先透過 SSH tunnel 初始化；
+需要內網存取時才修改 `DASHCAM_BIND_IP`。不要將未初始化的站台暴露公網。
 
-預設資料存在專案內 `./data`。若要放到獨立資料碟,設定 `DASHCAM_DATA_DIR`(見 `.env.example`)。
-常駐部署可參考 `dashcam.service.example`(systemd)。
+資料放在持久化 `dashcam-data` volume，容器內固定 `/data`；更新容器不等於刪除資料。
+**不要執行 `docker compose down -v`，它會刪除資料 volume。**
 
-## 環境變數
+### 原生部署
 
-| 變數 | 預設 | 說明 |
-|------|------|------|
-| `DASHCAM_DATA_DIR` | `./data` | 影片與 DB 根目錄(預設專案內 `./data`;正式部署可指向掛載碟,如 `/mnt/data/dashcam`) |
-| `DASHCAM_PORT` | `8080` | 監聽埠 |
-| `DASHCAM_HOST` | `0.0.0.0` | 監聽位址 |
-| `DASHCAM_SESSION_TTL` | `2592000` | Session 有效秒數(30 天) |
-| `DASHCAM_COOKIE_SECURE` | `auto` | `auto`/`true`/`false`;反向代理走 HTTPS 時設 `true` |
-| `DASHCAM_LOGIN_RATE_MAX` | `5` | 登入速率限制(每視窗次數) |
-| `DASHCAM_SFTP_ENABLED` | `true` | 是否啟用內嵌 SFTP 上傳伺服器 |
-| `DASHCAM_SFTP_PORT` | `2022` | SFTP 監聽埠(系統 sshd 通常在 22) |
-| `DASHCAM_SFTP_HOST` | `0.0.0.0` | SFTP 監聽位址 |
-| `DASHCAM_SFTP_PUBLIC_HOST` | `localhost` | 顯示給使用者的對外主機名(部署時設成你的網域或對外 IP) |
-| `DASHCAM_UPLOAD_SESSION_IDLE_SEC` | `600` | 上傳工作階段閒置回收門檻(秒,預設 10 分) |
-
-## CLI 批次匯入
+安裝 Node.js 22+、FFmpeg（含 FFprobe）；若啟用 SFTP 另需 OpenSSH 的 ssh-keygen。
+better-sqlite3 若無對應預編譯套件，需 Python 3、make、C++ 編譯器。
 
 ```bash
-npm run import -- <來源資料夾>            # 複製匯入
-npm run import -- <來源資料夾> --move      # 搬移
-npm run import -- <來源資料夾> --dry-run   # 只預覽
+npm ci
+cp .env.example .env
+npm run build
+npm start
 ```
 
-## 測試
+`npm start`、`npm run doctor`、`npm run backup` 會讀取 .env。
+預設資料是專案內 `data/`；正式部署請指定可寫入的絕對路徑。
+systemd 範例見 [dashcam.service.example](dashcam.service.example)。
+
+**舊版升級：** 若以前使用 `/mnt/data/dashcam`，請在升級前把原路徑明確寫入
+`DASHCAM_DATA_DIR`，並先停機備份。不要把新站初始化誤認為原資料遺失。
+
+## 功能與使用流程
+
+1. 在帳號頁新增行車記錄器，建立上傳工作階段並確認來源裝置。
+2. 拖入檔案／資料夾。瀏覽器以 4 MiB 分塊續傳；預設整批收齊後自動整理。
+3. 到「背景作業」看排隊、執行、完成／部分成功／失敗狀態、取消、重試及結果。
+4. 瀏覽旅程，播放雙鏡頭、縮放平移、逐格、截圖、變速及限時分享。
+5. 在剪輯工作區選取範圍，匯出獨立片段；需要縮短整趟時才使用裁剪。
+6. 片段頁可搜尋名稱／日期、分頁、重新命名、播放、下載及準備檢舉資料草稿。
+
+一般使用者管理自己的裝置與素材；管理員具站台維運權限。旅程預設非公開。
+已登入者的公開瀏覽與免登入 bearer 分享是兩個不同功能。
+
+### 大檔上傳後，可以關閉瀏覽器嗎？
+
+**伺服器顯示整批已接受處理後，可以。仍在傳輸中，不可以。**
+
+上傳前先登記整批檔案，最後一塊完整落地且整批收齊後，伺服器才自動接手。
+取消勾選自動整理時，要手動按「確認並處理」。工作排隊或編碼不依賴原本網頁持續開啟。
+
+中途關頁可重新開啟上傳頁、選回同一批檔案，從已確認的位置續傳。分塊工作階段至少保留
+24 小時，逾期仍可能回收。來源用檔案大小、修改時間與首尾樣本識別；
+HTTPS／localhost 另用逐塊 SHA-256 校驗，樣本不是全檔密碼學身分保證。
+請勿在續傳期間修改來源檔。SFTP 與分塊上傳需使用不同工作階段。
+
+SFTP 需先傳完並斷開 SFTP 連線，再回網頁確認；系統不以閒置時間猜測整批完成。
+服務重啟與關閉瀏覽器不同：未完成背景工作會標示「中斷」，需人工重試，
+不是從中斷影格續編碼。隔離素材的失敗匯入由管理員在維運頁處理。
+
+### 支援素材
+
+| 格式 | 命名範例 | 鏡頭 |
+| --- | --- | --- |
+| MiVue MP20 | `FILE260912-103045-001F.mp4`，也接受 EMER、F.NMEA | F 前／R 後 |
+| Polaroid MS279WG | `2026_0912_103045_001A.TS` | A 前／B 後 |
+| 通用交換格式 | `20260912_103045_F.mp4`、`20260912_103045_R_02.mov`（亦接受 TS） | F 前／R 後 |
+| 已整理旅程 | `YYYY-MM-DD/旅程資料夾/前鏡頭.mp4`、`後鏡頭.mp4` | 依檔名 |
+
+以上原始格式可只匯入後鏡頭。通用格式選「其他 / 自訂」裝置；
+拍攝時間由檔名明確指定，不用檔案上傳時間猜測，也不宣稱支援所有廠牌的私有格式。
+同一工作階段不要混合不同命名規則。
+
+合併前檢查編碼、解析度、平均幀率與是否含音軌，不相容素材要求分批／預先轉檔。
+HEVC 等來源能否在瀏覽器播放仍取決於瀏覽器及裝置，尚無自動代理轉碼。
+檔名時間以牆鐘方式保存；舊素材未知的錄影空檔或錯誤時鐘無法自動還原。
+
+### 剪輯安全與限制
+
+- 匯出是非破壞性的獨立檔案；整趟裁剪可從保留的原始備份還原。
+- 裁剪／還原使用檔案提交日誌，失敗回復上一版；啟動時處理中斷提交。
+- 同趟的編輯、匯出與刪除有互斥保護，提交期間不接受取消。
+- 數字入／出點支援小數秒、键盤把手、1–8 倍時間軸及帳號／鏡頭／版本隔離的本機草稿。
+- 精確匯出仍受實際影格邊界限制；逐格用平均幀率，VFR 是近似，探測失敗退回 30 fps。
+- 快速匯出可能包含選取外的關鍵影格區間。下載前預覽實際輸出，不能把它當精準證據裁切。
+- 新片段保存選取區間的拍攝時間快照與實際輸出長度；舊片段時間無法證明時標示待確認。
+- 新整理素材有每鏡頭時間對照，缺片時隱藏缺失鏡頭。跨錄影空檔或未對齊雙鏡頭合成會拒絕。
+- 檢舉資料本機草稿須按儲存才同步伺服器；本系統不代替所在地機關的證據規範。
+
+## 共用主題系統
+
+預設「港灣」：墨綠導覽搭配暖霧內容，不再只以亮／暗二分。
+帳號頁另可選「陶土」「暮山」。三者共用元件，以語意色彩變數切換，不複製多套頁面。
+`static/themes.css` 定義色票，`static/themes.js` 定義名稱與舊偏好的相容轉換。
+使用本機系統字型，無第三方字型請求。手機可直接開啟剪輯工作區。
+
+## 設定
+
+原生預設與 Compose 的保守配置可能不同；完整範例見 [.env.example](.env.example)。
+
+| 變數 | 原生預設 | 用途 |
+| --- | --- | --- |
+| `DASHCAM_DATA_DIR` | 專案 `data/` | SQLite、影片、金鑰與工作狀態 |
+| `DASHCAM_HOST` / `DASHCAM_PORT` | `0.0.0.0` / `8080` | 原生監聽位址；範例限制 localhost |
+| `DASHCAM_COOKIE_SECURE` | production 為 true | 公開 HTTPS 請設 true |
+| `DASHCAM_TRUST_PROXY` | false | 僅在可信反代後方開啟 |
+| `DASHCAM_SFTP_ENABLED` / `DASHCAM_SFTP_PORT` | true / 2022 | 範例與 Compose 預設關閉 SFTP |
+| `DASHCAM_SFTP_PUBLIC_HOST` | localhost | 提供給使用者的連線主機 |
+| `DASHCAM_JOB_CONCURRENCY` / `DASHCAM_JOBS_PER_USER` | 2 / 1 | 全站／每人背景併發 |
+| `DASHCAM_TRIM_THREADS` | 核心數一半、至少 1 | 編碼執行緒；小主機建议 2 |
+| `DASHCAM_MAX_SESSION_BYTES` | 0（不限） | 範例限制 50 GiB |
+| `DASHCAM_MIN_FREE_DISK_BYTES` | 512 MiB | 安全磁碟保留量 |
+| `DASHCAM_CLIP_MAX_SEC` | 1200 | 每段匯出上限 |
+| `DASHCAM_BACKUP_KEEP` | 7 | SQLite 快照保留份數（非完整影片備份） |
+
+## 維運與備份
+
+[維運手冊](docs/OPERATIONS.md) 包含 HTTPS 反代、容量、健康檢查、完整備份、雜湊驗證、
+還原演練與升級回退。資料庫自動快照**不包含影片與金鑰**，不能代替完整離線備份。
 
 ```bash
-npm test         # node:test:核心邏輯、相容性、安全性回歸
+npm run doctor
+npm run backup -- create /srv/backups/dashcam-2026-09-12 --server-stopped
+npm run backup -- verify /srv/backups/dashcam-2026-09-12
+```
+
+建立／還原前必須先停止服務與其他寫入者；確認旗標不會替你停止服務。
+本版適用單一服務程序與本機磁碟，尚不支援多副本共用 SQLite 或網路檔案系統。
+
+## 開發與測試
+
+```bash
 npm run typecheck
+npm test
+npx playwright install chromium
+npm run test:ui
 ```
 
-## SFTP 上傳
+測試使用獨立暫存資料與合成影片，不操作部署者的真實素材。
+原生 UI 無額外前端建置；`npm run dev` 可熱重載後端（環境變數請由 shell 注入）。
+已整理旅程 CLI：`npm run import -- <來源目錄> --dry-run`，確認後移除 dry-run；
+`--move` 會搬走來源，請謹慎使用。
 
-1. 網頁 `/upload`(管理員)按「建立上傳工作階段」,取得一次性連線資訊:
-   `sftp://<帳號>.<sid>@<host>:2022`,密碼為當次隨機產生(可在頁面複製或下載 FileZilla 站台)。
-2. 用 SFTP 客戶端把片段傳入,結構不拘(原始片段或 `YYYY-MM-DD/` 旅程夾皆可)。
-3. 回網頁按「確認並處理」,進入既有整理/合併管線(SSE 進度)。
-4. 工作階段閒置超過 `DASHCAM_UPLOAD_SESSION_IDLE_SEC`(預設 10 分)會自動刪資料夾並失效。
-
-## 安全性
-
-- SFTP 採內嵌伺服器:一次性密碼以 `timingSafeEqual` 比對,每條連線只開放 SFTP 子系統(拒 shell/exec),所有路徑操作沙箱在該工作階段資料夾內(不可逃逸、不建符號連結)。
-- 所有 SQL 走參數化綁定;上傳路徑經 `safeJoin` 防止路徑穿越;登入有速率限制;helmet 安全標頭。
-- 發版前請確保 `npm audit` 無 high/critical(專案附 Dependabot 設定每週檢查)。
+七階段實作與驗證紀錄见 [IMPLEMENTATION.md](docs/IMPLEMENTATION.md)。
+Python 舊版留在 `legacy-python/` 供歷史參考，不再作為目前伺服器入口。
+此工作區沒有 Docker，容器建置需於具有 Docker 的環境另行驗證。
 
 ## 授權
 
-MIT
+[MIT](LICENSE)。欢迎提交可重現問題、測試與支援新記錄器格式的 Pull Request。

@@ -17,4 +17,4 @@ if [ ! -f "$SCRIPT_DIR/dist/server.js" ]; then
   npm run build
 fi
 
-exec node dist/server.js
+exec node --env-file-if-exists=.env dist/server.js

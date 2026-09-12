@@ -85,6 +85,8 @@
         <button class="btn btn--ghost btn--sm" id="health-btn" onclick="runHealth()" data-i18n="ops.health.scan">掃描旅程</button>
       </div>
       <div id="health-body"></div>
+      <button class="btn btn--ghost" type="button" onclick="runDiagnostics()">部署環境健檢</button>
+      <pre id="diagnostics-result" style="white-space:pre-wrap;overflow-wrap:anywhere" role="status"></pre>
     </div>
 
     <!-- 資料庫檢視 -->
@@ -349,6 +351,13 @@ async function doRebuild(){
   try { const r = await apiFetch('/api/rebuild-db', { method:'POST' }); showToast(t('ops.tools.rebuilt',{n:r.imported}),'success'); }
   catch(e){ showToast(t('ops.toast.fail')+'：'+e.message,'error'); }
   finally { btn.disabled=false; btn.textContent=t('ops.health.rebuild'); }
+}
+async function runDiagnostics(){
+  const output=document.getElementById('diagnostics-result');output.textContent='檢查中…';
+  try {
+    const result=await apiFetch('/api/admin/diagnostics');
+    output.textContent=result.checks.map(c=>`${c.ok?'✓':'✕'} ${c.name}: ${c.detail}`).join('\n')+'\n'+result.notes.join('\n');
+  } catch(e){output.textContent=e.message;}
 }
 </script>
 </body>

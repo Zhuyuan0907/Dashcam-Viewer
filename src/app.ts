@@ -25,6 +25,8 @@ import { registerShares } from "./routes/shares.js";
 import { BackgroundTasks } from './background.js';
 import { registerBackground } from './routes/background.js';
 import { registerResumable } from './uploads/resumable.js';
+import { diagnostics } from './diagnostics.js';
+import { makeRequireAdmin } from './context.js';
 
 export interface BuildOptions {
   logger?: boolean;
@@ -74,6 +76,11 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
   });
   await app.register(rateLimit, { global: false });
   await app.register(fastifyStatic, { root: STATIC_DIR, prefix: "/static/" });
+  app.get('/healthz',async(_req,reply)=>{
+    try {ctx.db.prepare('SELECT 1').get();return {status:'ok'};}
+    catch {return reply.code(503).send({status:'unavailable'});}
+  });
+  app.get('/api/admin/diagnostics',{preHandler:makeRequireAdmin(ctx),config:{rateLimit:{max:6,timeWindow:'1 minute'}}},()=>diagnostics(ctx.db));
 
   registerPages(app, ctx);
   registerAuth(app, ctx);

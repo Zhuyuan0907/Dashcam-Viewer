@@ -23,7 +23,7 @@ function envInt(name: string, fallback: number): number {
 export const BASE_DIR = path.resolve(__dirname, "..");
 
 /** 影片與資料庫的根目錄。 */
-export const DATA_DIR = path.resolve(env("DASHCAM_DATA_DIR", "/mnt/data/dashcam"));
+export const DATA_DIR = path.resolve(env("DASHCAM_DATA_DIR", path.join(BASE_DIR, 'data')));
 
 export const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 export const TRIPS_DIR = path.join(DATA_DIR, "trips");
@@ -79,7 +79,7 @@ export const SFTP_PORT = envInt("DASHCAM_SFTP_PORT", 2022);
 export const SFTP_HOST = env("DASHCAM_SFTP_HOST", "0.0.0.0");
 
 /** 顯示給使用者的對外主機名(連線資訊用,如 sftp://<這個>:2022)。 */
-export const SFTP_PUBLIC_HOST = env("DASHCAM_SFTP_PUBLIC_HOST", "172.16.10.29");
+export const SFTP_PUBLIC_HOST = env("DASHCAM_SFTP_PUBLIC_HOST", "localhost");
 
 /** SFTP host key 路徑(不存在時自動以 ssh-keygen 產生)。 */
 export const SFTP_HOST_KEY_PATH = path.join(DATA_DIR, "sftp_host_key");
