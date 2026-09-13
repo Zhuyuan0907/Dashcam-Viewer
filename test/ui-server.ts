@@ -62,7 +62,7 @@ await execFileAsync("ffmpeg", [
   "-hide_banner", "-loglevel", "error", "-y",
   "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30",
   "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100",
-  "-t", "2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+  "-t", "6", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
   "-c:a", "aac", "-movflags", "+faststart", frontPath,
 ]);
 await fs.copyFile(frontPath, rearPath);

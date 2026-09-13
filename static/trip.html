@@ -314,7 +314,7 @@
       .info-strip .chip:last-child:nth-child(odd) { grid-column: 1 / -1; border-right: 0; }  /* 奇數總數末格跨滿一列 */
     }
   </style>
-<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css"><script src="/static/timeline.js"></script></head>
+<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css"><script src="/static/timeline.js"></script><script src="/static/playback-sync.js"></script></head>
 <body>
 
 <header class="hdr">
@@ -618,6 +618,7 @@ const tripId = decodeURIComponent(location.pathname.replace(/^\/trip\//, ''));
 let mediaInfo = {};
 let trip = null;
 let videos = {};            // { front: <video>, rear: <video> }
+let playback = null;
 let mainCam = 'front';
 let cams = [];              // 可用鏡頭
 let dur = 0;
@@ -775,9 +776,13 @@ function layoutCams() {
 
 function swapCams() {
   if (cams.length < 2) return;
-  mainCam = cams.find(c => c !== mainCam);
+  const next = cams.find(c => c !== mainCam);
+  const position = playback.positionFor(next);
+  if (position === null) { showToast('此時段缺少另一鏡頭影片'); return; }
+  mainCam = next;
   resetZoom();
   layoutCams();
+  playback.seek(position);
   // 切換主鏡頭後更新總長 —— 前後鏡頭長度可能略有差異,否則進度條/時間顯示/逐格夾制會沿用
   // 舊主鏡頭的長度而失準。
   const md = videos[mainCam] && videos[mainCam].duration;
@@ -796,7 +801,6 @@ function swapCams() {
 /* ── 播放器 ───────────────────────────────────────────────────────────────── */
 function initPlayer() {
   const main = () => videos[mainCam];
-  const others = () => cams.filter(c => c !== mainCam).map(c => videos[c]);
   const all = () => cams.map(c => videos[c]);
 
   const stage = document.getElementById('stage');
@@ -806,6 +810,17 @@ function initPlayer() {
   const tCur = document.getElementById('t-cur');
   const tTot = document.getElementById('t-tot');
   const vol = document.getElementById('vol');
+  playback?.destroy();
+  playback = DashcamPlayback.create({
+    videos: () => videos, main: () => mainCam, timeline: () => trip.timeline, stage,
+    onState(state) {
+      setPlayIcon(state.intent);
+      if (state.buffering || !state.intent) controlsPin();
+      else controlsWake();
+      if (!state.intent && previewing) stopPreview();
+    },
+  });
+  window.addEventListener('pagehide', () => playback.pause());
 
   // ── 控制列自動隱藏:播放中靜置約 2.6s 自動淡出;暫停或互動(移動/點擊)時喚回 ──
   let ctrlHideTimer = null;
@@ -860,16 +875,13 @@ function initPlayer() {
     DashcamPlayerControls.setPlaybackState(playButton, playing);
   }
   function toggle() {
-    const m = main();
-    if (m.paused) { all().forEach(v => v.play().catch(()=>{})); setPlayIcon(true); }
-    else { all().forEach(v => v.pause()); setPlayIcon(false); }
+    playback.toggle();
   }
   function step(dir) {
     const m = main();
     const total = dur || m.duration;
     if (!Number.isFinite(total) || total <= 0) return;   // metadata 未載入:currentTime=NaN 會拋例外
-    all().forEach(v => v.pause());
-    setPlayIcon(false);
+    playback.pause();
     const nt = Math.max(0, Math.min(total, m.currentTime + dir / (mediaInfo[mainCam]?.fps || 30)));
     seekAll(nt);
   }
@@ -924,11 +936,7 @@ function initPlayer() {
       seekControl.render(pct);
       if (!seekControl.seeking) tCur.textContent = fmtSecs(m.currentTime);
     }
-    // 同步其他鏡頭
-    others().forEach(v => {
-      const targetCam = Object.keys(videos).find(c => videos[c] === v);
-      DashcamTimeline.sync(trip.timeline,mainCam,targetCam,m,v);
-    });
+    playback.update();
     if (!m.paused) saveResume(false);   // 續看記憶(內部 5 秒節流)
     if (typeof onPlayerTick === 'function') onPlayerTick();   // 剪輯面板:更新播放頭 / 預覽循環
     requestAnimationFrame(tick);
@@ -937,12 +945,11 @@ function initPlayer() {
 
   // 因為主畫面會切換,監聽用事件委派在 stage 上
   cams.forEach(c => {
-    videos[c].addEventListener('play', () => { if (c === mainCam) { setPlayIcon(true); controlsWake(); } });
-    videos[c].addEventListener('pause', () => { if (c === mainCam) { setPlayIcon(false); controlsPin(); saveResume(true); } });
+    videos[c].addEventListener('pause', () => { if (c === mainCam) saveResume(true); });
     videos[c].addEventListener('seeked', () => { if (c === mainCam) seekControl.settled(); });
     videos[c].addEventListener('ended', () => {
       if (c === mainCam) {
-        setPlayIcon(false); all().forEach(v=>{v.pause();v.currentTime=0;}); controlsPin();
+        playback.pause(); seekAll(0); controlsPin();
         try { localStorage.removeItem('dc.resume.' + tripId); } catch {}   // 看完:清續看記憶
       }
     });
@@ -1186,11 +1193,7 @@ function selDur() { return dur || (trip && trip.duration_sec) || 0; }
 function seekAll(sec) {
   const d = selDur();
   const t = Math.max(0, Math.min(d || sec, sec));
-  if (videos[mainCam]) videos[mainCam].currentTime = t;
-  for (const c of cams) {
-    if (c === mainCam || !videos[c]) continue;
-    DashcamTimeline.sync(trip.timeline,mainCam,c,videos[mainCam],videos[c],true);
-  }
+  playback?.seek(t);
 }
 
 function setupEdit() {
@@ -1603,15 +1606,15 @@ function initTimeline() {
 /* 預覽選取:於 in→out 間循環播放。 */
 function togglePreview() {
   if (previewing) { stopPreview(); return; }
-  previewing = true;
   seekAll(selStart);
-  for (const c of cams) if (videos[c]) videos[c].play().catch(() => {});
+  previewing = true;
+  playback.play();
   document.getElementById('clip-preview').textContent = tt('trip.clip.previewStop');
 }
 function stopPreview() {
   if (!previewing) return;
   previewing = false;
-  for (const c of cams) if (videos[c]) videos[c].pause();
+  playback.pause();
   const b = document.getElementById('clip-preview');
   if (b) b.textContent = tt('trip.clip.preview');
 }

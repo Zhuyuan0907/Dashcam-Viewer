@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.1 — 2026-09-13
+
+- Coordinate front/rear buffering through one shared playback controller across trip viewing,
+  editor preview and anonymous sharing. Both cameras wait when required footage buffers, then
+  resume together. Manual pause remains authoritative while the network recovers.
+- Show which camera is buffering; exclude missing footage and already-ended companion streams
+  from the wait barrier. Camera swaps preserve capture time across unequal camera timelines.
+- Stop chasing a moving playback clock while a camera seeks, surface playback failures instead
+  of swallowing them, and clean up listeners/pending playback when a shared player is replaced.
+- Add deterministic playback-state regressions and real delayed-media-response browser tests.
+  Remove the superseded seek-only synchronizer and document the maintainer's commit/push/deploy
+  completion requirement in AGENTS.md.
+
 ## 2.1.0 — 2026-09-12
 
 Seven sequential implementation stages focus on open-source self-hosting.

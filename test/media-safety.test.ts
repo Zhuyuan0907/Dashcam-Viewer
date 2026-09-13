@@ -90,7 +90,7 @@ test("opposite timeline discontinuities cannot cancel each other out", () => {
   assert.equal(continuous(spans, 0, 30), false);
 });
 
-test("browser timeline sync maps capture time and hides missing companion footage", async () => {
+test("browser timeline maps capture time and reports missing companion footage", async () => {
   const context = { window: {} as any };
   vm.runInNewContext(
     await fs.readFile(new URL("../static/timeline.js", import.meta.url), "utf8"),
@@ -103,12 +103,6 @@ test("browser timeline sync maps capture time and hides missing companion footag
   };
   assert.equal(mapping.position(timeline, "front", "rear", 7), 2);
   assert.equal(mapping.position(timeline, "front", "rear", 2), null);
-  const companion = { currentTime: 0, style: { visibility: "" }, parentElement: { title: "" } };
-  mapping.sync(timeline, "front", "rear", { currentTime: 2 }, companion, true);
-  assert.equal(companion.style.visibility, "hidden");
-  mapping.sync(timeline, "front", "rear", { currentTime: 7 }, companion, true);
-  assert.equal(companion.style.visibility, "");
-  assert.equal(companion.currentTime, 2);
 });
 
 test("old trimmed rows migrate the original offset exactly once", () => {

@@ -126,7 +126,7 @@
       .ctrl-btn.wide { padding: 0 9px; }
     }
   </style>
-<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css"><script src="/static/timeline.js"></script></head>
+<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css"><script src="/static/timeline.js"></script><script src="/static/playback-sync.js"></script></head>
 <body>
   <header class="share-head">
     <div class="share-brand wrap">
@@ -232,6 +232,7 @@
       let loadGeneration = 0;
       let tripData = null;
       let videos = {};
+      let playback = null;
       let cameras = [];
       let mainCamera = '';
       let duration = 0;
@@ -268,7 +269,6 @@
       const cameraName = camera => camera === 'front' ? '前鏡頭' : '後鏡頭';
       const mainVideo = () => videos[mainCamera] || null;
       const allVideos = () => cameras.map(camera => videos[camera]).filter(Boolean);
-      const otherVideos = () => cameras.filter(camera => camera !== mainCamera).map(camera => videos[camera]);
 
       function feedback(message) {
         const toast = document.getElementById('share-toast');
@@ -362,6 +362,8 @@
 
       function destroyPlayer() {
         playerActive = false;
+        playback?.destroy();
+        playback = null;
         clearTimeout(controlsTimer);
         for (const video of allVideos()) {
           video.pause();
@@ -424,31 +426,13 @@
           duration = Number.isFinite(video.duration) ? video.duration : 0;
           setText('t-tot', fmtSecs(duration));
         });
-        video.addEventListener('play', () => {
-          if (camera !== mainCamera) return;
-          setPlayIcon(true);
-          controlsWake();
-        });
-        video.addEventListener('playing', () => {
-          if (camera === mainCamera) return;
-          const primary = mainVideo();
-          if (primary) DashcamTimeline.sync(tripData?.timeline,mainCamera,camera,primary,video,true);
-        });
-        video.addEventListener('pause', () => {
-          if (camera !== mainCamera) return;
-          setPlayIcon(false);
-          controlsPin();
-        });
         video.addEventListener('seeked', () => {
           if (camera === mainCamera) seekControl.settled();
         });
         video.addEventListener('ended', () => {
           if (camera !== mainCamera) return;
-          for (const item of allVideos()) {
-            item.pause();
-            item.currentTime = 0;
-          }
-          setPlayIcon(false);
+          playback?.pause();
+          seekAll(0);
           controlsPin();
         });
         return video;
@@ -490,37 +474,33 @@
         setText('btn-speed', '1×');
         for (const camera of cameras) videos[camera] = makeVideo(camera);
         layoutCameras();
+        playback = DashcamPlayback.create({
+          videos: () => videos, main: () => mainCamera, timeline: () => tripData?.timeline, stage,
+          onState(state) {
+            setPlayIcon(state.intent);
+            if (state.buffering || !state.intent) controlsPin();
+            else controlsWake();
+          },
+        });
         playerActive = true;
         controlsPin();
       }
 
       function togglePlayback() {
-        const primary = mainVideo();
-        if (!primary) return;
-        if (primary.paused) {
-          for (const video of allVideos()) video.play().catch(() => {});
-          setPlayIcon(true);
-          controlsWake();
-        } else {
-          for (const video of allVideos()) video.pause();
-          setPlayIcon(false);
-          controlsPin();
-        }
+        playback?.toggle();
       }
 
       function seekAll(seconds) {
         const total = duration || mainVideo()?.duration;
         if (!Number.isFinite(total) || total <= 0) return;
         const next = Math.max(0, Math.min(total, seconds));
-        mainVideo().currentTime=next;
-        for (const video of otherVideos()) DashcamTimeline.sync(tripData?.timeline,mainCamera,video.dataset.camera,mainVideo(),video,true);
+        playback?.seek(next);
       }
 
       function stepFrame(direction) {
         const primary = mainVideo();
         if (!primary) return;
-        for (const video of allVideos()) video.pause();
-        setPlayIcon(false);
+        playback?.pause();
         seekAll(primary.currentTime + direction / FPS);
       }
 
@@ -531,16 +511,13 @@
 
       function swapCameras() {
         if (cameras.length < 2) return;
-        const previous = mainVideo();
-        const currentTime = previous?.currentTime || 0;
-        const wasPlaying = previous && !previous.paused;
-        mainCamera = cameras.find(camera => camera !== mainCamera);
+        const next = cameras.find(camera => camera !== mainCamera);
+        const position = playback.positionFor(next);
+        if (position === null) return;
+        mainCamera = next;
         resetZoom();
         layoutCameras();
-        seekAll(currentTime);
-        if (wasPlaying) {
-          for (const video of allVideos()) video.play().catch(() => {});
-        }
+        playback.seek(position);
         const currentDuration = mainVideo()?.duration;
         if (Number.isFinite(currentDuration) && currentDuration > 0) {
           duration = currentDuration;
@@ -646,9 +623,7 @@
             const percentage = primary.currentTime / total * 100;
             seekControl.render(percentage);
             if (!seekControl.seeking) setText('t-cur', fmtSecs(primary.currentTime));
-            for (const video of otherVideos()) {
-              DashcamTimeline.sync(tripData?.timeline,mainCamera,video.dataset.camera,primary,video);
-            }
+            playback.update();
           }
         }
         requestAnimationFrame(playerTick);
@@ -849,6 +824,7 @@
         scheduleShareFit();
       });
       document.addEventListener('fullscreenchange', scheduleShareFit);
+      window.addEventListener('pagehide', () => playback?.pause());
       document.fonts?.ready.then(scheduleShareFit).catch(() => {});
       window.addEventListener('hashchange', () => {
         if (!location.hash) return;

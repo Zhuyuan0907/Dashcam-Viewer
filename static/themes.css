@@ -1,4 +1,22 @@
 /* Semantic tokens shared by every page. Add palettes here, never duplicate components. */
+.playback-status {
+  position: absolute;
+  z-index: 12;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  color: #fff;
+  background: rgba(16, 35, 43, 0.94);
+  font-size: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+.playback-status[hidden] {
+  display: none;
+}
 :root[data-palette] {
   color-scheme: light;
   --bg: #e9eeeb;

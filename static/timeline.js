@@ -13,11 +13,4 @@ window.DashcamTimeline = Object.freeze({
     );
     return destination ? destination.start + epoch - destination.epoch : null;
   },
-  sync(timeline, source, target, primary, companion, force = false) {
-    const position = this.position(timeline, source, target, primary.currentTime);
-    companion.style.visibility = position === null ? "hidden" : "";
-    companion.parentElement.title = position === null ? "此時段缺少鏡頭影片" : "";
-    if (position !== null && (force || Math.abs(companion.currentTime - position) > 0.25))
-      companion.currentTime = position;
-  },
 });
