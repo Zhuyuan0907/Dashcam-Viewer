@@ -4,6 +4,9 @@ Use Node.js 22+ and FFmpeg/FFprobe. Keep one service process per data directory.
 Tests create synthetic fixtures in temporary directories; never point tests at live media.
 
 Before submitting: `npm run build`, `npm test`, `npm run test:ui`, and `git diff --check`.
+The UI command gives delayed-network regressions a separate test-server lifetime so the shared
+fixture account does not exhaust metadata request limits accumulated by unrelated browser tests.
+Keep production rate limits enabled; do not hide unexpected HTTP errors in browser assertions.
 TypeScript rejects unused variables/parameters. New core modules use Prettier (100 columns).
 Format changed modules, not unrelated legacy pages: `npx prettier --write <changed-file>`.
 
