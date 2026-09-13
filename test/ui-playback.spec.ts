@@ -2,6 +2,44 @@ import { expect, test } from "@playwright/test";
 
 const tripId = "v2|u:1|d:2|MS279WG-ui-test";
 
+test("rapid paused seeks keep both cameras on the newest requested position", async ({
+  page,
+  context,
+}) => {
+  await context.addCookies([
+    { name: "session_token", value: "ui-device-test-session", domain: "127.0.0.1", path: "/" },
+  ]);
+  await page.goto("/trip/" + encodeURIComponent(tripId));
+  await expect
+    .poll(() =>
+      page
+        .locator("#stage video")
+        .evaluateAll((videos: HTMLVideoElement[]) => videos.every((v) => v.readyState >= 2)),
+    )
+    .toBe(true);
+  await page.locator("#seek").evaluate((input: HTMLInputElement) => {
+    for (const value of [10, 25, 50, 75, 90]) {
+      input.value = String(value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+  await expect
+    .poll(() =>
+      page
+        .locator("#stage video")
+        .evaluateAll((videos: HTMLVideoElement[]) =>
+          videos.every((v) => !v.seeking && Math.abs(v.currentTime / v.duration - 0.9) < 0.03),
+        ),
+    )
+    .toBe(true);
+  expect(
+    await page
+      .locator("#stage video")
+      .evaluateAll((videos: HTMLVideoElement[]) => videos.every((v) => v.paused)),
+  ).toBe(true);
+});
+
 for (const shared of [false, true]) {
   test(`${shared ? "share" : "trip"} waits for delayed rear video and resumes both cameras`, async ({
     page,

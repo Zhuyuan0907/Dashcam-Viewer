@@ -121,7 +121,8 @@ window.DashcamPlayback = (() => {
 
     function align(active, force = false) {
       for (const [camera, video] of active) {
-        if (camera === main() || video.seeking) continue;
+        // Explicit user seeks supersede an in-flight seek; only automatic drift repair waits.
+        if (camera === main() || (video.seeking && !force)) continue;
         const second = positionFor(camera);
         if (second !== null && Math.abs(video.currentTime - second) > (force ? 0.001 : 0.12))
           video.currentTime = second;

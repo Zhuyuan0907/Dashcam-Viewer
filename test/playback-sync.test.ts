@@ -255,6 +255,20 @@ test("an ended shorter companion is not restarted while the primary finishes", a
   f.playback.destroy();
 });
 
+test("a new paused seek supersedes the companion's unfinished previous seek", () => {
+  const f = fixture();
+  f.playback.seek(3);
+  f.rear.seeking = true;
+  f.playback.seek(12);
+  assert.equal(f.front.currentTime, 12);
+  assert.equal(f.rear.currentTime, 12);
+  f.rear.seeking = false;
+  f.rear.event("seeked");
+  assert.equal(f.front.paused, true);
+  assert.equal(f.rear.paused, true);
+  f.playback.destroy();
+});
+
 test("expected AbortError from a buffering pause does not become a playback failure", async () => {
   const f = fixture();
   f.rear.readyState = 2;
