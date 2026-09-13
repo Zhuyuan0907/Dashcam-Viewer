@@ -9,6 +9,7 @@
   the scoped dark login form.
 - Add desktop/mobile browser regressions for all palettes, transparent scrolling headers,
   usable editing controls and login readability.
+- Version the shared theme stylesheet URL on every page so cached styles do not mask deployment.
 
 ## 2.1.1 — 2026-09-13
 
