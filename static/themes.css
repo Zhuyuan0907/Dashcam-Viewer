@@ -30,6 +30,9 @@
   --line: #cbd8d0;
   --line-2: #acbeb3;
   --border: var(--line);
+  --field-bg: var(--surface-3);
+  --field-ink: var(--ink);
+  --field-border: var(--line-2);
   --accent: #17655a;
   --accent-2: #124a43;
   --accent-ink: #fff;
@@ -39,8 +42,6 @@
   --warn: #875200;
   --crit: #ad3542;
   --chrome: #142c30;
-  --chrome-ink: #eef6ef;
-  --chrome-muted: #bad1c6;
   --radius: 18px;
   --radius-sm: 10px;
   --radius-lg: 24px;
@@ -66,8 +67,6 @@
   --accent-soft: #f5e3d5;
   --accent-line: #c8997d;
   --chrome: #302a29;
-  --chrome-ink: #fff6e9;
-  --chrome-muted: #dcc6ae;
 }
 :root[data-palette="slate"] {
   --bg: #dfe4ed;
@@ -84,38 +83,53 @@
   --accent-soft: #e2e2f7;
   --accent-line: #aaa6d6;
   --chrome: #23283d;
-  --chrome-ink: #f1f2ff;
-  --chrome-muted: #c1c7e2;
 }
 body {
   background: radial-gradient(ellipse at 90% 0%, var(--accent-soft), transparent 65%), var(--bg);
 }
 .hdr,
 .hdr.is-scrolled {
-  background: var(--chrome);
-  color: var(--chrome-ink);
+  background: transparent;
+  color: var(--ink);
   border-color: transparent;
-  box-shadow: 0 3px 18px #0002;
+  box-shadow: none;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
-.hdr .hdr-brand,
-.hdr .hdr-link,
-.hdr .user-chip,
-.hdr .btn,
-.hdr .hdr-burger {
-  color: var(--chrome-ink) !important;
+.hdr .user-chip {
+  background: transparent;
 }
-.hdr .hdr-nav {
-  background: #ffffff0c;
-  border-color: #ffffff18;
+.hdr .user-chip:hover {
+  background: var(--accent-soft);
 }
-.hdr .hdr-link:hover,
-.hdr .hdr-link.active {
-  background: #ffffff18;
-  color: #fff;
+/* Change only the fill: preserve select arrows and scoped dark login fields. */
+.form-input {
+  background-color: var(--field-bg);
+  border-color: var(--field-border);
+  color: var(--field-ink);
 }
-.hdr .role-badge {
-  color: var(--chrome-ink);
-  background: #ffffff18;
+.form-input:disabled {
+  cursor: not-allowed;
+  color: var(--ink-3);
+  border-style: dashed;
+}
+select.form-input option,
+select.form-input optgroup {
+  background-color: var(--field-bg);
+  color: var(--field-ink);
+}
+.seg-btn:not(.active) {
+  background-color: var(--field-bg);
+}
+input[type="file"]::file-selector-button {
+  padding: 8px 12px;
+  margin-right: 10px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-sm);
+  background: var(--field-bg);
+  color: var(--field-ink);
+  font: inherit;
+  cursor: pointer;
 }
 .info-card,
 .edit-card,
@@ -157,6 +171,11 @@ progress {
   display: flex;
   gap: 6px;
   align-items: center;
+  font-size: 13px;
+}
+.editor-tools .form-input {
+  width: auto;
+  min-height: 40px;
   font-size: 13px;
 }
 .editor-tools input[type="number"] {

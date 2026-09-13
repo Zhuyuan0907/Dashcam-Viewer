@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.2 — 2026-09-13
+
+- Keep the shared header transparent before and after scrolling, with backdrop blur and
+  palette-aware navigation/account text instead of the opaque dark bar.
+- Unify form fields, editor time/zoom controls, segmented options and file-picker buttons with
+  tinted semantic colors. Preserve native select arrows, keyboard focus, disabled states and
+  the scoped dark login form.
+- Add desktop/mobile browser regressions for all palettes, transparent scrolling headers,
+  usable editing controls and login readability.
+
 ## 2.1.1 — 2026-09-13
 
 - Coordinate front/rear buffering through one shared playback controller across trip viewing,

@@ -1,6 +1,6 @@
 {
   "name": "dashcam",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "行車記錄器網頁系統 — 上傳、整理、合併、瀏覽行車影片(Node.js + Fastify + TypeScript)",
   "type": "module",
   "license": "MIT",
@@ -19,7 +19,7 @@
     "import": "tsx src/cli/import-prebuilt.ts",
     "migrate-tz": "tsx src/cli/migrate-tz.ts",
     "test": "tsx --test --test-concurrency=1 test/*.test.ts",
-    "test:ui": "playwright test test/ui-devices.spec.ts test/ui-share.spec.ts test/ui-editor.spec.ts && playwright test test/ui-playback.spec.ts",
+    "test:ui": "playwright test test/ui-devices.spec.ts test/ui-share.spec.ts test/ui-editor.spec.ts && playwright test test/ui-playback.spec.ts && playwright test test/ui-theme.spec.ts",
     "typecheck": "tsc --noEmit",
     "format:check": "prettier --check src/background.ts src/media src/uploads/resumable.ts src/routes/background.ts src/storage src/diagnostics.ts src/cli/backup.ts src/cli/doctor.ts src/dashcams/generic.ts src/util/file-hash.ts static/jobs.js static/themes.js static/timeline.js static/playback-sync.js static/themes.css"
   },

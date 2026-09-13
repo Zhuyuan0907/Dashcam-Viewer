@@ -444,9 +444,9 @@
               <span class="tl-hint" data-i18n="trip.clip.selectHint">拖曳時間軸上的入點/出點把手,或按 I / O 把入點、出點設在目前畫面。</span>
             </div>
             <div class="editor-tools">
-              <label>入點（秒）<input id="sel-start-input" type="number" min="0" step="0.001" onchange="inputSelection('in', this.value)"></label>
-              <label>出點（秒）<input id="sel-end-input" type="number" min="0" step="0.001" onchange="inputSelection('out', this.value)"></label>
-              <label>時間軸倍率 <select aria-label="時間軸倍率" onchange="document.getElementById('clip-timeline').style.width=(Number(this.value)*100)+'%'">
+              <label>入點（秒）<input class="form-input" id="sel-start-input" type="number" min="0" step="0.001" onchange="inputSelection('in', this.value)"></label>
+              <label>出點（秒）<input class="form-input" id="sel-end-input" type="number" min="0" step="0.001" onchange="inputSelection('out', this.value)"></label>
+              <label>時間軸倍率 <select class="form-input form-select" aria-label="時間軸倍率" onchange="document.getElementById('clip-timeline').style.width=(Number(this.value)*100)+'%'">
                 <option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
               </select></label>
               <a href="/jobs">背景作業與結果 ↗</a>
