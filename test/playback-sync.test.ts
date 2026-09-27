@@ -10,6 +10,8 @@ class Video extends EventTarget {
   seeking = false;
   ended = false;
   readyState = 4;
+  networkState = 1;
+  NETWORK_IDLE = 1;
   playbackRate = 1;
   bufferedEnd = this.duration;
   error: unknown = null;
@@ -35,7 +37,7 @@ class Video extends EventTarget {
 }
 
 function fixture(timeline: unknown = null) {
-  const scope: any = { window: {} };
+  const scope: any = { window: {}, setTimeout, clearTimeout };
   vm.createContext(scope);
   vm.runInContext(
     fs.readFileSync(new URL("../static/timeline.js", import.meta.url), "utf8"),
@@ -114,6 +116,30 @@ test("manual pause during buffering is not undone by canplay or progress", async
   f.playback.destroy();
 });
 
+test("idle paused preload requests another range and keeps both cameras together", async () => {
+  const f = fixture();
+  f.front.bufferedEnd = 0.2;
+  f.rear.bufferedEnd = 2.266667;
+  let position = 0;
+  Object.defineProperty(f.front, "currentTime", {
+    get: () => position,
+    set: (second: number) => {
+      position = second;
+      if (second > 0 && second < 0.2) f.front.bufferedEnd = 2.266667;
+    },
+  });
+  f.playback.play();
+  assert.equal(f.front.paused, true);
+  assert.equal(f.rear.paused, true);
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  f.front.event("seeked");
+  await settled();
+  assert.equal(f.front.currentTime, 0);
+  assert.equal(f.front.paused, false);
+  assert.equal(f.rear.paused, false);
+  f.playback.destroy();
+});
+
 test("stalled network does not freeze already buffered playback", async () => {
   const f = fixture();
   f.playback.play();
@@ -124,7 +150,7 @@ test("stalled network does not freeze already buffered playback", async () => {
   f.playback.destroy();
 });
 
-test("a short buffer keeps playing, but a real underrun waits for three seconds on both cameras", async () => {
+test("a short buffer keeps playing, but a real underrun waits for two seconds on both cameras", async () => {
   const f = fixture();
   f.playback.play();
   await settled();
@@ -139,12 +165,12 @@ test("a short buffer keeps playing, but a real underrun waits for three seconds 
   assert.equal(f.front.paused, true);
   assert.equal(f.rear.paused, true);
   f.rear.readyState = 4;
-  for (const end of [5.3, 6, 7.99]) {
+  for (const end of [5.3, 6, 6.99]) {
     f.rear.bufferedEnd = end;
     f.rear.event("progress");
     assert.equal(f.front.paused, true, `must not resume with only ${end - 5}s buffered`);
   }
-  f.rear.bufferedEnd = 8;
+  f.rear.bufferedEnd = 7;
   f.rear.event("progress");
   await settled();
   assert.equal(f.front.paused, false);
@@ -155,14 +181,14 @@ test("a short buffer keeps playing, but a real underrun waits for three seconds 
 test("refill target scales with playback speed and is capped at the end of a file", async () => {
   const f = fixture();
   f.front.playbackRate = f.rear.playbackRate = 2;
-  f.rear.bufferedEnd = 5;
+  f.rear.bufferedEnd = 1;
   f.playback.play();
   await settled();
   assert.equal(f.front.paused, true);
-  f.rear.bufferedEnd = 5.99;
+  f.rear.bufferedEnd = 3.99;
   f.rear.event("progress");
   assert.equal(f.front.paused, true);
-  f.rear.bufferedEnd = 6;
+  f.rear.bufferedEnd = 4;
   f.rear.event("progress");
   await settled();
   assert.equal(f.front.paused, false);

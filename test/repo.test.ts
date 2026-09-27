@@ -4,7 +4,17 @@ import os from "node:os";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createDb } from "../src/db.js";
-import { upsertTrip, getTrip, listTrips, listDates, deleteTrip, type TripInfo } from "../src/trips/repo.js";
+import {
+  upsertTrip,
+  getTrip,
+  listTrips,
+  listDates,
+  listTripsForFiles,
+  overallStats,
+  renumberDay,
+  deleteTrip,
+  type TripInfo,
+} from "../src/trips/repo.js";
 
 function sampleTrip(over: Partial<TripInfo> = {}): TripInfo {
   return {
@@ -41,7 +51,11 @@ test("upsertTrip / getTrip 寫入與覆寫", async () => {
 
   upsertTrip(db, sampleTrip({ peak_gforce: 2.2 }), "/data");
   assert.equal(getTrip(db, "pre|2026-06-04|194700")!.peak_gforce, 2.2);
-  assert.equal((db.prepare("SELECT COUNT(*) c FROM trips").get() as { c: number }).c, 1, "覆寫不應產生重複列");
+  assert.equal(
+    (db.prepare("SELECT COUNT(*) c FROM trips").get() as { c: number }).c,
+    1,
+    "覆寫不應產生重複列",
+  );
 
   db.close();
   await fs.rm(dir, { recursive: true, force: true });
@@ -62,6 +76,48 @@ test("listTrips / listDates", async () => {
   const dates = listDates(db, null, admin);
   assert.equal(dates.length, 2);
 
+  db.close();
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("合併後原旅程保留但只列出新旅程，統計與編號不重複", async () => {
+  const { db, dir } = await tmpDb();
+  upsertTrip(db, sampleTrip({ trip_id: "old-1", start_epoch: 100, day_order: 1 }));
+  upsertTrip(db, sampleTrip({ trip_id: "old-2", start_epoch: 200, day_order: 2 }));
+  upsertTrip(
+    db,
+    sampleTrip({ trip_id: "merged", start_epoch: 100, day_order: 1, segment_count: 67 }),
+  );
+  upsertTrip(db, sampleTrip({ trip_id: "later", start_epoch: 300, day_order: 3 }));
+  db.prepare("UPDATE trips SET superseded_by='merged' WHERE trip_id IN ('old-1','old-2')").run();
+  renumberDay(db, "2026-06-04");
+  const admin = { id: 1, role: "admin" };
+  const listed = await listTrips(db, { date: "2026-06-04", viewer: admin, limit: 50, offset: 0 });
+  assert.deepEqual(
+    listed.trips.map((r) => r.trip_id),
+    ["merged", "later"],
+  );
+  assert.deepEqual(
+    listed.trips.map((r) => r.day_order),
+    [1, 2],
+  );
+  assert.equal(listed.total, 2);
+  assert.equal(listDates(db, null, admin)[0]?.trip_count, 2);
+  assert.equal(overallStats(db, admin).total_trips, 2);
+  const files = await listTripsForFiles(db);
+  assert.equal(files.length, 4, "檔案總管需計入仍佔用磁碟空間的來源影片");
+  assert.equal(files.filter((row) => row.superseded_by === "merged").length, 2);
+  assert.ok(getTrip(db, "old-1"), "舊連結與原始紀錄仍可讀取");
+  upsertTrip(db, sampleTrip({ trip_id: "old-1", peak_gforce: 2.5 }));
+  assert.equal(getTrip(db, "old-1")?.superseded_by, "merged", "重新匯入不解除合併關聯");
+  await deleteTrip(db, "merged");
+  assert.equal(getTrip(db, "old-1")?.superseded_by, null, "刪除新旅程後舊旅程可恢復顯示");
+  assert.deepEqual(
+    (await listTrips(db, { date: "2026-06-04", viewer: admin, limit: 50, offset: 0 })).trips.map(
+      (r) => r.day_order,
+    ),
+    [1, 2, 3],
+  );
   db.close();
   await fs.rm(dir, { recursive: true, force: true });
 });
@@ -88,9 +144,12 @@ test("upsertTrip 重覆寫入不得毀掉備註/匯出片段,也不清空可見�
   upsertTrip(db, sampleTrip({ trip_id: tid }), "/data", 7);
 
   // 加上備註、匯出片段、公開覆寫、裁剪原始值(模擬使用者累積的狀態)。
-  db.prepare(
-    "INSERT INTO trip_notes (trip_id, note, updated_at, updated_by) VALUES (?,?,?,?)",
-  ).run(tid, "重要:這段有擦撞", 1_700_000_000, 7);
+  db.prepare("INSERT INTO trip_notes (trip_id, note, updated_at, updated_by) VALUES (?,?,?,?)").run(
+    tid,
+    "重要:這段有擦撞",
+    1_700_000_000,
+    7,
+  );
   db.prepare(
     `INSERT INTO trip_clips (trip_id, owner_id, label, start_sec, end_sec, layout, quality, main_cam, file_path, size_bytes, duration_sec, created_at)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -103,7 +162,9 @@ test("upsertTrip 重覆寫入不得毀掉備註/匯出片段,也不清空可見�
   // note/clip 並把 override/orig_* 重置 —— 這裡驗證改用真 UPSERT 後這些都被保留。
   upsertTrip(db, sampleTrip({ trip_id: tid, peak_gforce: 2.9 }), "/data");
 
-  const note = db.prepare("SELECT note FROM trip_notes WHERE trip_id=?").get(tid) as { note: string } | undefined;
+  const note = db.prepare("SELECT note FROM trip_notes WHERE trip_id=?").get(tid) as
+    | { note: string }
+    | undefined;
   assert.equal(note?.note, "重要:這段有擦撞", "備註不應被 CASCADE 刪除");
   assert.equal(
     (db.prepare("SELECT COUNT(*) c FROM trip_clips WHERE trip_id=?").get(tid) as { c: number }).c,

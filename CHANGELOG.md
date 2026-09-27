@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.1.5 — 2026-09-27
+
+- Resume synchronized playback after both cameras buffer two seconds, and request another range when a paused browser stops preloading before that threshold.
+- Keep the source trips and their media after combining trips; hide superseded sources from normal lists, day counts and statistics while preserving their direct links and database records.
+- Keep retained source files visible in the administrator file inventory and label them as merged sources so disk usage remains accurate.
+- Preserve the source-to-combined relationship in trip metadata so a database rebuild restores the same visible trips. Restore source visibility if a combined trip is deleted.
+
+## 2.1.4 — 2026-09-27
+
+- Save background processing steps and counts, with a responsive job timeline and owner-only history API.
+- Limit each account to one active upload session and simplify the upload page after a session is created.
+
 ## 2.1.3 — 2026-09-27
 
 - Wait for three seconds of buffered footage on both cameras before starting or resuming

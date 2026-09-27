@@ -954,6 +954,7 @@ function renderFileDay(day) {
       <div class="fm-trip-main">
         <div class="fm-trip-title">
           <span>#${seq} · ${fmtClock(tr.start_epoch)}–${fmtClock(tr.end_epoch)}</span>
+          ${tr.superseded_by ? '<span style="font-size:11px;color:var(--ink-3);">已併入其他旅程（原始檔保留）</span>' : ''}
           <span style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);">${fmtDuration(tr.duration_sec)} · ${fmtSize(tr.bytes)}</span>
           ${owner}
         </div>

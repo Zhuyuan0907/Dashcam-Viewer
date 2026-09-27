@@ -40,6 +40,8 @@ export interface TripInfo {
   owner_username?: string | null;
   device_id?: number | null;
   device?: DashcamDeviceSnapshot | null;
+  /** 合併後取代本趟的旅程；舊影片與單趟連結仍保留。 */
+  superseded_by?: string | null;
 }
 
 /** DB 列(has_* 為 0/1,另含 trip_dir/created_at/owner_id/可見性/裁剪原始值)。 */
@@ -59,6 +61,7 @@ export interface TripRow
   orig_duration_sec: number | null;
   device_id: number | null;
   device_snapshot: string | null;
+  superseded_by: string | null;
 }
 
 // 真正的 UPSERT(ON CONFLICT DO UPDATE),而非 INSERT OR REPLACE。
@@ -204,7 +207,7 @@ export function canBrowseOwner(db: DB, viewer: Viewer, ownerId: number | null): 
   const row = db
     .prepare(
       `SELECT 1 FROM trips t JOIN users u ON u.id = t.owner_id
-        WHERE t.owner_id = ? AND COALESCE(t.public_override, u.trips_public) = 1 LIMIT 1`,
+        WHERE t.owner_id = ? AND t.superseded_by IS NULL AND COALESCE(t.public_override, u.trips_public) = 1 LIMIT 1`,
     )
     .get(ownerId);
   return !!row;
@@ -230,7 +233,7 @@ export function listOwners(db: DB, viewer: Viewer): OwnerOption[] {
     .prepare(
       `SELECT u.id AS id, u.username AS username, u.display_name AS display_name
          FROM users u
-        WHERE EXISTS (SELECT 1 FROM trips t WHERE t.owner_id = u.id)
+        WHERE EXISTS (SELECT 1 FROM trips t WHERE t.owner_id = u.id AND t.superseded_by IS NULL)
         ORDER BY u.username COLLATE NOCASE`,
     )
     .all() as Array<{ id: number; username: string; display_name: string | null }>;
@@ -402,12 +405,14 @@ export async function listTrips(
 
   const rows = db
     .prepare(
-      `SELECT t.* FROM trips t ${join} WHERE ${cond}${dateCond} ORDER BY ${order} LIMIT ? OFFSET ?`,
+      `SELECT t.* FROM trips t ${join} WHERE ${cond} AND t.superseded_by IS NULL${dateCond} ORDER BY ${order} LIMIT ? OFFSET ?`,
     )
     .all(...params, opts.limit, opts.offset) as TripRow[];
   const total = (
     db
-      .prepare(`SELECT COUNT(*) AS c FROM trips t ${join} WHERE ${cond}${dateCond}`)
+      .prepare(
+        `SELECT COUNT(*) AS c FROM trips t ${join} WHERE ${cond} AND t.superseded_by IS NULL${dateCond}`,
+      )
       .get(...params) as {
       c: number;
     }
@@ -438,7 +443,7 @@ export function listDates(
               MAX(t.peak_gforce)  AS max_gforce,
               SUM(t.gforce_events) AS gforce_events,
               MIN(t.start_epoch)  AS first_start
-         FROM trips t ${join} WHERE ${cond}
+         FROM trips t ${join} WHERE ${cond} AND t.superseded_by IS NULL
         GROUP BY t.date ORDER BY t.date DESC`,
     )
     .all(ownerId ?? null) as Array<Record<string, unknown>>;
@@ -475,7 +480,12 @@ export function overallStats(db: DB, viewer: Viewer): Record<string, unknown> {
                 SUM(t.gforce_events)   AS total_gevents,
                 SUM(t.emer_count)      AS total_emer`;
   if (viewer.role === "admin") {
-    return (db.prepare(`SELECT ${cols} FROM trips t`).get() as Record<string, unknown>) ?? {};
+    return (
+      (db.prepare(`SELECT ${cols} FROM trips t WHERE t.superseded_by IS NULL`).get() as Record<
+        string,
+        unknown
+      >) ?? {}
+    );
   }
   // 一般使用者:自己的旅程,或其他人對「本檢視者」公開的旅程。
   return (
@@ -483,7 +493,7 @@ export function overallStats(db: DB, viewer: Viewer): Record<string, unknown> {
       .prepare(
         `SELECT ${cols}
            FROM trips t JOIN users u ON u.id = t.owner_id
-          WHERE t.owner_id = ? OR COALESCE(t.public_override, u.trips_public) = 1`,
+          WHERE t.superseded_by IS NULL AND (t.owner_id = ? OR COALESCE(t.public_override, u.trips_public) = 1)`,
       )
       .get(viewer.id) as Record<string, unknown>) ?? {}
   );
@@ -491,12 +501,13 @@ export function overallStats(db: DB, viewer: Viewer): Record<string, unknown> {
 
 /** 刪除一趟旅程(含磁碟目錄)。回傳是否存在並刪除成功。 */
 export async function deleteTrip(db: DB, tripId: string): Promise<boolean> {
-  const row = db.prepare("SELECT trip_dir FROM trips WHERE trip_id = ?").get(tripId) as
-    | { trip_dir: string | null }
-    | undefined;
+  const row = db
+    .prepare("SELECT trip_dir,date,owner_id FROM trips WHERE trip_id = ?")
+    .get(tripId) as { trip_dir: string | null; date: string; owner_id: number | null } | undefined;
   if (!row) return false;
   // 先刪 DB 列(CASCADE 清 notes/clips),再視情況刪磁碟目錄。
   db.prepare("DELETE FROM trips WHERE trip_id = ?").run(tripId);
+  renumberDay(db, row.date, row.owner_id);
   if (row.trip_dir) {
     // 若還有其他旅程列共用同一目錄(分批重匯入可能造成),不可刪目錄,否則會毀掉別列的影片。
     const shared = db.prepare("SELECT 1 FROM trips WHERE trip_dir = ? LIMIT 1").get(row.trip_dir);
@@ -512,7 +523,7 @@ export function renumberDay(db: DB, date: string, ownerId?: number | null): void
   const scoped = ownerId !== undefined;
   const rows = db
     .prepare(
-      `SELECT trip_id FROM trips WHERE date = ?${scoped ? " AND owner_id IS ?" : ""}
+      `SELECT trip_id FROM trips WHERE date = ? AND superseded_by IS NULL${scoped ? " AND owner_id IS ?" : ""}
         ORDER BY start_epoch ASC, trip_id ASC`,
     )
     .all(...(scoped ? [date, ownerId ?? null] : [date])) as Array<{ trip_id: string }>;
@@ -528,10 +539,12 @@ export async function rebuildFromDisk(db: DB): Promise<number> {
   const infoFiles = await findInfoJsons(TRIPS_DIR);
   let count = 0;
   const scopes = new Map<string, { date: string; ownerId: number | null }>();
+  const superseded = new Map<string, string>();
   for (const file of infoFiles.sort()) {
     try {
       const info = JSON.parse(await fs.readFile(file, "utf-8")) as Partial<TripInfo>;
       if (!info.trip_id || !info.date) continue;
+      if (info.superseded_by) superseded.set(info.trip_id, info.superseded_by);
       const requestedOwnerId =
         Number.isInteger(info.owner_id) && Number(info.owner_id) > 0 ? Number(info.owner_id) : null;
       const ownerUsername =
@@ -592,6 +605,9 @@ export async function rebuildFromDisk(db: DB): Promise<number> {
       continue;
     }
   }
+  const markSuperseded = db.prepare("UPDATE trips SET superseded_by=? WHERE trip_id=?");
+  for (const [sourceId, replacementId] of superseded)
+    if (getTrip(db, replacementId)) markSuperseded.run(replacementId, sourceId);
   for (const scope of scopes.values()) renumberDay(db, scope.date, scope.ownerId);
   return count;
 }

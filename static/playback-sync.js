@@ -1,7 +1,9 @@
 /* Shared playback intent and buffering barrier. A paused element is not necessarily a user pause. */
 window.DashcamPlayback = (() => {
   const cameraName = (camera) => (camera === "front" ? "前鏡頭" : "後鏡頭");
-  const REFILL_SECONDS = 3;
+  // Chromium may stop a paused MP4 at roughly 2.3 s of preload. Asking for more can
+  // deadlock the synchronized wait even on a fast local connection.
+  const REFILL_SECONDS = 2;
   const PLAYING_MARGIN_SECONDS = 0.05;
   const STATUS_DELAY_MS = 300;
 
@@ -12,9 +14,12 @@ window.DashcamPlayback = (() => {
       error = "",
       lastState = "";
     let statusTimer = null,
+      refillTimer = null,
       updating = false,
       generation = 0;
     const pending = new Map(),
+      nudges = new Map(),
+      lastNudge = new Map(),
       listeners = [];
     const entries = () => Object.entries(videos());
     const status = stage ? document.createElement("div") : null;
@@ -49,22 +54,76 @@ window.DashcamPlayback = (() => {
       });
     }
 
-    function ready(video, seconds) {
+    function readyAt(video, second, seconds) {
       if (video.error || video.seeking || video.readyState < 3) return false;
       // Require several seconds before a restart, scaled by playback speed. While already
       // playing, only a real underrun should stop both cameras.
       const remaining = Number.isFinite(video.duration)
-        ? Math.max(0, video.duration - video.currentTime - 0.025)
+        ? Math.max(0, video.duration - second - 0.025)
         : seconds * (video.playbackRate || 1);
       const margin = Math.min(seconds * (video.playbackRate || 1), remaining);
       for (let i = 0; i < video.buffered.length; i++) {
-        if (
-          video.buffered.start(i) <= video.currentTime + 0.01 &&
-          video.buffered.end(i) >= video.currentTime + margin
-        )
+        if (video.buffered.start(i) <= second + 0.01 && video.buffered.end(i) >= second + margin)
           return true;
       }
       return false;
+    }
+    const ready = (video, seconds) => readyAt(video, video.currentTime, seconds);
+
+    function clearRefillTimer() {
+      if (refillTimer !== null) clearTimeout(refillTimer);
+      refillTimer = null;
+    }
+
+    function scheduleRefill() {
+      if (refillTimer !== null || destroyed || !intent || !held) return;
+      refillTimer = setTimeout(() => {
+        refillTimer = null;
+        if (destroyed || !intent || !held) return;
+        // A paused browser can become NETWORK_IDLE with less than the refill target.
+        // A tiny seek asks it to fetch the next range while both cameras stay paused.
+        for (const [camera, video] of required()) {
+          if (
+            ready(video, REFILL_SECONDS) ||
+            video.seeking ||
+            nudges.has(video) ||
+            video.networkState !== video.NETWORK_IDLE ||
+            Date.now() - (lastNudge.get(video) ?? 0) < 8000
+          )
+            continue;
+          const at = video.currentTime;
+          const to = Math.min(
+            Number.isFinite(video.duration) ? video.duration - 0.05 : at + 0.1,
+            at + 0.1,
+          );
+          if (to <= at + 0.02) continue;
+          lastNudge.set(video, Date.now());
+          nudges.set(video, { camera, at, phase: "fetch", started: Date.now() });
+          video.currentTime = to;
+        }
+        update();
+        scheduleRefill();
+      }, 1000);
+    }
+
+    function advanceNudges() {
+      for (const [video, nudge] of nudges) {
+        if (
+          nudge.phase === "fetch" &&
+          !video.seeking &&
+          (readyAt(video, nudge.at, REFILL_SECONDS) || Date.now() - nudge.started > 5000)
+        ) {
+          nudge.phase = "return";
+          video.currentTime = nudge.at;
+        } else if (
+          nudge.phase === "return" &&
+          !video.seeking &&
+          Math.abs(video.currentTime - nudge.at) < 0.01
+        ) {
+          nudges.delete(video);
+        }
+      }
+      return nudges.size > 0;
     }
 
     function emit(blockers = []) {
@@ -155,8 +214,10 @@ window.DashcamPlayback = (() => {
       if (destroyed || updating) return;
       updating = true;
       try {
+        if (advanceNudges()) return;
         const active = required();
         if (!intent) {
+          clearRefillTimer();
           emit();
           return;
         }
@@ -181,10 +242,12 @@ window.DashcamPlayback = (() => {
           blockers = active.filter(([, video]) => !ready(video, REFILL_SECONDS));
           if (blockers.length) {
             emit(blockers.map(([camera]) => camera));
+            scheduleRefill();
             return;
           }
         }
         held = false;
+        clearRefillTimer();
         for (const [camera, video] of active) start(camera, video);
         emit();
       } finally {
@@ -214,6 +277,8 @@ window.DashcamPlayback = (() => {
       intent = false;
       held = false;
       generation++;
+      clearRefillTimer();
+      nudges.clear();
       pauseElements();
       emit();
     }
@@ -222,6 +287,7 @@ window.DashcamPlayback = (() => {
       const primary = videos()[main()];
       if (!primary || !Number.isFinite(second)) return;
       generation++;
+      nudges.clear();
       held = intent;
       pauseElements();
       primary.currentTime = Math.max(
@@ -269,6 +335,8 @@ window.DashcamPlayback = (() => {
         intent = false;
         generation++;
         if (statusTimer !== null) clearTimeout(statusTimer);
+        clearRefillTimer();
+        nudges.clear();
         for (const remove of listeners) remove();
         pauseElements();
         pending.clear();

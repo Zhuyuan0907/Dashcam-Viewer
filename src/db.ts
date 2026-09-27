@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS trips (
     orig_duration_sec INTEGER,
     -- 上傳當下使用的裝置;snapshot 避免日後改名/封存造成歷史漂移
     device_id       INTEGER REFERENCES dashcam_devices(id) ON DELETE SET NULL,
-    device_snapshot TEXT
+    device_snapshot TEXT,
+    superseded_by TEXT REFERENCES trips(trip_id) ON DELETE SET NULL
 );
 
 -- 單趟旅程的免登入分享連結。驗證表只保存 SHA-256 雜湊；可取回密文另存下表。
@@ -314,6 +315,11 @@ function migrate(db: DB): void {
     );
   }
   if (needTrip("device_snapshot")) db.exec("ALTER TABLE trips ADD COLUMN device_snapshot TEXT");
+  if (needTrip("superseded_by"))
+    db.exec(
+      "ALTER TABLE trips ADD COLUMN superseded_by TEXT REFERENCES trips(trip_id) ON DELETE SET NULL",
+    );
+  db.exec("CREATE INDEX IF NOT EXISTS idx_trips_superseded_by ON trips(superseded_by)");
   // 匯出片段的檢舉輔助欄位(草稿 JSON + 已檢舉時間)。
   const clipCols = db.prepare("PRAGMA table_info(trip_clips)").all() as Array<{ name: string }>;
   const needClip = (n: string): boolean => !clipCols.some((c) => c.name === n);

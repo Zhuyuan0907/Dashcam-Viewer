@@ -7,7 +7,54 @@ test("fractional trip durations render as whole seconds", async ({ page, context
     { name: "session_token", value: "ui-device-test-session", domain: "127.0.0.1", path: "/" },
   ]);
   await page.goto("/trip/" + encodeURIComponent(tripId));
-  expect(await page.evaluate(() => (window as any).fmtDuration(639.48993229999999))).toBe("10m 39s");
+  expect(await page.evaluate(() => (window as any).fmtDuration(639.48993229999999))).toBe(
+    "10m 39s",
+  );
+});
+
+test("both cameras resume from the short paused preload Chromium provides", async ({
+  page,
+  context,
+}) => {
+  await context.addCookies([
+    { name: "session_token", value: "ui-device-test-session", domain: "127.0.0.1", path: "/" },
+  ]);
+  await page.goto("/trip/" + encodeURIComponent(tripId));
+  await expect
+    .poll(() =>
+      page
+        .locator("#stage video")
+        .evaluateAll((videos: HTMLVideoElement[]) =>
+          videos.every((video) => video.readyState >= 3),
+        ),
+    )
+    .toBe(true);
+  await page.locator("#stage video").evaluateAll((videos: HTMLVideoElement[]) => {
+    for (const video of videos) {
+      // Real long MP4s can stop preloading at about 2.27 s while paused.
+      Object.defineProperty(video, "buffered", {
+        configurable: true,
+        get: () => ({ length: 1, start: () => 0, end: () => 2.266667 }),
+      });
+    }
+  });
+  await page.locator("#btn-play").click();
+  await expect
+    .poll(() =>
+      page
+        .locator("#stage video")
+        .evaluateAll((videos: HTMLVideoElement[]) => videos.every((video) => !video.paused)),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page
+        .locator("#stage video")
+        .evaluateAll((videos: HTMLVideoElement[]) =>
+          videos.every((video) => video.currentTime > 0.2),
+        ),
+    )
+    .toBe(true);
 });
 
 test("a brief network wait does not flash a message over synchronized playback", async ({

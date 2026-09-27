@@ -105,6 +105,7 @@ export function registerAdmin(app: FastifyInstance, ctx: AppContext): void {
         has_front: r.has_front,
         has_rear: r.has_rear,
         bytes: r.bytes,
+        superseded_by: r.superseded_by,
         owner_username: r.owner_username,
       };
       const arr = byDate.get(r.date);
