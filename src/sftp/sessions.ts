@@ -28,6 +28,12 @@ export class UploadSessionCreationBlockedError extends Error {
     this.name = "UploadSessionCreationBlockedError";
   }
 }
+export class UploadSessionLimitError extends Error {
+  constructor() {
+    super("已有進行中的上傳工作階段，請先完成或取消後再建立");
+    this.name = "UploadSessionLimitError";
+  }
+}
 
 export interface SftpSession {
   id: string;
@@ -123,9 +129,14 @@ export class SftpSessionManager {
   rootDir(id: string): string {
     return path.join(UPLOAD_DIR, id);
   }
-  usesResumable(id:string):boolean {
-    if(!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='upload_manifests'").get())return false;
-    return !!this.db.prepare('SELECT 1 FROM upload_manifests WHERE session_id=?').get(id);
+  usesResumable(id: string): boolean {
+    if (
+      !this.db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='upload_manifests'")
+        .get()
+    )
+      return false;
+    return !!this.db.prepare("SELECT 1 FROM upload_manifests WHERE session_id=?").get(id);
   }
 
   sftpUsername(s: SftpSession): string {
@@ -142,6 +153,7 @@ export class SftpSessionManager {
     device: { id: number; snapshot: DashcamDeviceSnapshot } | null = null,
   ): SftpSession {
     if (this.revokingUsers.has(user.id)) throw new UploadSessionCreationBlockedError();
+    if (this.listForUser(user.id).length > 0) throw new UploadSessionLimitError();
     let id = "";
     do {
       id = crypto.randomBytes(4).toString("hex"); // 8 hex
@@ -158,8 +170,18 @@ export class SftpSessionManager {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
-        id, user.id, user.username, password, "active", t, t, 0, 0, idleSec,
-        device?.id ?? null, serializeDeviceSnapshot(device?.snapshot ?? null),
+        id,
+        user.id,
+        user.username,
+        password,
+        "active",
+        t,
+        t,
+        0,
+        0,
+        idleSec,
+        device?.id ?? null,
+        serializeDeviceSnapshot(device?.snapshot ?? null),
       );
 
     const s: SftpSession = {
@@ -288,23 +310,17 @@ export class SftpSessionManager {
   }
 
   /** active 且未傳輸時由 route 驗證後更新裝置選擇。 */
-  setDevice(
-    id: string,
-    device: { id: number; snapshot: DashcamDeviceSnapshot } | null,
-  ): void {
+  setDevice(id: string, device: { id: number; snapshot: DashcamDeviceSnapshot } | null): void {
     const s = this.mem.get(id);
     if (!s) return;
     s.deviceId = device?.id ?? null;
     s.deviceSnapshot = device?.snapshot ?? null;
     s.lastActivity = now();
     this.db
-      .prepare("UPDATE sftp_sessions SET device_id = ?, device_snapshot = ?, last_activity = ? WHERE id = ?")
-      .run(
-        s.deviceId,
-        serializeDeviceSnapshot(s.deviceSnapshot),
-        s.lastActivity,
-        s.id,
-      );
+      .prepare(
+        "UPDATE sftp_sessions SET device_id = ?, device_snapshot = ?, last_activity = ? WHERE id = ?",
+      )
+      .run(s.deviceId, serializeDeviceSnapshot(s.deviceSnapshot), s.lastActivity, s.id);
   }
 
   /** 把記憶體 live 狀態寫回 DB。 */

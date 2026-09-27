@@ -1,7 +1,62 @@
 <!doctype html>
-<html lang="zh-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>背景作業</title><link rel="stylesheet" href="/static/style.css"><script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css?v=2.1.2"></head>
-<body><header class="hdr"><div class="wrap hdr-inner"><a class="hdr-brand" href="/">Dashcam</a><nav class="hdr-nav"><a class="hdr-link" href="/browse">旅程</a><a class="hdr-link" href="/upload">上傳</a><a class="hdr-link" href="/clips">片段</a></nav><div id="hdr-ctrls" class="hdr-ctrls"></div></div></header>
-<main class="wrap" style="padding:32px 20px"><h1>我的背景作業</h1><p>已由伺服器接手的工作，關閉網頁後仍會繼續。尚未傳完的檔案請保持上傳頁開啟。</p>
-<div class="form-row"><label>狀態 <select id="filter" class="form-input"><option value="">全部</option><option value="active">執行中</option><option value="succeeded">成功</option><option value="partial">部分成功</option><option value="failed">失敗／中斷</option></select></label><button class="btn" id="refresh">重新整理</button></div>
-<p id="connection" role="status" aria-live="polite"></p><div id="job-list"></div><button class="btn" id="more">載入更多</button></main><div id="toast-container"></div>
-<script src="/static/app.js?v=2.1.3"></script><script src="/static/jobs.js"></script></body></html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>背景作業 — 行車記錄</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/jobs.css?v=2.1.4">
+  <script src="/static/themes.js"></script>
+  <link rel="stylesheet" href="/static/themes.css?v=2.1.2">
+</head>
+<body>
+<header class="hdr">
+  <div class="wrap hdr-inner">
+    <a class="hdr-brand" href="/">
+      <div class="hdr-brand-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+      <span class="hdr-brand-text">行車記錄</span>
+    </a>
+    <nav class="hdr-nav">
+      <a class="hdr-link" data-href="/" href="/">首頁</a>
+      <a class="hdr-link" data-href="/browse" href="/browse">瀏覽旅程</a>
+      <a class="hdr-link" data-href="/clips" href="/clips">片段</a>
+      <a class="hdr-link" data-href="/upload" href="/upload">上傳</a>
+      <a class="hdr-link admin-only" data-href="/admin" href="/admin" style="display:none">管理</a>
+      <a class="hdr-link admin-only" data-href="/ops" href="/ops" style="display:none">維運</a>
+    </nav>
+    <div class="hdr-ctrls" id="hdr-ctrls"></div>
+  </div>
+</header>
+<main class="page-body">
+  <div class="wrap section-tight jobs-page">
+    <div class="eyebrow sec-eyebrow"><span class="tick"></span><span>處理紀錄</span></div>
+    <div class="jobs-heading">
+      <div>
+        <h1 class="page-title">背景作業</h1>
+        <p class="page-sub">查看影片整理、裁剪與匯出的進度和每一步處理紀錄。</p>
+      </div>
+      <button class="btn btn--ghost" id="refresh" type="button">重新整理</button>
+    </div>
+    <div class="jobs-overview" aria-label="作業概況">
+      <div><strong id="count-active">0</strong><span>處理中</span></div>
+      <div><strong id="count-complete">0</strong><span>已完成</span></div>
+      <div><strong id="count-attention">0</strong><span>需要留意</span></div>
+    </div>
+    <div class="jobs-toolbar">
+      <div class="jobs-filters" role="group" aria-label="篩選作業">
+        <button class="jobs-filter is-active" data-filter="" type="button" aria-pressed="true">全部</button>
+        <button class="jobs-filter" data-filter="active" type="button" aria-pressed="false">處理中</button>
+        <button class="jobs-filter" data-filter="succeeded" type="button" aria-pressed="false">已完成</button>
+        <button class="jobs-filter" data-filter="attention" type="button" aria-pressed="false">需留意</button>
+      </div>
+      <span id="connection" role="status" aria-live="polite"></span>
+    </div>
+    <div id="job-list" class="jobs-list"></div>
+    <button class="btn btn--ghost jobs-more" id="more" type="button" hidden>載入更多</button>
+  </div>
+</main>
+<div id="toast-container"></div>
+<script src="/static/app.js?v=2.1.3"></script>
+<script src="/static/jobs.js?v=2.1.4"></script>
+</body>
+</html>

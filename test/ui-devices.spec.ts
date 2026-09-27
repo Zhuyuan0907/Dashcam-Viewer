@@ -112,6 +112,9 @@ test("桌機：多裝置設定、上傳來源與影片資訊完整串接", async
   await page.locator("#create-btn").click();
   const session = page.locator("#sessions-list .sftp-card");
   await expect(session).toHaveCount(1);
+  await expect(page.locator("#upload-heading")).toBeHidden();
+  await expect(page.locator("#create-row")).toBeHidden();
+  await expect(session.locator("[data-manage-device]")).toBeHidden();
   const source = session.locator("[data-device-select]");
   const confirm = session.locator('[data-act="confirm"]');
   await expect(page.locator("[data-device-select]")).toHaveCount(1);
@@ -122,6 +125,7 @@ test("桌機：多裝置設定、上傳來源與影片資訊完整串接", async
   page.once("dialog", (dialog) => dialog.accept());
   await session.locator('[data-act="cancel"]').click();
   await expect(session).toHaveCount(0);
+  await expect(page.locator("#upload-heading")).toBeVisible();
 
   const extraDeviceResponse = await page.request.post("/api/account/devices", {
     data: {

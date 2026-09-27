@@ -25,7 +25,11 @@ import { startProcessing } from "./process.js";
 import { safeJoin } from "../util/paths.js";
 import { MAX_FILE_BYTES, MAX_SESSION_BYTES, MIN_FREE_DISK_BYTES, UPLOAD_DIR } from "../config.js";
 import { makeRequireUser, type AppContext } from "../context.js";
-import { UploadSessionCreationBlockedError, type SftpSession } from "../sftp/sessions.js";
+import {
+  UploadSessionCreationBlockedError,
+  UploadSessionLimitError,
+  type SftpSession,
+} from "../sftp/sessions.js";
 import { defaultDevice, getDevice, listDevices, snapshotDevice } from "../devices/repo.js";
 
 /** 單檔 HTTP body 上限:有設 MAX_FILE_BYTES 用之,0(不限)時給一個寬鬆天花板。 */
@@ -115,7 +119,10 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
         );
         return present(s);
       } catch (error) {
-        if (error instanceof UploadSessionCreationBlockedError) {
+        if (
+          error instanceof UploadSessionCreationBlockedError ||
+          error instanceof UploadSessionLimitError
+        ) {
           return reply.code(409).send({ detail: error.message });
         }
         throw error;
@@ -204,12 +211,10 @@ export function registerUploadSessions(app: FastifyInstance, ctx: AppContext): v
         const ingest = await ingestFlatFolder(s.id);
         if (ingest.rejected.length) {
           sessions.setStatus(s.id, "active");
-          return reply
-            .code(400)
-            .send({
-              detail: "有無法辨識或同名衝突的檔案，已保留全部素材；請檢查後分批重傳",
-              rejected: ingest.rejected,
-            });
+          return reply.code(400).send({
+            detail: "有無法辨識或同名衝突的檔案，已保留全部素材；請檢查後分批重傳",
+            rejected: ingest.rejected,
+          });
         }
         if (ingest.accepted === 0) {
           // 沒有可處理檔案 → 解鎖,讓使用者補傳後可再次確認。

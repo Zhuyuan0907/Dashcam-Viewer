@@ -121,6 +121,7 @@
 <div class="page-body">
   <div class="wrap section-tight">
 
+    <div id="upload-heading">
     <div class="eyebrow sec-eyebrow" style="margin-bottom:12px;">
       <span class="tick"></span><span data-i18n="upload.eyebrow">上傳影片</span>
     </div>
@@ -128,6 +129,7 @@
     <p class="page-sub" id="upload-intro" style="margin-bottom:24px;" data-i18n="upload.intro">
       建立上傳工作階段後，在工作階段內確認或更換來源記錄器，再把記憶卡檔案拖進瀏覽器（或用 SFTP），完成後按「確認並處理」。
     </p>
+    </div>
 
     <!-- 說明卡(建立工作階段後自動隱藏,讓資訊上移、不需捲動) -->
     <div class="info-card" id="how-card" style="padding:18px 22px;margin-bottom:18px;">
@@ -176,6 +178,7 @@
           <div class="progress-fill" id="prog-bar" style="width:0%"></div>
         </div>
         <div class="progress-log" id="prog-log"></div>
+        <p style="margin:12px 0 0;font-size:13px;"><a href="/jobs">查看背景作業與完整處理紀錄 ↗</a></p>
       </div>
     </div>
 
@@ -287,6 +290,8 @@ function enterProcessingView(id) {
   document.getElementById('sessions-list').style.display = 'none';
   document.getElementById('sessions-empty').style.display = 'none';
   document.getElementById('create-row').style.display = 'none';
+  document.getElementById('upload-heading').style.display = 'none';
+  document.getElementById('how-card').style.display = 'none';
   document.getElementById('upload-progress').style.display = '';
   listenSSE(id);
 }
@@ -314,15 +319,16 @@ async function loadSessions() {
   let list;
   try { list = await apiFetch('/api/upload-sessions'); }
   catch { return; }
+  const runningSession = list.find(s => s.status === 'processing');
+  if (runningSession) { enterProcessingView(runningSession.id); return; }
 
   const wrap = document.getElementById('sessions-list');
   document.getElementById('sessions-empty').style.display = list.length ? 'none' : '';
   // 有進行中的工作階段時,收起說明卡與前言,讓上傳區上移、不需捲動即可見。
   const hasSessions = list.length > 0;
   document.getElementById('how-card').style.display = hasSessions ? 'none' : '';
-  document.getElementById('upload-intro').style.display = hasSessions ? 'none' : '';
-
-  // Keep other upload batches accessible; persistent progress lives in the job center.
+  document.getElementById('upload-heading').style.display = hasSessions ? 'none' : '';
+  document.getElementById('create-row').style.display = hasSessions ? 'none' : '';
 
   const seen = new Set();
   for (const s of list) {
@@ -371,7 +377,7 @@ function buildCard(s) {
           ${sessionDeviceOptions(s)}
         </select>
       </div>
-      <a class="btn btn--ghost btn--sm" href="/account#devices">管理記錄器</a>
+      <a class="btn btn--ghost btn--sm" href="/account#devices" data-manage-device>管理記錄器</a>
     </div>
 
     <!-- 瀏覽器直傳:拖放/選檔 -->
@@ -480,6 +486,7 @@ function updateCard(card, s) {
   card.querySelector('[data-bytes]').textContent = fmtBytes(s.total_bytes);
   const deviceSelect = card.querySelector('[data-device-select]');
   const currentDevice = sessionDeviceIsCurrent(s);
+  card.querySelector('[data-manage-device]').style.display = currentDevice ? 'none' : '';
   if (deviceSelect) {
     deviceSelect.value = currentDevice ? String(s.device_id) : '';
     deviceSelect.disabled = devices.length === 0 || s.uploading || s.status !== 'active';

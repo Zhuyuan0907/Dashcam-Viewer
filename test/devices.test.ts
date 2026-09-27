@@ -19,8 +19,12 @@ function addViewer(db: any, id: number, username: string): string {
   ).run(id, username, "h");
   const token = newSessionToken();
   const now = Math.floor(Date.now() / 1000);
-  db.prepare("INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?,?,?,?)")
-    .run(token, id, now + 3600, now);
+  db.prepare("INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?,?,?,?)").run(
+    token,
+    id,
+    now + 3600,
+    now,
+  );
   return `session_token=${token}`;
 }
 
@@ -28,12 +32,13 @@ test("多裝置 CRUD、唯一預設值、跨帳號隔離與封存後歷史 sessi
   const { app, ctx, cookie } = await makeAdminApp(DATA);
   const otherCookie = addViewer(ctx.db, 2, "other");
 
-  const create = (payload: Record<string, unknown>) => app.inject({
-    method: "POST",
-    url: "/api/account/devices",
-    headers: { cookie, ...JSON_HEADERS },
-    payload,
-  });
+  const create = (payload: Record<string, unknown>) =>
+    app.inject({
+      method: "POST",
+      url: "/api/account/devices",
+      headers: { cookie, ...JSON_HEADERS },
+      payload,
+    });
   let response = await create({
     profile_key: "mivue-mp20",
     model: "MiVue MP20",
@@ -56,7 +61,9 @@ test("多裝置 CRUD、唯一預設值、跨帳號隔離與封存後歷史 sessi
   assert.equal(response.statusCode, 201);
   const polaroid = response.json().device;
 
-  let list = (await app.inject({ method: "GET", url: "/api/account/devices", headers: { cookie } })).json();
+  let list = (
+    await app.inject({ method: "GET", url: "/api/account/devices", headers: { cookie } })
+  ).json();
   assert.equal(list.devices.length, 2);
   assert.equal(list.devices.filter((device: any) => device.is_default).length, 1);
   assert.equal(list.devices.find((device: any) => device.id === polaroid.id).is_default, true);
@@ -78,6 +85,13 @@ test("多裝置 CRUD、唯一預設值、跨帳號隔離與封存後歷史 sessi
   assert.equal(response.statusCode, 200);
   const session = response.json();
   assert.equal(session.device.model, "Polaroid MS279WG");
+  const otherSession = await app.inject({
+    method: "POST",
+    url: "/api/upload-sessions",
+    headers: { cookie: otherCookie },
+  });
+  assert.equal(otherSession.statusCode, 200, "其他帳號可同時建立自己的上傳工作階段");
+  await ctx.sessions.remove(otherSession.json().id);
 
   const rehydrated = new SftpSessionManager(ctx.db).get(session.id);
   assert.equal(rehydrated?.deviceId, polaroid.id);
@@ -89,7 +103,9 @@ test("多裝置 CRUD、唯一預設值、跨帳號隔離與封存後歷史 sessi
     headers: { cookie },
   });
   assert.equal(response.statusCode, 200);
-  list = (await app.inject({ method: "GET", url: "/api/account/devices", headers: { cookie } })).json();
+  list = (
+    await app.inject({ method: "GET", url: "/api/account/devices", headers: { cookie } })
+  ).json();
   assert.equal(list.devices.length, 1);
   assert.equal(list.devices[0].id, mivue.id);
   assert.equal(list.devices[0].is_default, true);
@@ -101,10 +117,19 @@ test("多裝置 CRUD、唯一預設值、跨帳號隔離與封存後歷史 sessi
 
 test("新增裝置前建立的工作階段需先選來源才能確認，但仍可正常取消", async () => {
   const { app, ctx, cookie } = await makeAdminApp(DATA);
-  const first = await app.inject({ method: "POST", url: "/api/upload-sessions", headers: { cookie } });
-  const second = await app.inject({ method: "POST", url: "/api/upload-sessions", headers: { cookie } });
+  const first = await app.inject({
+    method: "POST",
+    url: "/api/upload-sessions",
+    headers: { cookie },
+  });
+  const second = await app.inject({
+    method: "POST",
+    url: "/api/upload-sessions",
+    headers: { cookie },
+  });
   assert.equal(first.statusCode, 200);
-  assert.equal(second.statusCode, 200);
+  assert.equal(second.statusCode, 409);
+  assert.match(second.json().detail, /已有進行中/);
   assert.equal(first.json().device ?? null, null);
 
   const created = await app.inject({
@@ -132,12 +157,18 @@ test("新增裝置前建立的工作階段需先選來源才能確認，但仍�
 
   const cancel = await app.inject({
     method: "DELETE",
-    url: `/api/upload-sessions/${second.json().id}`,
+    url: `/api/upload-sessions/${first.json().id}`,
     headers: { cookie },
   });
   assert.equal(cancel.statusCode, 200);
-  assert.equal(ctx.sessions.get(second.json().id), undefined);
+  assert.equal(ctx.sessions.get(first.json().id), undefined);
 
-  await ctx.sessions.remove(first.json().id);
+  const next = await app.inject({
+    method: "POST",
+    url: "/api/upload-sessions",
+    headers: { cookie },
+  });
+  assert.equal(next.statusCode, 200);
+  await ctx.sessions.remove(next.json().id);
   await app.close();
 });

@@ -30,6 +30,12 @@ export function registerBackground(app: FastifyInstance, ctx: AppContext): void 
       return reply.code(404).send({ detail: "工作不存在" });
     return publicRow(row);
   });
+  app.get<{ Params: { id: string } }>("/api/jobs/:id/events", { preHandler }, (req, reply) => {
+    const row = tasks.get(req.params.id);
+    if (!row || row.owner_id !== req.user!.id)
+      return reply.code(404).send({ detail: "工作不存在" });
+    return tasks.events(row.id);
+  });
   app.post<{ Params: { id: string } }>("/api/jobs/:id/cancel", { preHandler }, (req, reply) => {
     const row = tasks.get(req.params.id);
     if (!row || row.owner_id !== req.user!.id)

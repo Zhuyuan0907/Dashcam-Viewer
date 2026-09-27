@@ -95,19 +95,16 @@ test("rehydrate:新 manager 從 DB 載回既有 session", () => {
 test("beginRevokeForUser:傳輸中拒絕；刪帳臨界區阻止建立新憑證", async () => {
   const mgr = setup();
   const first = mgr.create({ id: 1, username: "alice" }, 600);
-  const second = mgr.create({ id: 1, username: "alice" }, 600);
+  assert.throws(() => mgr.create({ id: 1, username: "alice" }, 600), /已有進行中/);
   mgr.connOpened(first.id);
 
   assert.deepEqual(await mgr.beginRevokeForUser(1), { ok: false, removed: 0 });
   assert.ok(mgr.get(first.id));
-  assert.ok(mgr.get(second.id));
 
   mgr.connClosed(first.id);
-  assert.deepEqual(await mgr.beginRevokeForUser(1), { ok: true, removed: 2 });
+  assert.deepEqual(await mgr.beginRevokeForUser(1), { ok: true, removed: 1 });
   assert.equal(mgr.get(first.id), undefined);
-  assert.equal(mgr.get(second.id), undefined);
   assert.ok(!existsSync(path.join(UPLOAD_DIR, first.id)));
-  assert.ok(!existsSync(path.join(UPLOAD_DIR, second.id)));
   assert.throws(
     () => mgr.create({ id: 1, username: "alice" }, 600),
     /帳號正在刪除/,

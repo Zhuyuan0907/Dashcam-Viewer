@@ -24,6 +24,16 @@ export interface WorkRow {
   created_at: number;
   updated_at: number;
 }
+export interface WorkEvent {
+  id: number;
+  job_id: string;
+  stage: string;
+  message: string;
+  progress: number;
+  done: number | null;
+  total: number | null;
+  created_at: number;
+}
 interface Pending {
   id: string;
   spec: WorkSpec;
@@ -38,6 +48,7 @@ export class BackgroundTasks {
   private readonly pending: Pending[] = [];
   private readonly running = new Map<string, Pending>();
   private stopped = false;
+  private readonly eventCounts = new Map<string, number>();
   constructor(
     private readonly db: DB,
     private readonly concurrency = 2,
@@ -48,15 +59,62 @@ export class BackgroundTasks {
       payload TEXT NOT NULL, channel_key TEXT NOT NULL, status TEXT NOT NULL, stage TEXT NOT NULL,
       progress REAL NOT NULL DEFAULT 0, message TEXT NOT NULL DEFAULT '', result TEXT,
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-    ); CREATE INDEX IF NOT EXISTS idx_jobs_owner ON background_jobs(owner_id,created_at DESC);`);
+    ); CREATE INDEX IF NOT EXISTS idx_jobs_owner ON background_jobs(owner_id,created_at DESC);
+    CREATE TABLE IF NOT EXISTS background_job_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL REFERENCES background_jobs(id) ON DELETE CASCADE,
+      stage TEXT NOT NULL, message TEXT NOT NULL, progress REAL NOT NULL,
+      done REAL, total REAL, created_at INTEGER NOT NULL
+    ); CREATE INDEX IF NOT EXISTS idx_job_events_job ON background_job_events(job_id,id);`);
+    const interrupted = db
+      .prepare("SELECT id FROM background_jobs WHERE status IN ('queued','running','cancelling')")
+      .all() as Array<{ id: string }>;
     db.prepare(
       "UPDATE background_jobs SET status='interrupted',stage='interrupted',message='服務已重啟，請檢查來源並重試',updated_at=? WHERE status IN ('queued','running','cancelling')",
     ).run(Date.now());
+    for (const row of interrupted) {
+      this.recordEvent(
+        row.id,
+        { stage: "interrupted", message: "服務已重啟，請檢查來源並重試" },
+        0,
+      );
+      this.eventCounts.delete(row.id);
+    }
   }
   get(id: string): WorkRow | undefined {
     return this.db.prepare("SELECT * FROM background_jobs WHERE id=?").get(id) as
       | WorkRow
       | undefined;
+  }
+  events(id: string): WorkEvent[] {
+    return this.db
+      .prepare("SELECT * FROM background_job_events WHERE job_id=? ORDER BY id DESC LIMIT 2000")
+      .all(id)
+      .reverse() as WorkEvent[];
+  }
+  private recordEvent(id: string, event: SSEEvent, progress: number): void {
+    const finite = (value: unknown): number | null =>
+      typeof value === "number" && Number.isFinite(value) ? value : null;
+    this.db
+      .prepare(
+        "INSERT INTO background_job_events(job_id,stage,message,progress,done,total,created_at) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run(
+        id,
+        String(event.stage ?? "running"),
+        String(event.message ?? ""),
+        progress,
+        finite(event.done),
+        finite(event.total),
+        Date.now(),
+      );
+    const count = (this.eventCounts.get(id) ?? 0) + 1;
+    this.eventCounts.set(id, count);
+    if (count % 100 === 0)
+      this.db
+        .prepare(
+          "DELETE FROM background_job_events WHERE job_id=? AND id NOT IN (SELECT id FROM background_job_events WHERE job_id=? ORDER BY id DESC LIMIT 2000)",
+        )
+        .run(id, id);
   }
   findActive(spec: Omit<WorkSpec, "key">): WorkRow | undefined {
     return this.db
@@ -112,6 +170,7 @@ export class BackgroundTasks {
             : Number(event.progress) || 0,
         ),
       );
+      this.recordEvent(id, event, progress);
       this.db
         .prepare("UPDATE background_jobs SET stage=?,progress=?,message=?,updated_at=? WHERE id=?")
         .run(
@@ -153,19 +212,14 @@ export class BackgroundTasks {
     return id;
   }
   private finish(id: string, status: string, message: string, result: unknown): void {
+    const progress = status === "succeeded" || status === "partial" ? 100 : 0;
     this.db
       .prepare(
         "UPDATE background_jobs SET status=?,stage=?,progress=?,message=?,result=?,updated_at=? WHERE id=?",
       )
-      .run(
-        status,
-        status,
-        status === "succeeded" || status === "partial" ? 100 : 0,
-        message,
-        JSON.stringify(result),
-        Date.now(),
-        id,
-      );
+      .run(status, status, progress, message, JSON.stringify(result), Date.now(), id);
+    this.recordEvent(id, { stage: status, message }, progress);
+    this.eventCounts.delete(id);
   }
   private pump(): void {
     if (this.stopped) return;

@@ -19,6 +19,7 @@ test("queue limits per-user execution and records result only after finalization
     { type: "clip", owner: 1, target: "a", payload: {}, key: "a" },
     first,
     async () => {
+      first.push({ stage: "probe", message: "讀取前後鏡頭", done: 1, total: 2 });
       first.push({ stage: "done", clip: { id: 4 } });
       await gate;
       first.close();
@@ -40,6 +41,14 @@ test("queue limits per-user execution and records result only after finalization
   release();
   await until(() => tasks.get(b)?.status === "succeeded");
   assert.equal(JSON.parse(tasks.get(a)!.result!).clip.id, 4);
+  assert.deepEqual(
+    tasks.events(a).map((event) => event.stage),
+    ["queued", "probe", "succeeded"],
+  );
+  assert.equal(tasks.events(a)[1]?.message, "讀取前後鏡頭");
+  assert.equal(tasks.events(a)[1]?.done, 1);
+  assert.equal(tasks.events(a)[1]?.total, 2);
+  assert.equal(new BackgroundTasks(db).events(a).length, 3, "重新啟動後仍可讀取步驟紀錄");
   db.close();
 });
 test("restart marks persistent nonterminal work interrupted and keeps owner history isolated", () => {
@@ -50,6 +59,7 @@ test("restart marks persistent nonterminal work interrupted and keeps owner hist
   ).run();
   const tasks = new BackgroundTasks(db);
   assert.equal(tasks.get("a")?.status, "interrupted");
+  assert.equal(tasks.events("a")[0]?.stage, "interrupted");
   assert.equal(tasks.list(2).length, 0);
   assert.equal(tasks.list(1).length, 1);
   db.close();
