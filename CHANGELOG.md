@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.3 — 2026-09-27
+
+- Wait for three seconds of buffered footage on both cameras before starting or resuming
+  synchronized playback. Scale the refill target with playback speed, while allowing an
+  already playing stream to continue until it actually runs short. Delay the buffering
+  message briefly so momentary waits do not flash over the video.
+- Round trip durations to whole seconds for display, avoiding floating point tails.
+- Move the MP4 index to the front of newly merged videos for faster starts and seeks
+  on slow connections. Existing media is unchanged.
+- Version the player and shared page script URLs so browsers fetch these fixes after deployment.
+
 ## 2.1.2 — 2026-09-13
 
 - Keep the shared header transparent before and after scrolling, with backdrop blur and

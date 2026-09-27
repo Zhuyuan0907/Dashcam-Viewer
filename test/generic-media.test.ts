@@ -50,5 +50,8 @@ test('a rear-only generic video completes the real merge pipeline',async()=>{
     for await(const event of processBatch({uploadDir:path.join(root,'uploads'),tripsDir:path.join(root,'trips')})) if(event.tripInfo)info=event.tripInfo;
     assert.ok(info);assert.equal(info.has_front,false);assert.equal(info.has_rear,true);
     assert.ok(Math.abs(info.duration_sec-1.2)<0.1);assert.equal(info.timeline?.rear.length,1);
+    const merged=await fs.readFile(info.rear_path);
+    assert.ok(merged.indexOf('moov')>0 && merged.indexOf('moov')<merged.indexOf('mdat'),
+      'merged MP4 must put its index before media for slow-network playback');
   } finally {await fs.rm(root,{recursive:true,force:true});}
 });

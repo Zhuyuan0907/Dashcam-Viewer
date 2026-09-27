@@ -2,6 +2,57 @@ import { expect, test } from "@playwright/test";
 
 const tripId = "v2|u:1|d:2|MS279WG-ui-test";
 
+test("fractional trip durations render as whole seconds", async ({ page, context }) => {
+  await context.addCookies([
+    { name: "session_token", value: "ui-device-test-session", domain: "127.0.0.1", path: "/" },
+  ]);
+  await page.goto("/trip/" + encodeURIComponent(tripId));
+  expect(await page.evaluate(() => (window as any).fmtDuration(639.48993229999999))).toBe("10m 39s");
+});
+
+test("a brief network wait does not flash a message over synchronized playback", async ({
+  page,
+  context,
+}) => {
+  await context.addCookies([
+    { name: "session_token", value: "ui-device-test-session", domain: "127.0.0.1", path: "/" },
+  ]);
+  await page.goto("/trip/" + encodeURIComponent(tripId));
+  await page.locator("#btn-play").click();
+  await expect
+    .poll(() =>
+      page
+        .locator("#stage video")
+        .evaluateAll((videos: HTMLVideoElement[]) => videos.every((v) => !v.paused)),
+    )
+    .toBe(true);
+  await page.locator("#pip video").evaluate((video: HTMLVideoElement) => {
+    Object.defineProperty(video, "readyState", { configurable: true, get: () => 2 });
+    video.dispatchEvent(new Event("waiting"));
+  });
+  await expect
+    .poll(() =>
+      page
+        .locator("#stage video")
+        .evaluateAll((videos: HTMLVideoElement[]) => videos.every((v) => v.paused)),
+    )
+    .toBe(true);
+  await page.waitForTimeout(100);
+  await page.locator("#pip video").evaluate((video: HTMLVideoElement) => {
+    delete (video as any).readyState;
+    video.dispatchEvent(new Event("canplay"));
+  });
+  await expect
+    .poll(() =>
+      page
+        .locator("#stage video")
+        .evaluateAll((videos: HTMLVideoElement[]) => videos.every((v) => !v.paused)),
+    )
+    .toBe(true);
+  await page.waitForTimeout(350);
+  await expect(page.locator(".playback-status")).toBeHidden();
+});
+
 test("rapid paused seeks keep both cameras on the newest requested position", async ({
   page,
   context,

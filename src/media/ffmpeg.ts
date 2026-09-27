@@ -425,7 +425,20 @@ export async function concatCopy(sources: string[], outPath: string): Promise<Co
   try {
     const r = await run(
       "ffmpeg",
-      ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outPath],
+      [
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        listPath,
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        outPath,
+      ],
       6 * 60 * 60 * 1000, // 逾時上限 6 小時(大量片段合併可能很久)
     );
     await fs.rm(listPath, { force: true });

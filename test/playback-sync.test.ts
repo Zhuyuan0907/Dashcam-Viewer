@@ -10,10 +10,12 @@ class Video extends EventTarget {
   seeking = false;
   ended = false;
   readyState = 4;
+  playbackRate = 1;
+  bufferedEnd = this.duration;
   error: unknown = null;
   style = { visibility: "" };
   parentElement = { title: "" };
-  buffered = { length: 1, start: () => 0, end: () => this.duration };
+  buffered = { length: 1, start: () => 0, end: () => this.bufferedEnd };
   playCalls = 0;
   playResult: (() => Promise<void>) | null = null;
   play() {
@@ -117,6 +119,58 @@ test("stalled network does not freeze already buffered playback", async () => {
   f.playback.play();
   await settled();
   f.rear.event("stalled");
+  assert.equal(f.front.paused, false);
+  assert.equal(f.rear.paused, false);
+  f.playback.destroy();
+});
+
+test("a short buffer keeps playing, but a real underrun waits for three seconds on both cameras", async () => {
+  const f = fixture();
+  f.playback.play();
+  await settled();
+  f.front.currentTime = 5;
+  f.rear.currentTime = 5;
+  f.rear.bufferedEnd = 5.1;
+  f.playback.update();
+  assert.equal(f.front.paused, false, "do not pause while the camera can still play");
+  f.rear.bufferedEnd = 5.02;
+  f.rear.readyState = 2;
+  f.rear.event("waiting");
+  assert.equal(f.front.paused, true);
+  assert.equal(f.rear.paused, true);
+  f.rear.readyState = 4;
+  for (const end of [5.3, 6, 7.99]) {
+    f.rear.bufferedEnd = end;
+    f.rear.event("progress");
+    assert.equal(f.front.paused, true, `must not resume with only ${end - 5}s buffered`);
+  }
+  f.rear.bufferedEnd = 8;
+  f.rear.event("progress");
+  await settled();
+  assert.equal(f.front.paused, false);
+  assert.equal(f.rear.paused, false);
+  f.playback.destroy();
+});
+
+test("refill target scales with playback speed and is capped at the end of a file", async () => {
+  const f = fixture();
+  f.front.playbackRate = f.rear.playbackRate = 2;
+  f.rear.bufferedEnd = 5;
+  f.playback.play();
+  await settled();
+  assert.equal(f.front.paused, true);
+  f.rear.bufferedEnd = 5.99;
+  f.rear.event("progress");
+  assert.equal(f.front.paused, true);
+  f.rear.bufferedEnd = 6;
+  f.rear.event("progress");
+  await settled();
+  assert.equal(f.front.paused, false);
+  f.playback.pause();
+  f.front.currentTime = f.rear.currentTime = 29;
+  f.rear.bufferedEnd = 30;
+  f.playback.play();
+  await settled();
   assert.equal(f.front.paused, false);
   assert.equal(f.rear.paused, false);
   f.playback.destroy();

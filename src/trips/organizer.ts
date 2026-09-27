@@ -644,7 +644,9 @@ async function* mergeCameraEvents(
   try {
     const sizes = await Promise.all(entries.map((file) => fs.stat(file).then((s) => s.size)));
     release = await reserveSpace(
-      Math.ceil(sizes.reduce((a, b) => a + b, 0) * 1.1),
+      // faststart first writes the merged file, then rewrites it with the MP4 index
+      // at the front; both copies coexist briefly during that second pass.
+      Math.ceil(sizes.reduce((a, b) => a + b, 0) * 2.2),
       path.dirname(outPath),
     );
     r = await concatCopy(entries, outPath);

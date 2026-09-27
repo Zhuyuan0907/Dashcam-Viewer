@@ -1,9 +1,10 @@
 /* ── 共用工具 ────────────────────────────────────────────────────────────────── */
 
 function fmtDuration(sec) {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
+  const total = Number.isFinite(Number(sec)) ? Math.max(0, Math.round(Number(sec))) : 0;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
   if (h > 0) return `${h}h ${String(m).padStart(2,'0')}m`;
   if (m > 0) return `${m}m ${String(s).padStart(2,'0')}s`;
   return `${s}s`;

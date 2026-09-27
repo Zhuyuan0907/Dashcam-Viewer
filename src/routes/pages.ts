@@ -135,10 +135,10 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
     // `<` 一律轉成 <:字串值(可由管理員自訂)含 </script> 時才不會提前關閉標籤。
     const subset = pickStrings(strings, PAGE_NS[name] ?? ["common", "nav", "title"]);
     const blob = `<script>window.__S=${JSON.stringify(subset).replace(/</g, "\\u003c")};</script>`;
-    if (html.includes('<script src="/static/app.js">')) {
+    if (html.includes('<script src="/static/app.js')) {
       html = html.replace(
-        '<script src="/static/app.js">',
-        `${blob}\n<script src="/static/app.js">`,
+        /<script src="\/static\/app\.js(?:\?v=[^"]+)?"><\/script>/,
+        (script) => `${blob}\n${script}`,
       );
     } else {
       html = html.replace("</body>", `${blob}\n</body>`);

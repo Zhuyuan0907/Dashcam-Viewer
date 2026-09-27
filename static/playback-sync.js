@@ -1,6 +1,9 @@
 /* Shared playback intent and buffering barrier. A paused element is not necessarily a user pause. */
 window.DashcamPlayback = (() => {
   const cameraName = (camera) => (camera === "front" ? "前鏡頭" : "後鏡頭");
+  const REFILL_SECONDS = 3;
+  const PLAYING_MARGIN_SECONDS = 0.05;
+  const STATUS_DELAY_MS = 300;
 
   function create({ videos, main, timeline, onState = () => {}, stage }) {
     let intent = false,
@@ -8,10 +11,10 @@ window.DashcamPlayback = (() => {
       destroyed = false,
       error = "",
       lastState = "";
-    let updating = false,
+    let statusTimer = null,
+      updating = false,
       generation = 0;
-    const waiting = new Set(),
-      pending = new Map(),
+    const pending = new Map(),
       listeners = [];
     const entries = () => Object.entries(videos());
     const status = stage ? document.createElement("div") : null;
@@ -46,10 +49,14 @@ window.DashcamPlayback = (() => {
       });
     }
 
-    function ready(video) {
+    function ready(video, seconds) {
       if (video.error || video.seeking || video.readyState < 3) return false;
-      // A small buffer margin avoids resuming for a single frame and immediately stalling again.
-      const margin = Math.min(0.3, Math.max(0, video.duration - video.currentTime - 0.025));
+      // Require several seconds before a restart, scaled by playback speed. While already
+      // playing, only a real underrun should stop both cameras.
+      const remaining = Number.isFinite(video.duration)
+        ? Math.max(0, video.duration - video.currentTime - 0.025)
+        : seconds * (video.playbackRate || 1);
+      const margin = Math.min(seconds * (video.playbackRate || 1), remaining);
       for (let i = 0; i < video.buffered.length; i++) {
         if (
           video.buffered.start(i) <= video.currentTime + 0.01 &&
@@ -66,10 +73,25 @@ window.DashcamPlayback = (() => {
       if (key === lastState) return;
       lastState = key;
       if (status) {
-        status.hidden = !state.buffering && !error;
         status.dataset.state = error ? "error" : "buffering";
         status.textContent =
           error || `等待${blockers.map(cameraName).join("、") || "影片"}緩衝，畫面已一起暫停`;
+        if (error) {
+          clearTimeout(statusTimer);
+          statusTimer = null;
+          status.hidden = false;
+        } else if (state.buffering) {
+          if (!statusTimer && status.hidden) {
+            statusTimer = setTimeout(() => {
+              statusTimer = null;
+              if (!destroyed && intent && held && !error) status.hidden = false;
+            }, STATUS_DELAY_MS);
+          }
+        } else {
+          clearTimeout(statusTimer);
+          statusTimer = null;
+          status.hidden = true;
+        }
       }
       onState(state);
     }
@@ -147,12 +169,16 @@ window.DashcamPlayback = (() => {
           ([camera, video]) =>
             camera !== main() && Math.abs(video.currentTime - positionFor(camera)) > 0.25,
         );
-        let blockers = active.filter(([camera, video]) => waiting.has(camera) || !ready(video));
+        // Hysteresis: a playing stream is stopped only when it actually runs out of
+        // playable data. Once stopped, both streams need a full refill before resuming.
+        let blockers = active.filter(
+          ([, video]) => !ready(video, held ? REFILL_SECONDS : PLAYING_MARGIN_SECONDS),
+        );
         if (blockers.length || drift) {
           held = true;
           pauseElements(); // Freeze the clock before seeking: never chase a moving primary during buffering.
           align(active);
-          blockers = active.filter(([camera, video]) => waiting.has(camera) || !ready(video));
+          blockers = active.filter(([, video]) => !ready(video, REFILL_SECONDS));
           if (blockers.length) {
             emit(blockers.map(([camera]) => camera));
             return;
@@ -169,6 +195,7 @@ window.DashcamPlayback = (() => {
     function play() {
       if (destroyed) return;
       intent = true;
+      held = true;
       error = "";
       generation++;
       const active = required();
@@ -176,7 +203,6 @@ window.DashcamPlayback = (() => {
       for (const [camera, video] of active) {
         video.preload = "auto";
         if (video.error) {
-          waiting.delete(camera);
           video.load();
         }
         start(camera, video); // Prime all streams in the original user gesture, including unmuted audio.
@@ -198,7 +224,6 @@ window.DashcamPlayback = (() => {
       generation++;
       held = intent;
       pauseElements();
-      waiting.clear();
       primary.currentTime = Math.max(
         0,
         Number.isFinite(primary.duration) ? Math.min(second, primary.duration) : second,
@@ -212,16 +237,10 @@ window.DashcamPlayback = (() => {
         video.addEventListener(type, handler);
         listeners.push(() => video.removeEventListener(type, handler));
       };
-      listen("waiting", () => {
-        waiting.add(camera);
-        update();
-      });
+      listen("waiting", update);
       listen("stalled", update); // Network inactivity alone is harmless while sufficient data remains buffered.
       for (const type of ["canplay", "playing", "progress", "loadeddata", "seeked"]) {
-        listen(type, () => {
-          if (ready(video)) waiting.delete(camera);
-          update();
-        });
+        listen(type, update);
       }
       listen("seeking", update);
       listen("pause", update);
@@ -249,6 +268,7 @@ window.DashcamPlayback = (() => {
         destroyed = true;
         intent = false;
         generation++;
+        if (statusTimer !== null) clearTimeout(statusTimer);
         for (const remove of listeners) remove();
         pauseElements();
         pending.clear();
