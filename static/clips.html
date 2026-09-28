@@ -14,6 +14,22 @@
       max-width: 52ch; line-height: 1.6; }
     .clips-count { margin-top: 12px; font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-3); }
 
+    .clips-toolbar { gap: 10px 14px; margin: 0 0 22px; }
+    .clips-toolbar .clips-search-label { flex: 1 1 300px; min-width: 0; gap: 10px;
+      color: var(--ink-2); font-weight: 600; }
+    .clips-toolbar .clips-search-input { flex: 1; min-width: 0; max-width: 390px;
+      appearance: none; -webkit-appearance: none; background: var(--field-bg);
+      color: var(--field-ink); border-color: var(--field-border); }
+    .clips-toolbar .clips-search-input:focus { border-color: var(--accent); }
+    .clips-toolbar .clips-new { margin-left: auto; }
+    #clips-more { margin: 22px auto 0; }
+    #clips-more[hidden] { display: none; }
+    @media (max-width: 640px) {
+      .clips-toolbar .clips-search-label { flex-basis: 100%; }
+      .clips-toolbar .clips-search-input { max-width: none; }
+      .clips-toolbar .clips-new { margin-left: 0; }
+    }
+
     .clips-grid { display: grid; gap: clamp(16px, 2vw, 24px);
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 
@@ -85,8 +101,9 @@
     .clip-card-meta { font-size: 12.5px; color: var(--ink-3); font-family: var(--font-mono); }
     .clip-card-source { font-size: 12.5px; color: var(--ink-2); text-decoration: none; align-self: flex-start; }
     .clip-card-source:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-    .clip-card-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 6px; }
+    .clip-card-actions { display: flex; gap: 8px 12px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; }
     .clip-card-actions a { text-decoration: none; }
+    .clip-card-actions .clip-edit { color: var(--accent); }
 
     .clips-loading, .clips-empty { padding: 80px 20px; }
   </style>
@@ -126,7 +143,7 @@
 </div>
 
 <div id="toast-container"></div>
-<script src="/static/app.js?v=2.1.3"></script>
+<script src="/static/app.js?v=2.1.6"></script>
 <script src="/static/player-controls.js"></script>
 <script>
 (async () => {
@@ -136,11 +153,12 @@
   clipUserId=user.id;
   renderHeader(user);
   const toolbar = document.createElement('form');
-  toolbar.className = 'editor-tools';
-  toolbar.innerHTML = '<label>搜尋片段 <input name="q" aria-label="片段名稱或日期" placeholder="名稱或 YYYY-MM-DD" maxlength="120"></label><button class="btn" type="submit">搜尋</button>';
+  toolbar.className = 'editor-tools clips-toolbar';
+  toolbar.setAttribute('role', 'search');
+  toolbar.innerHTML = '<label class="clips-search-label"><span>搜尋片段</span><input class="form-input clips-search-input" name="q" type="search" aria-label="片段名稱或日期" placeholder="名稱或 YYYY-MM-DD" maxlength="120"></label><button class="btn btn--solid" type="submit">搜尋</button><a class="btn btn--ghost clips-new" href="/browse">建立新片段 ↗</a>';
   document.getElementById('clips-body').before(toolbar);
   toolbar.onsubmit = e => {e.preventDefault();clipSearch=toolbar.elements.q.value;load();};
-  const more = document.createElement('button'); more.id='clips-more'; more.className='btn'; more.textContent='載入更多';
+  const more = document.createElement('button'); more.id='clips-more'; more.className='btn'; more.type='button'; more.textContent='載入更多'; more.hidden=true;
   more.onclick = ()=>load(true); document.getElementById('clips-body').after(more);
   await load();
   // 深連結:/clips#report-<id>(旅程頁匯出完成的「產生檢舉資料」CTA 會帶著跳過來)
@@ -165,23 +183,26 @@ function layoutLabel(layout) {
 
 let clipsCache = [];   // 供檢舉對話框以 id 查找
 let clipSearch='', clipOffset=0, clipUserId=null;
+const CLIPS_PAGE_SIZE = 50;
 
 async function load(append=false) {
   const body = document.getElementById('clips-body');
   let clips;
   try {
-    if(!append)clipOffset=0;
+    if(!append) { clipOffset=0; document.getElementById('clips-more').hidden=true; }
     document.getElementById('clips-more').disabled=true;
-    clips = await apiFetch('/api/clips?limit=50&offset='+clipOffset+'&q='+encodeURIComponent(clipSearch));
+    clips = await apiFetch('/api/clips?limit='+(CLIPS_PAGE_SIZE+1)+'&offset='+clipOffset+'&q='+encodeURIComponent(clipSearch));
   } catch (e) {
-    body.innerHTML = `<div class="empty clips-empty"><h3>${tFb('clips.loadFail','載入片段失敗')}</h3><p>${escapeHtml(e.message)}</p></div>`;
+    if (append) showToast(tFb('clips.loadFail','載入片段失敗')+'：'+e.message,'error');
+    else { body.innerHTML = `<div class="empty clips-empty"><h3>${tFb('clips.loadFail','載入片段失敗')}</h3><p>${escapeHtml(e.message)}</p></div>`; document.getElementById('clips-count').textContent=''; }
     document.getElementById('clips-more').disabled=false;
     return;
   }
-  clipOffset += clips.length;
-  clipsCache = append ? [...clipsCache,...clips.filter(c=>!clipsCache.some(old=>old.id===c.id))] : clips || [];
+  const page = clips.slice(0, CLIPS_PAGE_SIZE);
+  clipOffset += page.length;
+  clipsCache = append ? [...clipsCache,...page.filter(c=>!clipsCache.some(old=>old.id===c.id))] : page;
   document.getElementById('clips-more').disabled=false;
-  document.getElementById('clips-more').hidden=clips.length<50;
+  document.getElementById('clips-more').hidden=clips.length<=CLIPS_PAGE_SIZE;
   render(clipsCache);
 }
 
@@ -199,8 +220,15 @@ function render(clips) {
       </div>`;
     return;
   }
-  countEl.textContent = tFb('clips.count', '共 {n} 個片段').replace('{n}', clips.length);
+  updateClipCount(clips.length);
   body.innerHTML = `<div class="clips-grid">${clips.map(cardHtml).join('')}</div>`;
+}
+
+function updateClipCount(count) {
+  const more = document.getElementById('clips-more');
+  const key = more && !more.hidden ? 'clips.loadedCount' : 'clips.count';
+  const fallback = key === 'clips.loadedCount' ? '已載入 {n} 個片段' : '共 {n} 個片段';
+  document.getElementById('clips-count').textContent = tFb(key, fallback).replace('{n}', count);
 }
 
 function cardHtml(c) {
@@ -229,6 +257,7 @@ function cardHtml(c) {
         <a class="clip-card-source" href="/trip/${encodeURIComponent(c.trip_id)}">${tFb('clips.source','來源')}：${escapeHtml(source)}</a>
         <div class="clip-card-actions">
           <a class="btn btn--solid btn--sm" href="/api/trip-clip-download/${c.id}" download>${tFb('clips.download','下載')}</a>
+          <a class="btn btn--ghost btn--sm clip-edit" href="/trip/${encodeURIComponent(c.trip_id)}#edit-clip-${c.id}" title="回到來源旅程重新匯出，不會修改這段影片">${tFb('clips.editAgain','以此區間再剪輯')}</a>
           <button class="btn btn--ghost btn--sm" type="button" onclick="openReport(${c.id})">⚑ ${tFb('clips.report','檢舉')}</button>
           <button class="btn btn--ghost btn--sm" type="button" onclick="renameClip(${c.id})">重新命名</button>
           <button class="btn btn--ghost btn--sm" type="button" onclick="delClip(${c.id})">${tFb('clips.delete','刪除')}</button>
@@ -510,7 +539,7 @@ function wireClipPlayer(frame) {
       const d = v.duration || 0;
       if (!d) return;
       const seconds = percent / 100 * d;
-      cur.textContent = fmtSecs(seconds);
+      cur.textContent = fmtSecs(seconds, d);
       v.currentTime = seconds;
     },
   });
@@ -525,11 +554,14 @@ function wireClipPlayer(frame) {
   v.addEventListener('pause', () => { setIcon(false); frame.classList.add('paused'); });
   v.addEventListener('ended', () => setIcon(false));
   v.addEventListener('seeked', () => seekControl.settled());
-  v.addEventListener('loadedmetadata', () => { tot.textContent = fmtSecs(v.duration || 0); });
+  v.addEventListener('loadedmetadata', () => {
+    tot.textContent = fmtSecs(v.duration || 0);
+    cur.textContent = fmtSecs(v.currentTime, v.duration);
+  });
   v.addEventListener('timeupdate', () => {
     const d = v.duration || 0;
     if (d) seekControl.render(v.currentTime / d * 100);
-    if (!seekControl.seeking) cur.textContent = fmtSecs(v.currentTime);
+    if (!seekControl.seeking) cur.textContent = fmtSecs(v.currentTime, d);
   });
   vol.addEventListener('input', () => { v.volume = parseFloat(vol.value); });
   q('full').addEventListener('click', () => {
@@ -549,7 +581,7 @@ async function delClip(id) {
     if (card) card.remove();
     // 更新計數 / 若清空則回到空狀態
     if (!clipsCache.length) { render([]); }
-    else { document.getElementById('clips-count').textContent = tFb('clips.count', '共 {n} 個片段').replace('{n}', clipsCache.length); }
+    else updateClipCount(clipsCache.length);
   } catch (e) {
     showToast(tFb('clips.deleteFail', '刪除失敗') + '：' + e.message, 'error');
   }

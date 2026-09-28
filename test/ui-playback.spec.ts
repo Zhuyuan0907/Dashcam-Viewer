@@ -12,6 +12,21 @@ test("fractional trip durations render as whole seconds", async ({ page, context
   );
 });
 
+test("long playback timecodes keep the hour field visible before one hour", async ({
+  page,
+  context,
+}) => {
+  await context.addCookies([
+    { name: "session_token", value: "ui-device-test-session", domain: "127.0.0.1", path: "/" },
+  ]);
+  await page.goto("/trip/" + encodeURIComponent(tripId));
+  const timecodes = await page.evaluate(() => {
+    const format = (window as any).fmtSecs;
+    return [format(3599), format(3600), format(3723), format(59, 3600)];
+  });
+  expect(timecodes).toEqual(["59:59", "1:00:00", "1:02:03", "0:00:59"]);
+});
+
 test("both cameras resume from the short paused preload Chromium provides", async ({
   page,
   context,

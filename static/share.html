@@ -245,12 +245,12 @@
       const zoom = { z: 1, x: 0, y: 0 };
 
       const setText = (id, value) => { document.getElementById(id).textContent = value; };
-      const fmtSecs = value => {
+      const fmtSecs = (value, totalDuration = 0) => {
         const sec = Math.max(0, Number(value) || 0);
         const hours = Math.floor(sec / 3600);
         const mins = Math.floor((sec % 3600) / 60);
         const seconds = Math.floor(sec % 60);
-        return hours
+        return hours || totalDuration >= 3600
           ? `${hours}:${String(mins).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
           : `${mins}:${String(seconds).padStart(2, '0')}`;
       };
@@ -425,6 +425,7 @@
           if (camera !== mainCamera) return;
           duration = Number.isFinite(video.duration) ? video.duration : 0;
           setText('t-tot', fmtSecs(duration));
+          setText('t-cur', fmtSecs(video.currentTime, duration));
         });
         video.addEventListener('seeked', () => {
           if (camera === mainCamera) seekControl.settled();
@@ -522,6 +523,7 @@
         if (Number.isFinite(currentDuration) && currentDuration > 0) {
           duration = currentDuration;
           setText('t-tot', fmtSecs(duration));
+          setText('t-cur', fmtSecs(mainVideo().currentTime, duration));
         }
         controlsWake();
       }
@@ -622,7 +624,7 @@
           if (primary && total) {
             const percentage = primary.currentTime / total * 100;
             seekControl.render(percentage);
-            if (!seekControl.seeking) setText('t-cur', fmtSecs(primary.currentTime));
+            if (!seekControl.seeking) setText('t-cur', fmtSecs(primary.currentTime, total));
             playback.update();
           }
         }
@@ -652,7 +654,7 @@
         const total = duration || mainVideo()?.duration || 0;
           if (!total) return;
           const seconds = percent / 100 * total;
-          setText('t-cur', fmtSecs(seconds));
+          setText('t-cur', fmtSecs(seconds, total));
           seekAll(seconds);
         },
       });

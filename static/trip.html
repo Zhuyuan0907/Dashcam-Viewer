@@ -610,7 +610,7 @@
 </div>
 
 <div id="toast-container"></div>
-<script src="/static/app.js?v=2.1.3"></script>
+<script src="/static/app.js?v=2.1.6"></script>
 <script src="/static/player-controls.js"></script>
 <script>
 const tt = t;   // 翻譯函式別名(本檔多處用 `const t = trip` 遮蔽全域 t)
@@ -706,6 +706,46 @@ function render() {
   // 一開始(暫停中)先顯示控制列;播放後由 controlsWake 接手自動淡出
   document.getElementById('stage').classList.add('show-ctrl');
   scheduleFit();   // 依實際警告/趟次量測,壓影片高度讓快捷鍵提示免捲動可見
+  openLinkedClipEditor();
+}
+
+/* /clips 的「以此區間再剪輯」:從來源旅程重新選取,不修改已匯出的檔案。 */
+async function openLinkedClipEditor() {
+  const match = /^#edit-clip-(\d+)$/.exec(location.hash);
+  if (!match || !canEdit) return;
+  try {
+    const [clip] = await apiFetch('/api/clips?clip_id=' + match[1]);
+    if (!clip || clip.trip_id !== tripId) throw new Error('找不到這個來源片段');
+    openEditPanel(true);
+    if (clip.source_version && clip.source_version !== `${trip.start_epoch}:${trip.duration_sec}`) {
+      showToast('來源旅程已變動，請重新確認剪輯範圍。', 'error');
+      return;
+    }
+    if (clip.layout === 'rear' && videos.rear) selectLayout('rear');
+    else if (clip.layout === 'pip' && videos.front && videos.rear) {
+      if (clip.main_cam && videos[clip.main_cam] && clip.main_cam !== mainCam) {
+        mainCam = clip.main_cam;
+        layoutCams();
+      }
+      selectLayout('pip');
+    } else if (videos.front) selectLayout('front');
+    if (clip.quality === 'fast' && clipLayout !== 'pip') selectQuality('fast');
+    const start = Number(clip.start_sec), end = Number(clip.end_sec);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || start >= selDur()) {
+      showToast('片段範圍已不適用於這趟旅程，請重新選取。', 'error');
+      return;
+    }
+    selStart = Math.max(0, start);
+    selEnd = Math.min(selDur(), end);
+    document.getElementById('clip-label').value = clip.label || '';
+    updateSelUI();
+    const main = videos[mainCam];
+    if (main?.readyState >= 1) seekAll(selStart);
+    else main?.addEventListener('loadedmetadata', () => seekAll(selStart), { once: true });
+    document.getElementById('draft-note').textContent = '已載入原片段區間；匯出會建立新片段。';
+  } catch (e) {
+    showToast('無法開啟片段剪輯：' + e.message, 'error');
+  }
 }
 
 /* ── 觀看台高度自適應 ─────────────────────────────────────────────────────────
@@ -790,6 +830,8 @@ function swapCams() {
     dur = md;
     const tot = document.getElementById('t-tot');
     if (tot) tot.textContent = fmtSecs(dur);
+    const cur = document.getElementById('t-cur');
+    if (cur) cur.textContent = fmtSecs(videos[mainCam].currentTime, dur);
   }
   if (editPanelOpen) {
     if (clipLayout !== 'pip') selectLayout(mainCam);
@@ -837,6 +879,7 @@ function initPlayer() {
   m0.addEventListener('loadedmetadata', () => {
     dur = m0.duration || 0;
     tTot.textContent = fmtSecs(dur);
+    tCur.textContent = fmtSecs(m0.currentTime, dur);
     applyStartPosition();
   });
 
@@ -922,7 +965,7 @@ function initPlayer() {
       const d = dur || main().duration || 0;
       if (!d) return;
       const nt = percent / 100 * d;
-      tCur.textContent = fmtSecs(nt);
+      tCur.textContent = fmtSecs(nt, d);
       seekAll(nt);
     },
   });
@@ -934,7 +977,7 @@ function initPlayer() {
     if (d) {
       const pct = m.currentTime / d * 100;
       seekControl.render(pct);
-      if (!seekControl.seeking) tCur.textContent = fmtSecs(m.currentTime);
+      if (!seekControl.seeking) tCur.textContent = fmtSecs(m.currentTime, d);
     }
     playback.update();
     if (!m.paused) saveResume(false);   // 續看記憶(內部 5 秒節流)
@@ -1133,7 +1176,10 @@ function snapshot() {
   c.toBlob(blob => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const ts = fmtSecs(v.currentTime).replace(':', 'm') + 's';
+    const parts = fmtSecs(v.currentTime).split(':');
+    const ts = parts.length === 3
+      ? `${parts[0]}h${parts[1]}m${parts[2]}s`
+      : `${parts[0]}m${parts[1]}s`;
     a.href = url;
     a.download = `${trip.date}_${mainCam}_${ts}.png`;
     a.click();
@@ -1529,9 +1575,9 @@ function updateSelUI() {
   sel.style.left = a + '%'; sel.style.width = Math.max(0, b - a) + '%';
   document.getElementById('clip-h-in').style.left = a + '%';
   document.getElementById('clip-h-out').style.left = b + '%';
-  document.getElementById('sel-in').textContent = fmtSecs(selStart);
-  document.getElementById('sel-out').textContent = fmtSecs(selEnd);
-  document.getElementById('sel-len').textContent = fmtSecs(Math.max(0, selEnd - selStart));
+  document.getElementById('sel-in').textContent = fmtSecs(selStart, d);
+  document.getElementById('sel-out').textContent = fmtSecs(selEnd, d);
+  document.getElementById('sel-len').textContent = fmtSecs(Math.max(0, selEnd - selStart), d);
   for (const [which, value] of [['start', selStart], ['end', selEnd]]) {
     const input = document.getElementById('sel-' + which + '-input');
     input.value = value.toFixed(3); input.max = String(selDur());

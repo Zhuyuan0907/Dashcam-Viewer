@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.6 — 2026-09-28
+
+- Style the clips search field with palette-aware form tokens and make its toolbar usable on narrow screens.
+- Link exported clips back to the source trip editor with their saved range and export options preselected, without changing the existing clip.
+- Show Load more only when an additional page exists; keep it hidden for a short result list.
+- Show hours in player and editor timecodes once the recording reaches one hour, including the current time, and keep trip, clip and shared playback consistent.
+
 ## 2.1.5 — 2026-09-27
 
 - Resume synchronized playback after both cameras buffer two seconds, and request another range when a paused browser stops preloading before that threshold.

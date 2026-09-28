@@ -27,10 +27,14 @@ function fmtTime(epoch) {
   });
 }
 
-function fmtSecs(s) {
-  if (!s || isNaN(s)) return '0:00';
-  const m = Math.floor(s / 60);
-  return `${m}:${String(Math.floor(s % 60)).padStart(2,'0')}`;
+function fmtSecs(s, totalDuration = 0) {
+  const sec = Math.max(0, Number(s) || 0);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const clock = `${m}:${String(Math.floor(sec % 60)).padStart(2,'0')}`;
+  return h || totalDuration >= 3600
+    ? `${h}:${String(m).padStart(2,'0')}:${String(Math.floor(sec % 60)).padStart(2,'0')}`
+    : clock;
 }
 
 /** HTML escape(用於把錯誤訊息等不可信字串安全插入 innerHTML)。 */
