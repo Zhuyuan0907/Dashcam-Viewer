@@ -47,6 +47,9 @@
       margin-top: clamp(18px, 3vh, 30px); font-size: clamp(15px, 2.2vw, 21px);
       color: var(--ink-2); max-width: 48ch; line-height: 1.65; text-wrap: pretty;
     }
+    @media (min-width: 900px) {
+      .hero-sub { margin-left: clamp(100px, 18vw, 260px); }
+    }
     .hero-cta { margin-top: clamp(26px, 4vh, 44px); }
     /* 無框文字 CTA + 箭頭(箭頭用 ::after,不受伺服器文字注入影響) */
     .hero-cta .btn { font-size: clamp(16px, 2vw, 19px); padding: 6px 0; gap: 9px; }
@@ -63,7 +66,8 @@
     @keyframes cue { 0%,100% { transform: translateY(0); opacity: .7; } 50% { transform: translateY(5px); opacity: 1; } }
 
     /* ── 第二屏:騎乘日曆 + 回味一下(放在一起) ───────────────────────── */
-    .combo { display: grid; grid-template-columns: 1fr; gap: clamp(28px, 4vw, 52px); align-items: start; }
+    .combo { display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(28px, 4vw, 52px); align-items: start; }
+    .combo > * { min-width: 0; }
     @media (min-width: 920px) {
       .combo { grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); }
     }
@@ -72,7 +76,7 @@
     .cal-total { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); font-weight: 500; margin-bottom: 16px; }
 
     /* GitHub 風騎乘日曆 */
-    .cal-scroll { overflow-x: auto; padding-bottom: 6px; }
+    .cal-scroll { max-width: 100%; overflow-x: auto; padding-bottom: 6px; }
     .cal-scroll::-webkit-scrollbar { height: 7px; }
     .cal-scroll::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; }
     .cal { display: inline-block; min-width: 100%; --cell: clamp(12px, 1.5vw, 17px); --gap: clamp(3px, .4vw, 4px); }
@@ -142,8 +146,25 @@
     { t: '路會結束，<br><em>故事不會</em>。', s: '雙鏡頭子母畫面、逐格回放,留住每一條走過的路。' },
     { t: '每一次出門，<br><em>都是一段故事</em>。', s: '自動依日期與趟次整理,回家就能重溫今天的路。' },
     { t: '按下回放，<br><em>重回那條路</em>。', s: '前後雙鏡頭無縫接軌,那個轉角、那道光,都還在。' },
+    { t: '路過的日常，<br><em>值得被記得</em>。', s: '當時沒留意的街景，回放時可能就是最想念的一幕。' },
+    { t: '天色會暗，<br><em>那天不會淡</em>。', s: '夕陽落下以後，那段回家的路仍在這裡等你。' },
+    { t: '向前走時，<br><em>也別忘了回望</em>。', s: '讓前後鏡頭留下當下，給未來的自己慢慢看。' },
+    { t: '那個轉角，<br><em>還有光</em>。', s: '停在喜歡的畫面，再走一遍當時的路。' },
+    { t: '把今天，<br><em>留給明天看</em>。', s: '平常的一趟出門，也能成為以後珍惜的記憶。' },
+    { t: '總有一天，<br><em>會想念今天</em>。', s: '路上的風、熟悉的街，現在都能好好保存。' },
+    { t: '平凡的路，<br><em>也會發光</em>。', s: '不必等到遠行，每天經過的地方也值得回放。' },
+    { t: '路還很長，<br><em>故事慢慢說</em>。', s: '把一段段短片接起來，讓旅程按自己的步調繼續。' },
+    { t: '每次回家，<br><em>都帶回一段路</em>。', s: '今天走過的地方，改天還能從頭細細看。' },
+    { t: '那些遠方，<br><em>還能再靠近</em>。', s: '打開旅程，重新看見當時眼前的風景。' },
+    { t: '一起看過的，<br><em>不只風景</em>。', s: '珍貴的片刻不必靠回想，畫面會替你留下。' },
+    { t: '路途有終點，<br><em>記憶沒有</em>。', s: '整理每一趟出發，想回去時隨時都能回放。' },
   ];
-  const pick = LINES[Math.floor(Math.random() * LINES.length)];
+  const storageKey = 'dashcam.hero.last';
+  let previous = null;
+  try { previous = sessionStorage.getItem(storageKey); } catch { /* 禁用儲存時仍顯示標語 */ }
+  const choices = LINES.filter(line => line.t !== previous);
+  const pick = choices[Math.floor(Math.random() * choices.length)];
+  try { sessionStorage.setItem(storageKey, pick.t); } catch { /* 禁用儲存時仍可隨機顯示 */ }
   const titleEl = document.getElementById('hero-title');
   const subEl = document.getElementById('hero-sub');
   if (titleEl) titleEl.innerHTML = pick.t;

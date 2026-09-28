@@ -406,8 +406,7 @@ export const STRINGS_DEFAULT: Record<string, string> = {
   // ── upload ──
   "upload.eyebrow": "上傳影片",
   "upload.title": "上傳行車記錄",
-  "upload.intro":
-    "建立上傳工作階段後，在工作階段內確認或更換來源記錄器，再把記憶卡檔案拖進瀏覽器（或用 SFTP），完成後按「確認並處理」。",
+  "upload.intro": "選好記錄器，再上傳影片。",
   "upload.howTitle": "怎麼上傳?",
   "upload.step1": "按「建立上傳工作階段」，再於工作階段內確認或更換這批影片的來源記錄器。",
   "upload.step2":

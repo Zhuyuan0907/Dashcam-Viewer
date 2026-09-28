@@ -86,6 +86,18 @@
       .trip-headings { gap: 2px 10px; }
       .trip-headings h1 { font-size: 19px; }
     }
+    @media (max-width: 560px) {
+      .trip-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto;
+        gap: 6px 10px; align-items: center; }
+      .trip-head .trip-back { grid-column: 1; grid-row: 1; align-self: start; }
+      .trip-headings { display: block; grid-column: 2 / -1; grid-row: 1; }
+      .trip-headings h1 { font-size: clamp(17px, 5vw, 20px); line-height: 1.2;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .trip-headings .trip-sub { display: block; margin-top: 3px; }
+      .trip-head .vis-wrap { grid-column: 2; grid-row: 2; justify-self: end; }
+      .trip-head .trip-edit { grid-column: 3; grid-row: 2; }
+      .trip-head .trip-del { grid-column: 4; grid-row: 2; }
+    }
 
     /* 控制列分組:左=播放控制、右=工具,中間 seek 撐開 → 不再全擠左邊 */
     .ctrl-group { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -312,6 +324,17 @@
       .info-strip .chip:last-child { border-bottom: 0; }
       .info-strip .chip:nth-last-child(2):nth-child(odd) { border-bottom: 0; }   /* 偶數總數時末列另一格也去底線 */
       .info-strip .chip:last-child:nth-child(odd) { grid-column: 1 / -1; border-right: 0; }  /* 奇數總數末格跨滿一列 */
+    }
+    @media (max-width: 380px) {
+      .info-strip { display: block; }
+      .info-strip .chip:nth-child(n) { display: flex; justify-content: space-between;
+        align-items: center; gap: 8px; padding: 8px 12px; border-right: 0;
+        border-bottom: 1px solid var(--line); }
+      .info-strip .chip:nth-last-child(2):nth-child(n) { border-bottom: 1px solid var(--line); }
+      .info-strip .chip:last-child:nth-child(n) { border-bottom: 0; }
+      .info-strip .chip b { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap; }
+      .info-strip .chip span { white-space: nowrap; }
     }
   </style>
 <script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css?v=2.1.2"><script src="/static/timeline.js"></script><script src="/static/playback-sync.js?v=2.1.5"></script></head>

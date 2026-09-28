@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.7 — 2026-09-28
+
+- Keep the home calendar inside its own horizontal scroller on narrow phones instead of widening the whole page.
+- Reflow the trip heading and metadata for narrow screens so dates, times and device names remain readable.
+- Fit exported clip cards within phone widths and keep administrator table actions on one line.
+- Shorten upload guidance and place supported filename formats in an expandable section.
+- Add browser regression coverage for 320px layouts and text wrapping.
+- Add twelve short, more personal home slogans, avoid showing the same one after a reload, and offset their supporting line on desktop.
+
 ## 2.1.6 — 2026-09-28
 
 - Style the clips search field with palette-aware form tokens and make its toolbar usable on narrow screens.

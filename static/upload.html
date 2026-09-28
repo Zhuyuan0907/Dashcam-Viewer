@@ -32,6 +32,21 @@
                    font-family:var(--font-mono); letter-spacing:.06em; text-transform:uppercase; }
     .status-active { background:color-mix(in oklch, var(--ok) 16%, var(--surface)); color:var(--ok); }
     .status-processing { background:var(--accent-soft); color:var(--accent); }
+    .upload-guide { padding:18px 20px; margin-bottom:18px; }
+    .upload-guide .info-card-title { margin-bottom:10px; }
+    .upload-steps { margin:0 0 12px; padding-left:22px; color:var(--ink-2);
+      font-size:13.5px; line-height:1.65; }
+    .upload-steps li + li { margin-top:7px; }
+    .upload-format-details { padding-top:11px; border-top:1px solid var(--line); }
+    .upload-format-details summary { width:fit-content; cursor:pointer; color:var(--accent);
+      font-size:13px; font-weight:600; }
+    .upload-format-list { display:grid; gap:11px; list-style:none; margin:12px 0;
+      padding:0; color:var(--ink-2); font-size:13px; line-height:1.55; }
+    .upload-format-list li { min-width:0; }
+    .upload-format-list strong { display:block; margin-bottom:4px; color:var(--ink); }
+    .upload-format-list code { display:block; max-width:100%; overflow-x:auto;
+      white-space:nowrap; padding:6px 8px; margin:3px 0 5px; font-size:11.5px; }
+    .upload-format-details p { margin:0; color:var(--ink-3); font-size:12.5px; line-height:1.6; }
 
     /* ── 瀏覽器直傳:拖放區 ─────────────────────────────────────────────────── */
     .drop-zone { border:2px dashed var(--line-2); border-radius:var(--radius); padding:26px 18px;
@@ -127,34 +142,27 @@
     </div>
     <h1 class="page-title" style="margin-bottom:6px;" data-i18n="upload.title">上傳行車記錄</h1>
     <p class="page-sub" id="upload-intro" style="margin-bottom:24px;" data-i18n="upload.intro">
-      建立上傳工作階段後，在工作階段內確認或更換來源記錄器，再把記憶卡檔案拖進瀏覽器（或用 SFTP），完成後按「確認並處理」。
+      選好記錄器，再上傳影片。
     </p>
     </div>
 
     <!-- 說明卡(建立工作階段後自動隱藏,讓資訊上移、不需捲動) -->
-    <div class="info-card" id="how-card" style="padding:18px 22px;margin-bottom:18px;">
-      <div class="info-card-title" style="margin-bottom:10px;">怎麼上傳?</div>
-
-      <p style="margin:0 0 14px;color:var(--ink-2);font-size:14px;line-height:1.8;">
-        本系統支援 <strong>MiVue™ MP20</strong> 與 <strong>Polaroid MS279WG</strong> 前後雙鏡頭行車記錄器。記錄器會把行車過程切成短片,
-        本站會依「日期 / 趟次」自動整理、用 ffmpeg <strong>無損合併</strong>成完整旅程供瀏覽。
-      </p>
-
-      <div style="font-weight:600;font-size:13px;color:var(--ink-1);margin-bottom:6px;">檔案格式</div>
-      <ul style="margin:0 0 14px;padding-left:20px;color:var(--ink-2);font-size:13.5px;line-height:1.8;">
-        <li><strong>MiVue MP20</strong>:<code>(FILE|EMER)YYMMDD-HHMMSS-序號(F|R).mp4</code>；<code>F</code>=前鏡頭、<code>R</code>=後鏡頭。若有同名 <code>.NMEA</code> 請一併上傳。</li>
-        <li><strong>Polaroid MS279WG</strong>:<code>YYYY_MMDD_HHMMSS_序號(A|B).TS</code>；<code>A</code>=前鏡頭、<code>B</code>=後鏡頭。請保留原始檔名，系統會容許前後檔時間相差 1 秒並自動配對。</li>
-        <li><strong>通用格式</strong>：選「其他 / 自訂」記錄器，使用 <code>YYYYMMDD_HHMMSS_F.mp4</code> 或 <code>YYYYMMDD_HHMMSS_R_序號.mov</code>（亦接受 TS）。日期須為拍攝時間。支援只上傳後鏡頭。</li>
-        <li>可直接把記憶卡裡的原始片段整批拖入(結構不拘),或上傳已整理好的 <code>YYYY-MM-DD/</code> 旅程資料夾。</li>
-      </ul>
-
-      <div style="font-weight:600;font-size:13px;color:var(--ink-1);margin-bottom:6px;">上傳流程</div>
-      <ol style="margin:0;padding-left:20px;color:var(--ink-2);font-size:13.5px;line-height:1.8;">
-        <li>按<strong>「建立上傳工作階段」</strong>，再於工作階段內確認或更換這批影片的來源記錄器。</li>
-        <li>把檔案或整個資料夾<strong>直接拖進網頁的上傳區</strong>(或點「選擇檔案」)。習慣 SFTP 的人也可以展開「進階」用 FileZilla / WinSCP 傳。</li>
-        <li>傳完按該工作階段的<strong>「確認並處理」</strong>。系統會自動依停留間隔切趟並合併前後鏡頭；MiVue 有 NMEA 時才會分析 G-force。</li>
-        <li>處理完成後即可到<strong>「瀏覽旅程」</strong>觀看。閒置過久(未上傳)資料夾會自動清除失效。</li>
+    <div class="info-card upload-guide" id="how-card">
+      <div class="info-card-title" data-i18n="upload.howTitle">怎麼上傳?</div>
+      <ol class="upload-steps">
+        <li>建立工作階段，確認來源記錄器。</li>
+        <li>拖入原始影片或資料夾，也可使用 SFTP。</li>
+        <li>傳完按「確認並處理」，再到「瀏覽旅程」觀看。</li>
       </ol>
+      <details class="upload-format-details">
+        <summary>支援格式與整理方式</summary>
+        <ul class="upload-format-list">
+          <li><strong>MiVue MP20</strong><code>(FILE|EMER)YYMMDD-HHMMSS-序號(F|R).mp4</code>F 為前鏡頭、R 為後鏡頭；有同名 .NMEA 檔時請一併上傳。</li>
+          <li><strong>Polaroid MS279WG</strong><code>YYYY_MMDD_HHMMSS_序號(A|B).TS</code>A 為前鏡頭、B 為後鏡頭；保留原始檔名，前後檔相差 1 秒也可自動配對。</li>
+          <li><strong>其他記錄器</strong><code>YYYYMMDD_HHMMSS_F.mp4 / YYYYMMDD_HHMMSS_R_序號.mov</code>也接受 TS；日期須為拍攝時間，支援僅後鏡頭。</li>
+        </ul>
+        <p>可整批上傳記憶卡原始片段（資料夾結構不拘），或已整理的 YYYY-MM-DD/ 旅程資料夾。系統會依停留間隔切趟，再按日期與趟次無損合併影片；MiVue 有 NMEA 時才分析 G-force。閒置過久、尚未上傳的工作階段會自動清除。</p>
+      </details>
     </div>
 
     <div class="create-row" id="create-row">
