@@ -8,6 +8,7 @@
 - Shorten upload guidance and place supported filename formats in an expandable section.
 - Add browser regression coverage for 320px layouts and text wrapping.
 - Add twelve short, more personal home slogans, avoid showing the same one after a reload, and offset their supporting line on desktop.
+- Add a Browse date gallery with a blurred gray backdrop, animated horizontal depth cards, trackpad/drag/keyboard navigation, and selectable trip previews.
 
 ## 2.1.6 — 2026-09-28
 

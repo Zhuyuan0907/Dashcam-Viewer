@@ -22,11 +22,10 @@
     .daterail::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; }
     .daterail::-webkit-scrollbar-track { background: transparent; }
 
-    /* 觸發鈕(像下拉選單,顯示目前選取日期);桌機隱藏,手機才出現 */
+    /* 手機入口顯示目前日期，點選後開啟時間回廊。 */
     .daterail-trigger { display: none; }
 
-    /* 手機:日期軌改成「收合下拉」。面板就地展開(把當日內容往下推),不用絕對定位 →
-       版面不會跑掉;清單一律垂直,日期再多也只是面板內上下捲。選完即收。 */
+    /* 手機只顯示入口；日期與影片在時間回廊中選擇。 */
     @media (max-width: 760px) {
       .browse-grid { grid-template-columns: 1fr; gap: 14px; }
       .daterail { position: static; max-height: none; overflow: visible; padding-right: 0; }
@@ -40,28 +39,22 @@
         -webkit-tap-highlight-color: transparent; transition: border-color .15s ease, background-color .15s ease;
       }
       .daterail-trigger:active { transform: scale(.995); }
-      .daterail.open .daterail-trigger { border-color: var(--accent); }
+      .daterail-trigger:hover { border-color: var(--accent); }
+      .daterail-trigger:disabled { opacity: .55; cursor: wait; }
       .daterail-trigger-ico { flex: none; color: var(--accent); }
       .daterail-trigger-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .daterail-trigger-chev { flex: none; color: var(--ink-3); transition: transform .22s ease; }
-      .daterail.open .daterail-trigger-chev { transform: rotate(180deg); }
-
-      /* 面板:收合時隱藏;展開就地下推、自身垂直捲動 */
+      .daterail-trigger-chev { flex: none; color: var(--ink-3); }
       .daterail-panel { display: none; }
-      .daterail.open .daterail-panel {
-        display: block; margin-top: 8px; padding: 8px; box-sizing: border-box;
-        background: var(--surface); border: 1px solid var(--line);
-        border-radius: var(--radius); box-shadow: var(--shadow-md);
-        max-height: min(60vh, 440px); overflow-y: auto;
-        overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-        animation: drail-pop .18s cubic-bezier(.23,1,.32,1);
-      }
-      .daterail-panel .daterail-title { display: none; }
-      .drow { padding: 12px 13px; }
     }
-    @keyframes drail-pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
     .daterail-title { font-size: 12px; font-weight: 600; letter-spacing: .04em;
-      text-transform: uppercase; color: var(--ink-3); padding: 0 6px 12px; }
+      text-transform: uppercase; color: var(--ink-3); padding: 0 6px 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .tm-launch { border: 0; background: var(--accent-soft); color: var(--accent);
+      border-radius: 99px; padding: 6px 10px; font: inherit; font-size: 11px;
+      font-weight: 700; white-space: nowrap; cursor: pointer;
+      transition: background-color .18s ease, transform .18s ease; }
+    .tm-launch:hover { background: color-mix(in oklch, var(--accent) 20%, var(--surface)); transform: translateX(2px); }
+    .tm-launch:disabled { opacity: .55; cursor: wait; transform: none; }
     .daterail ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 
     .drow { display: block; padding: 11px 13px; border-radius: var(--radius-sm);
@@ -147,6 +140,89 @@
       #trip-content::-webkit-scrollbar { width: 7px; }
       #trip-content::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; }
     }
+
+    /* 日期時間回廊：灰色毛玻璃場景、前後景卡片與可直接開啟的當日影片。 */
+    body.tm-open { overflow: hidden; }
+    .time-machine[hidden] { display: none; }
+    .time-machine { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center;
+      padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+        max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+      box-sizing: border-box; background: rgba(30, 37, 40, .53); backdrop-filter: blur(22px) grayscale(.75);
+      -webkit-backdrop-filter: blur(22px) grayscale(.75); }
+    .tm-shell { position: relative; display: flex; flex-direction: column; width: min(100%, 1000px);
+      max-height: min(94dvh, 880px); overflow: hidden; border: 1px solid rgba(255,255,255,.24);
+      border-radius: 24px; background: linear-gradient(145deg, rgba(237,241,239,.96), rgba(210,219,217,.94));
+      box-shadow: 0 28px 90px rgba(0,0,0,.3); color: #203033; }
+    .tm-header { display: flex; align-items: start; justify-content: space-between; gap: 16px;
+      padding: 20px 24px 0; }
+    .tm-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .13em; color: #54716e; }
+    .tm-header h2 { margin: 4px 0 0; font-size: clamp(22px, 3vw, 30px); line-height: 1.2; }
+    .tm-hint { margin: 6px 0 0; font-size: 12px; color: #5f7070; }
+    .tm-close { display: grid; place-items: center; flex: none; width: 36px; height: 36px;
+      border: 1px solid rgba(40,60,60,.17); border-radius: 50%; background: rgba(255,255,255,.7);
+      color: #304544; font-size: 21px; cursor: pointer; }
+    .tm-close:hover { background: #fff; }
+    .tm-stage { position: relative; flex: none; height: clamp(190px, 28vh, 285px);
+      margin: 6px 0 0; perspective: 900px; overflow: hidden; touch-action: pan-y; cursor: grab; }
+    .tm-stage.dragging { cursor: grabbing; }
+    .tm-stage::before { content: ''; position: absolute; width: min(65%, 600px); height: 82%;
+      left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%;
+      background: radial-gradient(ellipse, rgba(255,255,255,.68), transparent 70%); pointer-events: none; }
+    .tm-card { position: absolute; left: 50%; top: 50%; width: clamp(210px, 33vw, 350px);
+      height: clamp(145px, 21vh, 205px); display: flex; flex-direction: column; align-items: start;
+      justify-content: space-between; padding: 19px 22px; box-sizing: border-box;
+      border: 1px solid rgba(255,255,255,.58); border-radius: 20px; text-align: left;
+      background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(225,235,232,.96));
+      box-shadow: 0 18px 42px rgba(32,47,46,.18); color: #203033; cursor: pointer;
+      backface-visibility: hidden; transform-style: preserve-3d; will-change: transform, opacity; }
+    .tm-stage.settling .tm-card { transition: transform .44s cubic-bezier(.18,.78,.2,1),
+      opacity .44s ease, filter .44s ease; }
+    .tm-card[aria-current="date"] { border-color: rgba(24,119,107,.55);
+      box-shadow: 0 24px 52px rgba(20,65,61,.24), inset 0 0 0 1px rgba(24,119,107,.2); }
+    .tm-card:focus-visible, .tm-close:focus-visible, .tm-footer button:focus-visible,
+    .tm-range:focus-visible { outline: 3px solid #137765; outline-offset: 3px; }
+    .tm-card-month { font-size: 12px; font-weight: 700; color: #5d7874; letter-spacing: .08em; }
+    .tm-card-day { font-family: var(--font-display); font-size: clamp(58px, 7vw, 76px);
+      font-weight: 800; line-height: .9; letter-spacing: -.06em; }
+    .tm-card-foot { display: flex; justify-content: space-between; width: 100%; gap: 8px;
+      font-size: 12px; font-weight: 600; color: #526a66; }
+    .tm-range-row { display: flex; align-items: center; gap: 12px; margin: -2px 24px 13px;
+      font-size: 11px; color: #60716f; }
+    .tm-range-row span { flex: none; }
+    .tm-range { flex: 1; min-width: 0; accent-color: #18776b; cursor: pointer; }
+    .tm-preview { min-height: 0; display: flex; flex-direction: column; padding: 17px 24px 0;
+      border-top: 1px solid rgba(30,60,55,.15); background: rgba(255,255,255,.35); }
+    .tm-preview-head { display: flex; align-items: baseline; justify-content: space-between;
+      gap: 12px; margin-bottom: 13px; }
+    .tm-preview-head h3 { margin: 0; font-size: 18px; }
+    .tm-preview-head span { font-size: 12px; color: #61716f; white-space: nowrap; }
+    .tm-preview-body { min-height: 90px; max-height: min(34dvh, 300px); overflow: auto;
+      overscroll-behavior: contain; padding: 0 3px 8px 0; }
+    .tm-preview-body .trips-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+    .tm-preview-body .trip-card { background: rgba(255,255,255,.92); }
+    .tm-empty { padding: 24px 0; color: #60716f; font-size: 13px; }
+    .tm-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+      padding: 14px 24px 18px; }
+    .tm-footer button { border: 1px solid rgba(30,60,55,.2); border-radius: 99px;
+      padding: 9px 16px; background: rgba(255,255,255,.75); color: #23413e;
+      font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .tm-footer .tm-open-day { background: #18776b; border-color: #18776b; color: white; }
+    .tm-footer button:hover { filter: brightness(1.06); }
+    @media (max-width: 760px) {
+      .tm-shell { max-height: 96dvh; border-radius: 18px; }
+      .tm-header { padding: 16px 17px 0; }
+      .tm-stage { height: clamp(180px, 27dvh, 230px); }
+      .tm-card { width: min(69vw, 270px); height: 150px; padding: 15px 17px; }
+      .tm-card-day { font-size: 58px; }
+      .tm-range-row { margin: -3px 17px 10px; }
+      .tm-preview { padding: 13px 17px 0; }
+      .tm-preview-body { max-height: min(32dvh, 250px); }
+      .tm-preview-body .trips-grid { grid-template-columns: minmax(0, 1fr); }
+      .tm-footer { padding: 11px 17px 14px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .tm-stage.settling .tm-card { transition: none; }
+    }
   </style>
 <script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css?v=2.1.2"></head>
 <body>
@@ -183,16 +259,17 @@
 
     <div class="browse-grid rise rise-3">
       <aside class="daterail" id="daterail">
-        <button class="daterail-trigger" id="daterail-trigger" type="button" aria-expanded="false"
-                aria-controls="daterail-panel" onclick="toggleDaterail(event)">
+        <button class="daterail-trigger" id="daterail-trigger" type="button" disabled
+                aria-haspopup="dialog" aria-controls="time-machine" onclick="openTimeMachine()">
           <svg class="daterail-trigger-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>
           <span class="daterail-trigger-label" id="daterail-current" data-i18n="common.loading">載入中…</span>
           <svg class="daterail-trigger-chev" width="18" height="18" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
         </button>
         <div class="daterail-panel" id="daterail-panel">
-          <div class="daterail-title" data-i18n="browse.dateHeading">日期</div>
+          <div class="daterail-title"><span data-i18n="browse.dateHeading">日期</span>
+            <button class="tm-launch" type="button" disabled aria-haspopup="dialog" aria-controls="time-machine" onclick="openTimeMachine()">時間回廊 ↗</button></div>
           <ul id="date-list">
             <li><div class="loading-row" style="padding:14px;"><div class="spinner"></div></div></li>
           </ul>
@@ -203,6 +280,22 @@
       </main>
     </div>
 
+  </div>
+</div>
+
+<div class="time-machine" id="time-machine" role="dialog" aria-modal="true" aria-labelledby="tm-title" hidden>
+  <div class="tm-shell">
+    <div class="tm-header">
+      <div><span class="tm-eyebrow">旅程時間回廊</span><h2 id="tm-title">回到哪一天？</h2>
+        <p class="tm-hint">觸控板滑動、拖曳卡片，或使用方向鍵</p></div>
+      <button class="tm-close" id="tm-close" type="button" aria-label="關閉日期瀏覽" onclick="closeTimeMachine()">×</button>
+    </div>
+    <div class="tm-stage" id="tm-stage" tabindex="0" aria-label="左右滑動選擇日期"></div>
+    <div class="tm-range-row"><span>最近</span><input class="tm-range" id="tm-range" type="range" min="0" max="0" value="0" aria-label="日期位置"><span>最早</span></div>
+    <div class="tm-preview"><div class="tm-preview-head"><h3 id="tm-preview-date">日期</h3><span id="tm-preview-count"></span></div>
+      <div class="tm-preview-body" id="tm-preview-body" aria-live="polite"></div></div>
+    <div class="tm-footer"><button type="button" onclick="closeTimeMachine()">返回</button>
+      <button type="button" class="tm-open-day" id="tm-open-day">查看此日旅程</button></div>
   </div>
 </div>
 
@@ -325,33 +418,201 @@ function dateShortLabel(date) {
     { month: 'numeric', day: 'numeric', weekday: 'short', timeZone: 'UTC' });
 }
 
-/* ── 手機:日期下拉浮層開合 ──────────────────────────────────────────────────── */
-function toggleDaterail(e) {
-  if (e) e.stopPropagation();
-  const rail = document.getElementById('daterail');
-  const open = rail.classList.toggle('open');
-  document.getElementById('daterail-trigger').setAttribute('aria-expanded', open ? 'true' : 'false');
+/* ── 日期時間回廊：拖曳 / 觸控板滾動會逐格滑動，放手後吸附日期。 ───────────── */
+const tmDialog = document.getElementById('time-machine');
+const tmStage = document.getElementById('tm-stage');
+const tmRange = document.getElementById('tm-range');
+let tmPosition = 0;
+let tmIndex = 0;
+let tmDrag = null;
+let tmWheelTimer = null;
+let tmPreviewSeq = 0;
+let tmPreviousFocus = null;
+let tmSuppressClick = false;
+const tmPreviewCache = new Map();
+
+function tmClamp(index) { return Math.max(0, Math.min(allDates.length - 1, index)); }
+function tmLongDate(date) {
+  return new Date(date).toLocaleDateString(cfgLocale(),
+    { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', timeZone: 'UTC' });
 }
-function closeDaterail() {
-  const rail = document.getElementById('daterail');
-  if (!rail.classList.contains('open')) return;
-  rail.classList.remove('open');
-  document.getElementById('daterail-trigger').setAttribute('aria-expanded', 'false');
+function setTimeMachineReady(ready) {
+  document.querySelectorAll('#daterail-trigger, .tm-launch').forEach(button => { button.disabled = !ready; });
 }
-// 點浮層外側 / 按 Esc 收合
-document.addEventListener('click', (e) => {
-  const rail = document.getElementById('daterail');
-  if (rail && rail.classList.contains('open') && !rail.contains(e.target)) closeDaterail();
+function renderTimeMachine(animate = false) {
+  tmStage.classList.toggle('settling', animate);
+  const gap = Math.min(tmStage.clientWidth * (innerWidth <= 760 ? .55 : .32), 290);
+  const focus = Math.round(tmPosition);
+  tmStage.querySelectorAll('.tm-card').forEach((card, index) => {
+    const distance = index - tmPosition;
+    const depth = Math.abs(distance);
+    const visible = depth < 3.5;
+    card.style.visibility = visible ? 'visible' : 'hidden';
+    card.style.opacity = visible ? String(Math.max(.18, 1 - depth * .22)) : '0';
+    card.style.filter = `blur(${Math.min(depth * .7, 2)}px)`;
+    card.style.zIndex = String(100 - Math.round(depth * 10));
+    card.style.transform = `translate(-50%, -50%) translate3d(${distance * gap}px, 0, ${-depth * 90}px) rotateY(${-distance * 7}deg) scale(${Math.max(.6, 1 - depth * .12)})`;
+    card.style.pointerEvents = depth < 2.5 ? 'auto' : 'none';
+    card.tabIndex = index === focus ? 0 : -1;
+    card.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    if (index === focus) card.setAttribute('aria-current', 'date');
+    else card.removeAttribute('aria-current');
+  });
+  tmRange.value = String(focus);
+}
+async function loadTimeMachinePreview(index) {
+  const seq = ++tmPreviewSeq;
+  const date = allDates[index]?.date;
+  if (!date || tmDialog.hidden) return;
+  document.getElementById('tm-preview-date').textContent = innerWidth <= 760
+    ? new Date(date).toLocaleDateString(cfgLocale(),
+        { year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short', timeZone: 'UTC' })
+    : tmLongDate(date);
+  const summary = allDates[index];
+  document.getElementById('tm-preview-count').textContent =
+    `${summary.trip_count} 趟 · ${fmtDuration(summary.total_sec || 0)}`;
+  const body = document.getElementById('tm-preview-body');
+  body.innerHTML = `<div class="loading-row"><div class="spinner"></div>${t('common.loading')}</div>`;
+  try {
+    const key = `${currentOwner}:${date}`;
+    let data = tmPreviewCache.get(key);
+    if (!data) {
+      data = await apiFetch(`/api/trips?date=${encodeURIComponent(date)}&owner=${encodeURIComponent(currentOwner)}&limit=12&offset=0`);
+      tmPreviewCache.set(key, data);
+    }
+    if (seq !== tmPreviewSeq || tmDialog.hidden) return;
+    body.innerHTML = data.trips.length
+      ? `<div class="trips-grid">${data.trips.slice(0, 6).map(renderTripCard).join('')}</div>`
+      : `<div class="tm-empty">${t('browse.noTripThisDay')}</div>`;
+    body.scrollTop = 0;
+  } catch (error) {
+    if (seq === tmPreviewSeq && !tmDialog.hidden)
+      body.innerHTML = `<div class="tm-empty">${t('common.loadFail')}：${escapeHtml(error.message)}</div>`;
+  }
+}
+function settleTimeMachine(index, animate = true) {
+  if (!allDates.length) return;
+  const next = tmClamp(Math.round(index));
+  const changed = next !== tmIndex;
+  tmPosition = next;
+  tmIndex = next;
+  renderTimeMachine(animate);
+  if (changed) loadTimeMachinePreview(next);
+}
+function openTimeMachine() {
+  if (!allDates.length || !tmDialog.hidden) return;
+  tmPreviousFocus = document.activeElement;
+  tmDialog.hidden = false;
+  document.body.classList.add('tm-open');
+  document.querySelector('header.hdr').inert = true;
+  document.querySelector('.page-body').inert = true;
+  const selected = decodeURIComponent(location.hash.slice(1));
+  tmIndex = Math.max(0, allDates.findIndex(d => d.date === selected));
+  tmPosition = tmIndex;
+  tmStage.innerHTML = allDates.map((entry, index) => {
+    const date = new Date(entry.date);
+    const month = date.toLocaleDateString(cfgLocale(), { year: 'numeric', month: 'long', timeZone: 'UTC' });
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const weekday = date.toLocaleDateString(cfgLocale(), { weekday: 'long', timeZone: 'UTC' });
+    return `<button type="button" class="tm-card" data-index="${index}" aria-label="${escapeHtml(tmLongDate(entry.date))}，${entry.trip_count} 趟">
+      <span class="tm-card-month">${escapeHtml(month)}</span><span class="tm-card-day">${day}</span>
+      <span class="tm-card-foot"><span>${escapeHtml(weekday)}</span><span>${entry.trip_count} 趟 · ${fmtDuration(entry.total_sec || 0)}</span></span></button>`;
+  }).join('');
+  tmRange.max = String(Math.max(0, allDates.length - 1));
+  tmRange.disabled = allDates.length < 2;
+  renderTimeMachine();
+  loadTimeMachinePreview(tmIndex);
+  tmStage.focus();
+}
+function closeTimeMachine() {
+  if (tmDialog.hidden) return;
+  clearTimeout(tmWheelTimer);
+  ++tmPreviewSeq;
+  tmDialog.hidden = true;
+  document.body.classList.remove('tm-open');
+  document.querySelector('header.hdr').inert = false;
+  document.querySelector('.page-body').inert = false;
+  tmPreviousFocus?.focus();
+}
+
+tmStage.addEventListener('wheel', event => {
+  if (tmDialog.hidden || allDates.length < 2) return;
+  event.preventDefault();
+  clearTimeout(tmWheelTimer);
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  tmPosition = tmClamp(tmPosition + Math.max(-1.2, Math.min(1.2, delta / 210)));
+  renderTimeMachine();
+  tmWheelTimer = setTimeout(() => settleTimeMachine(tmPosition), 150);
+}, { passive: false });
+tmStage.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || allDates.length < 2) return;
+  clearTimeout(tmWheelTimer);
+  tmDrag = { id: event.pointerId, x: event.clientX, start: tmPosition, moved: false };
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDaterail(); });
+tmStage.addEventListener('pointermove', event => {
+  if (!tmDrag || event.pointerId !== tmDrag.id) return;
+  const distance = event.clientX - tmDrag.x;
+  if (!tmDrag.moved && Math.abs(distance) < 5) return;
+  if (!tmDrag.moved) {
+    tmDrag.moved = true;
+    tmStage.setPointerCapture(event.pointerId);
+    tmStage.classList.add('dragging');
+  }
+  tmPosition = tmClamp(tmDrag.start - distance / Math.min(tmStage.clientWidth * .55, 290));
+  renderTimeMachine();
+});
+function endTimeMachineDrag(event) {
+  if (!tmDrag || event.pointerId !== tmDrag.id) return;
+  if (tmDrag.moved) {
+    tmSuppressClick = true;
+    setTimeout(() => { tmSuppressClick = false; }, 120);
+    settleTimeMachine(tmPosition);
+  }
+  tmDrag = null;
+  tmStage.classList.remove('dragging');
+  if (tmStage.hasPointerCapture(event.pointerId)) tmStage.releasePointerCapture(event.pointerId);
+}
+tmStage.addEventListener('pointerup', endTimeMachineDrag);
+tmStage.addEventListener('pointercancel', endTimeMachineDrag);
+tmStage.addEventListener('click', event => {
+  if (tmSuppressClick) { event.preventDefault(); tmSuppressClick = false; return; }
+  const card = event.target.closest('.tm-card');
+  if (card) settleTimeMachine(Number(card.dataset.index));
+});
+tmStage.addEventListener('keydown', event => {
+  const move = { ArrowLeft: -1, ArrowRight: 1, Home: -Infinity, End: Infinity }[event.key];
+  if (move === undefined) return;
+  event.preventDefault();
+  settleTimeMachine(Number.isFinite(move) ? tmIndex + move : move < 0 ? 0 : allDates.length - 1);
+});
+tmRange.addEventListener('input', () => { tmPosition = Number(tmRange.value); renderTimeMachine(); });
+tmRange.addEventListener('change', () => settleTimeMachine(Number(tmRange.value)));
+document.getElementById('tm-open-day').addEventListener('click', () => {
+  const date = allDates[tmIndex]?.date;
+  if (date) selectDate(date);
+  closeTimeMachine();
+});
+tmDialog.addEventListener('click', event => { if (event.target === tmDialog) closeTimeMachine(); });
+tmDialog.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); closeTimeMachine(); return; }
+  if (event.key !== 'Tab') return;
+  const focusable = [...tmDialog.querySelectorAll('button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), [tabindex="0"]')]
+    .filter(element => element.getClientRects().length);
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
 
 async function loadDates() {
   const list = document.getElementById('date-list');
   const grid = document.querySelector('.browse-grid');
+  setTimeMachineReady(false);
   try {
     allDates = await apiFetch('/api/trips/dates?owner=' + encodeURIComponent(currentOwner));
+    tmPreviewCache.clear();
 
     if (!allDates.length) { renderEmpty(); return; }
+    setTimeMachineReady(true);
     grid.classList.remove('is-empty');
     document.getElementById('browse-wrap').classList.remove('is-empty-page');
     // 正常檢視:依可選對象多寡顯示頂部選單。
@@ -393,10 +654,11 @@ async function selectDate(date, offset=0) {
   location.hash = date;
   document.querySelectorAll('#date-list .drow').forEach(a =>
     a.classList.toggle('active', a.dataset.date === date));
-  // 手機下拉:更新觸發鈕顯示的目前日期,並收合浮層
+  // 手機入口顯示目前日期。
   const cur = document.getElementById('daterail-current');
   if (cur) { cur.textContent = dateShortLabel(date); cur.removeAttribute('data-i18n'); }
-  closeDaterail();
+  document.getElementById('daterail-trigger').setAttribute('aria-label',
+    `${dateShortLabel(date)}，開啟時間回廊選擇日期`);
 
   const content = document.getElementById('trip-content');
   content.innerHTML = `<div class="loading-row"><div class="spinner"></div>${t('common.loading')}</div>`;
