@@ -21,7 +21,7 @@ test.beforeEach(async ({ context, page }) => {
   );
 });
 
-test("desktop time corridor stacks trip windows and follows a trackpad gesture", async ({
+test("desktop date gallery previews real trips and follows a trackpad gesture", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -29,20 +29,11 @@ test("desktop time corridor stacks trip windows and follows a trackpad gesture",
   await expect(page.locator("#date-list .drow")).toHaveCount(8);
   await page.locator(".tm-launch").click();
   await expect(page.locator("#time-machine")).toBeVisible();
-  await expect(page.locator('.tm-card[data-index="0"] .trip-card')).toHaveCount(2);
-  const front = await page.locator('.tm-card[data-index="0"]').boundingBox();
-  const behind = await page.locator('.tm-card[data-index="1"]').boundingBox();
-  expect(front).not.toBeNull();
-  expect(behind).not.toBeNull();
-  expect(behind!.width).toBeLessThan(front!.width);
-  expect(Math.abs(behind!.x - front!.x)).toBeLessThan(front!.width / 2);
-  expect(behind!.y).toBeLessThan(front!.y - 20);
-  await expect(page.locator('.tm-card[data-index="1"]')).toHaveAttribute("aria-hidden", "true");
-  await expect(page.locator('.tm-card[data-index="0"]')).toHaveAttribute("aria-current", "date");
+  await expect(page.locator("#tm-preview-body .trip-card")).toHaveCount(2);
   await page.locator("#tm-stage").hover();
   await page.mouse.wheel(240, 0);
   await expect(page.locator('.tm-card[aria-current="date"]')).toHaveAttribute("data-index", "1");
-  await expect(page.locator('.tm-card[data-index="1"] .tm-empty')).toBeVisible();
+  await expect(page.locator("#tm-preview-body .tm-empty")).toBeVisible();
   await page.locator("#tm-open-day").click();
   await expect(page.locator("#time-machine")).toBeHidden();
   await expect(page.locator("#date-list .drow.active")).toHaveAttribute("data-date", dates[1].date);
@@ -53,8 +44,8 @@ test("a trip preview in the date gallery opens that recording", async ({ page })
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/browse");
   await page.locator(".tm-launch").click();
-  await expect(page.locator('.tm-card[data-index="0"] .trip-card')).toHaveCount(2);
-  await page.locator('.tm-card[data-index="0"] .trip-card').first().click();
+  await expect(page.locator("#tm-preview-body .trip-card")).toHaveCount(2);
+  await page.locator("#tm-preview-body .trip-card").first().click();
   await expect(page).toHaveURL(/\/trip\//);
   await expect(page.locator("#page-main")).toBeVisible();
 });
