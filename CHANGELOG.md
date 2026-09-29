@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.8 — 2026-09-29
+
+- Turn the Browse date gallery into a full-screen, gray, blurred time corridor with trip-filled windows receding into depth instead of numeric date cards.
+- Keep a horizontal scrubber and support trackpad, drag and keyboard navigation; scroll within the front window to inspect that day's trips.
+- Load the selected date and nearby windows on demand, keep older windows out of keyboard focus, and preserve reduced-motion support.
+
 ## 2.1.7 — 2026-09-28
 
 - Keep the home calendar inside its own horizontal scroller on narrow phones instead of widening the whole page.
