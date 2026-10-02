@@ -11,8 +11,6 @@
     .note-open { appearance: none; display: block; width: 100%; text-align: left; border: 0; background: none; font: inherit;
       color: inherit; cursor: text; padding: 0; white-space: pre-wrap; overflow: hidden; display: -webkit-box;
       -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-    .note-inline.editing { background: var(--surface); box-shadow: var(--shadow-sm); padding: 10px 12px; border-radius: var(--radius-sm); }
-    .note-edit textarea { width: 100%; resize: none; min-height: 64px; }
     .note-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
     .note-hint { margin-right: auto; font-size: 11.5px; color: var(--ink-3); }
     .note-inline { font-size: 14.5px; line-height: 1.7; color: var(--ink);
@@ -344,108 +342,156 @@
       .info-strip .chip span { white-space: nowrap; }
     }
 
-    /* ── 播放器控制 2.3:浮動「島」式 dock ───────────────────────────────────────
-       進度軸獨立一排(滑過放大、顯示實際時間預覽、已緩衝區段);下排三種形狀分工:
-       圓角方形主播放鈕、膠囊「島」群組、文字 chip(鏡頭/速度)。不再是一排同款圓鈕。 */
-    .stage .ctrl.dock { display: flex; flex-direction: column; align-items: stretch; gap: 10px;
-      padding: 40px 16px 14px; background: linear-gradient(to top, rgba(4,8,12,.82) 0%, rgba(4,8,12,.45) 55%, transparent 100%); }
-    .dock-seek { position: relative; padding: 0 4px; }
-    .dock .ctrl-track { height: 18px; }
-    .dock .ctrl-track::before { top: 7px; height: 4px; background: rgba(255,255,255,.22); border-radius: 99px; transition: top .15s, height .15s; }
-    .dock .ctrl-buffer { position: absolute; left: 0; top: 7px; height: 4px; width: 0; border-radius: 99px;
-      background: rgba(255,255,255,.38); pointer-events: none; transition: top .15s, height .15s; }
-    .dock .ctrl-fill { top: 7px; height: 4px; border-radius: 99px; background: linear-gradient(90deg, #8ff0d6, #fff); transition: top .15s, height .15s; }
-    .dock .ctrl-fill::after { width: 14px; height: 14px; right: -7px; background: #fff; box-shadow: 0 0 0 4px rgba(143,240,214,.35), 0 2px 6px rgba(0,0,0,.4);
-      transform: translateY(-50%) scale(.7); opacity: 0; transition: transform .15s, opacity .15s; }
-    .dock .ctrl-track:hover::before, .dock .ctrl-track:hover .ctrl-buffer, .dock .ctrl-track:hover .ctrl-fill { top: 5px; height: 8px; }
+    /* ── 播放器 2.4:影片在上、控制列在下(不再壓在畫面上) + 環境光 ─────────────────
+       控制列移出影片框:畫面完整不被遮、控制列有呼吸空間;只有全螢幕時才浮在畫面上並自動隱藏。 */
+    .player { position: relative; isolation: isolate; display: flex; flex-direction: column; gap: 12px; }
+    .player .stage { z-index: 1; width: var(--stage-w, 100%); align-self: center; }
+    /* 控制列至少保有舒適寬度(影片因高度受限變窄時不跟著擠成多行) */
+    .player > .ctrl.dock { width: max(var(--stage-w, 100%), min(100%, 860px)); align-self: center; box-sizing: border-box; align-items: stretch; }
+    body.editing #page-main .player .stage, body.editing #page-main .player > .ctrl.dock { width: 100%; }
+    @media (min-width: 761px) { #page-main .kbd-hint { display: none; } }
+    .dock-help { cursor: help; }
+    .ambient { position: absolute; z-index: 0; pointer-events: none; border-radius: 40px; opacity: 0;
+      filter: blur(42px) saturate(1.7) brightness(1.08);
+      -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
+      mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
+      transition: opacity .6s ease; transform: translateZ(0); }
+    .ambient.is-live { opacity: .9; }
+    .ambient[hidden] { display: none; }
+
+    /* 控制列:透明底、寬鬆間距、跟隨頁面主題色 */
+    .player > .ctrl.dock { position: static; z-index: 2; opacity: 1; display: flex; flex-direction: column; gap: 6px;
+      padding: 2px 4px 0; background: none; color: var(--ink); }
+    .dock-seek { position: relative; display: flex; align-items: center; gap: 12px; }
+    .dock-seek .ctrl-time { font: 600 12px/1 var(--font-mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+    .dock .ctrl-track { flex: 1; height: 20px; }
+    .dock .ctrl-track::before { top: 8px; height: 4px; background: color-mix(in oklch, var(--ink) 12%, transparent); border-radius: 99px; transition: top .15s, height .15s; }
+    .dock .ctrl-buffer { position: absolute; left: 0; top: 8px; height: 4px; width: 0; border-radius: 99px;
+      background: color-mix(in oklch, var(--ink) 20%, transparent); pointer-events: none; transition: top .15s, height .15s; }
+    .dock .ctrl-fill { top: 8px; height: 4px; border-radius: 99px; background: var(--accent); transition: top .15s, height .15s; }
+    .dock .ctrl-fill::after { width: 14px; height: 14px; right: -7px; background: var(--accent); border: 3px solid var(--surface);
+      box-shadow: var(--shadow-sm); transform: translateY(-50%) scale(.6); opacity: 0; transition: transform .15s, opacity .15s; }
+    .dock .ctrl-track:hover::before, .dock .ctrl-track:hover .ctrl-buffer, .dock .ctrl-track:hover .ctrl-fill { top: 6px; height: 8px; }
     .dock .ctrl-track:hover .ctrl-fill::after, .dock .ctrl-track:focus-within .ctrl-fill::after { transform: translateY(-50%) scale(1); opacity: 1; }
-    .ctrl-hover { position: absolute; bottom: 24px; left: 0; transform: translateX(-50%); display: none; flex-direction: column; align-items: center;
-      padding: 6px 10px; border-radius: 10px; background: rgba(14,20,26,.92); border: 1px solid rgba(255,255,255,.14);
-      color: #fff; font-family: var(--font-mono); font-size: 12px; line-height: 1.3; white-space: nowrap; pointer-events: none;
-      box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+    .ctrl-hover { position: absolute; bottom: 26px; left: 0; transform: translateX(-50%); display: none; flex-direction: column; align-items: center;
+      padding: 6px 10px; border-radius: 10px; background: var(--chrome, #142c30); color: #fff;
+      font-family: var(--font-mono); font-size: 12px; line-height: 1.3; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-md); }
     .ctrl-hover b { font-size: 14px; }
     .ctrl-hover span { opacity: .7; font-size: 11px; }
     .ctrl-track:hover .ctrl-hover { display: flex; }
 
-    .dock-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .dock-spacer { flex: 1; }
-    .dock-island { display: inline-flex; align-items: center; gap: 2px; padding: 4px; border-radius: 16px;
-      background: rgba(18,24,30,.58); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 6px 18px rgba(0,0,0,.25); }
-    .dock-btn { appearance: none; border: 0; background: transparent; color: #fff; height: 36px; min-width: 36px; padding: 0 8px;
-      border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; cursor: pointer;
-      transition: background-color .15s ease, transform .1s ease; }
-    .dock-btn svg { width: 18px; height: 18px; }
-    .dock-btn small { font: 700 10.5px/1 var(--font-mono); opacity: .9; }
-    .dock-btn:hover { background: rgba(255,255,255,.14); }
+    .dock-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; }
+    .dock-row .dock-clock { justify-self: center; }
+    .dock-left, .dock-right { min-width: max-content; }
+    .dock-left, .dock-right { display: flex; align-items: center; gap: 4px; min-width: 0; }
+    .dock-right { justify-content: flex-end; flex-wrap: nowrap; }
+    .dock-frames-label { white-space: nowrap; }
+    .dock-btn { appearance: none; border: 0; background: transparent; color: var(--ink-2); height: 38px; min-width: 38px; padding: 0 9px;
+      border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 3px; cursor: pointer;
+      transition: background-color .15s ease, color .15s ease, transform .1s ease; }
+    .dock-btn svg { width: 19px; height: 19px; }
+    .dock-btn small { font: 700 10.5px/1 var(--font-mono); }
+    .dock-btn:hover { background: var(--surface-2); color: var(--ink); }
     .dock-btn:active, .dock-play:active, .dock-chip:active { transform: scale(.94); }
-    .dock-btn[aria-pressed="false"] { opacity: .55; }
-    .dock-play { appearance: none; border: 0; width: 48px; height: 40px; margin: 0 2px; border-radius: 13px; cursor: pointer;
-      display: inline-grid; place-items: center; background: #fff; color: #0f2a2e; box-shadow: 0 4px 14px rgba(0,0,0,.3);
-      transition: transform .12s ease, background-color .15s ease; }
-    .dock-play svg { width: 20px; height: 20px; }
-    .dock-play:hover { background: #e9fbf4; }
-    .dock-clock { display: flex; flex-direction: column; justify-content: center; padding: 0 6px; color: #fff; cursor: pointer;
-      user-select: none; min-width: 0; line-height: 1.2; }
-    .dock-clock b { font: 700 16px/1.15 var(--font-mono); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
-    .dock-clock > span { font-size: 11.5px; opacity: .72; white-space: nowrap; }
-    .dock-clock .ctrl-time { font-size: 11.5px; color: inherit; }
-    .dock-clock.elapsed-first b { font-size: 11.5px; opacity: .72; order: 2; font-weight: 600; }
-    .dock-clock.elapsed-first > span { font: 700 16px/1.15 var(--font-mono); opacity: 1; order: 1; }
-    .dock-clock.elapsed-first > span .ctrl-time { font-size: 16px; }
-    .dock-frames { gap: 0; }
+    .dock-btn[aria-pressed="false"] { color: var(--ink-3); opacity: .6; }
+    .dock-btn#btn-amb[aria-pressed="true"] { color: var(--accent); }
+    .dock-play { appearance: none; border: 0; width: 56px; height: 44px; margin: 0 4px; border-radius: 16px; cursor: pointer;
+      display: inline-grid; place-items: center; background: var(--accent); color: var(--accent-ink);
+      box-shadow: 0 6px 18px color-mix(in oklch, var(--accent) 35%, transparent); transition: transform .12s ease, filter .15s ease; }
+    .dock-play svg { width: 22px; height: 22px; }
+    .dock-play:hover { filter: brightness(1.08); }
+    .dock-frames { display: inline-flex; align-items: center; margin-left: 8px; padding-left: 10px; border-left: 1px solid var(--line); }
     .dock-frames .dock-btn { min-width: 30px; padding: 0 5px; }
-    .dock-frames-label { font-size: 11.5px; color: rgba(255,255,255,.7); padding: 0 2px; }
-    .dock-chip { appearance: none; border: 0; height: 32px; padding: 0 11px; border-radius: 10px; cursor: pointer;
-      display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,.1); color: #fff;
+    .dock-frames-label { font-size: 12px; color: var(--ink-3); }
+    .dock-clock { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2px 14px; cursor: pointer;
+      user-select: none; line-height: 1.15; border-radius: 12px; transition: background-color .15s ease; }
+    .dock-clock:hover { background: var(--surface-2); }
+    .dock-clock b { font: 700 22px/1.1 var(--font-mono); letter-spacing: -.01em; font-variant-numeric: tabular-nums; color: var(--ink); }
+    .dock-clock > span { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+    .dock-clock .ctrl-time { font-size: 11.5px; color: inherit; font-family: var(--font-mono); }
+    .dock-clock.elapsed-first b { font-size: 11.5px; font-weight: 600; color: var(--ink-3); order: 2; }
+    .dock-clock.elapsed-first > span { font: 700 22px/1.1 var(--font-mono); color: var(--ink); order: 1; }
+    .dock-clock.elapsed-first > span .ctrl-time { font-size: 22px; }
+    .dock-chip { appearance: none; border: 0; height: 34px; padding: 0 12px; border-radius: 11px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); color: var(--ink-2);
       font: 600 12.5px/1 var(--font-sans); white-space: nowrap; transition: background-color .15s ease; }
     .dock-chip svg { width: 15px; height: 15px; }
-    .dock-chip:hover, .dock-chip[aria-expanded="true"] { background: rgba(255,255,255,.22); }
-    .dock-speed { font-family: var(--font-mono); min-width: 46px; justify-content: center; }
+    .dock-chip:hover, .dock-chip[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+    .dock-speed { font-family: var(--font-mono); min-width: 48px; justify-content: center; }
     .dock-menu-wrap { position: relative; }
-    .dock-menu { position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%); z-index: 20;
-      display: flex; flex-direction: column; gap: 2px; padding: 5px; border-radius: 14px; min-width: 84px;
-      background: rgba(14,20,26,.95); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 12px 32px rgba(0,0,0,.45); }
+    .dock-menu { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 30;
+      display: flex; flex-direction: column; gap: 2px; padding: 5px; border-radius: 14px; min-width: 86px;
+      background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-lg); }
     .dock-menu[hidden] { display: none; }
-    .dock-menu button { appearance: none; border: 0; background: transparent; color: #fff; font: 600 13px/1 var(--font-mono);
+    .dock-menu button { appearance: none; border: 0; background: transparent; color: var(--ink); font: 600 13px/1 var(--font-mono);
       padding: 9px 12px; border-radius: 9px; cursor: pointer; text-align: center; }
-    .dock-menu button:hover { background: rgba(255,255,255,.12); }
-    .dock-menu button[aria-checked="true"] { background: #fff; color: #0f2a2e; }
-    .dock-vol { display: inline-flex; align-items: center; gap: 0; }
-    .dock-vol input { width: 0; opacity: 0; accent-color: #fff; transition: width .2s ease, opacity .2s ease, margin .2s ease; margin: 0; }
-    .dock-vol:hover input, .dock-vol:focus-within input { width: 72px; opacity: 1; margin: 0 8px 0 2px; }
+    .dock-menu button:hover { background: var(--surface-2); }
+    .dock-menu button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+    .dock-vol { display: inline-flex; align-items: center; }
+    .dock-vol input { width: 0; opacity: 0; accent-color: var(--accent); transition: width .2s ease, opacity .2s ease, margin .2s ease; margin: 0; }
+    .dock-vol:hover input, .dock-vol:focus-within input { width: 76px; opacity: 1; margin: 0 8px 0 2px; }
     .dock-vol.muted .vol-wave { opacity: 0; }
-    .dock-vol.muted .dock-btn { color: #ffb4b4; }
-    .stage .ctrl.dock .dock-btn:focus-visible, .dock-play:focus-visible, .dock-chip:focus-visible { outline: 2px solid #8ff0d6; outline-offset: 2px; }
-    /* 子母畫面隱藏 */
+    .dock-vol.muted .dock-btn { color: var(--crit); }
+    .dock .dock-btn:focus-visible, .dock-play:focus-visible, .dock-chip:focus-visible, .dock-clock:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .stage.pip-off .pip { display: none !important; }
-    /* 子母畫面避開 dock(dock 比舊控制列高) */
-    .stage .pip { bottom: 112px; }
-    @media (max-width: 900px) { .dock-frames { display: none; } }
-    @media (max-width: 640px) {
-      .stage .ctrl.dock { padding: 26px 10px calc(8px + var(--safe-bottom)); gap: 6px; flex-wrap: nowrap;
-        background: linear-gradient(to top, rgba(4,8,12,.85) 0%, rgba(4,8,12,.4) 60%, transparent 100%); }
-      .dock-row { gap: 6px; }
-      .dock-island { padding: 2px; border-radius: 13px; }
-      .dock-btn { height: 34px; min-width: 32px; padding: 0 5px; }
-      .dock-btn small { display: none; }
-      .dock-play { width: 42px; height: 36px; }
-      .dock-clock b { font-size: 13.5px; }
-      .dock-clock > span { font-size: 10.5px; }
-      .dock-vol, #btn-snap, #btn-pip { display: none; }
-      .dock-chip { height: 30px; padding: 0 8px; }
-      #btn-cam-label { display: none; }
-      .stage .pip { bottom: auto; }
+    .stage .pip { bottom: 14px; }
+
+    /* 全螢幕:整組(影片 + 控制列)進入全螢幕,控制列浮在畫面下方、暗色、閒置自動隱藏 */
+    .player:fullscreen { background: #000; padding: 0; gap: 0; }
+    .player:fullscreen .ambient { display: none; }
+    .player:fullscreen .stage { flex: 1; max-height: none !important; aspect-ratio: auto; border-radius: 0; }
+    .player:fullscreen > .ctrl.dock { position: absolute; left: 0; right: 0; bottom: 0; padding: 48px 24px 18px; color: #fff;
+      background: linear-gradient(to top, rgba(0,0,0,.82), rgba(0,0,0,.35) 60%, transparent); opacity: 0; transition: opacity .25s ease; }
+    .player:fullscreen.show-ctrl > .ctrl.dock, .player:fullscreen > .ctrl.dock:hover { opacity: 1; }
+    .player:fullscreen .dock-btn, .player:fullscreen .dock-clock b, .player:fullscreen .dock-clock.elapsed-first > span { color: #fff; }
+    .player:fullscreen .dock-clock > span, .player:fullscreen .dock-seek .ctrl-time, .player:fullscreen .dock-frames-label { color: rgba(255,255,255,.7); }
+    .player:fullscreen .dock-btn:hover, .player:fullscreen .dock-clock:hover { background: rgba(255,255,255,.14); }
+    .player:fullscreen .dock-chip { background: rgba(255,255,255,.14); color: #fff; }
+    .player:fullscreen .dock .ctrl-track::before { background: rgba(255,255,255,.25); }
+    .player:fullscreen .dock-frames { border-left-color: rgba(255,255,255,.2); }
+
+    /* 剪輯模式:播放器整組當作可伸縮區塊 */
+    body.editing #page-main .player { flex: 1 1 auto; min-height: 0; }
+    body.editing #page-main .ambient { display: none; }
+    @media (min-width: 960px) {
+      body.editing #page-main .player { order: 0; flex: 1 1 auto; min-width: 0; height: 100%; }
     }
+
+    @media (max-width: 900px) { .dock-frames { display: none; } }
+    @media (max-width: 1180px) { #btn-cam-label { display: none; } }
+    @media (max-width: 640px) {
+      .player { gap: 8px; }
+      .dock-row { grid-template-columns: auto 1fr auto; gap: 6px; }
+      .dock-btn { height: 36px; min-width: 34px; padding: 0 6px; }
+      .dock-btn small { display: none; }
+      .dock-play { width: 48px; height: 40px; }
+      .dock-clock { padding: 2px 4px; }
+      .dock-clock b, .dock-clock.elapsed-first > span, .dock-clock.elapsed-first > span .ctrl-time { font-size: 16px; }
+      .dock-vol, #btn-snap, #btn-pip, #btn-amb, #btn-help { display: none; }
+      .dock-chip { height: 32px; padding: 0 9px; }
+      #btn-cam-label { display: none; }
+      .ambient { filter: blur(26px) saturate(1.6); }
+    }
+
+    /* 備註編輯:浮動卡片,不推擠版面(避免影片被壓縮、上下留白) */
+    .note-inline { position: relative; }
+    .note-pop { position: fixed; z-index: 120; left: 50%; bottom: max(24px, var(--safe-bottom)); transform: translateX(-50%);
+      width: min(640px, calc(100vw - 32px)); padding: 16px; border-radius: var(--radius-lg); background: var(--surface);
+      border: 1px solid var(--line); box-shadow: var(--shadow-lg); white-space: normal; animation: modal-up .22s cubic-bezier(.2,.8,.3,1); }
+    .note-pop h4 { margin: 0 0 10px; font-size: 14px; }
+    .note-pop textarea { width: 100%; min-height: 96px; resize: vertical; }
     /* ── 一屏式觀看台(桌機):頁面本身不捲動、不回彈;影片吃剩餘高度 ───────── */
     @media (min-width: 761px) {
       html.trip-fit, html.trip-fit body { height: 100%; overflow: hidden; overscroll-behavior: none; }
       html.trip-fit #app-footer { display: none; }
     }
     html.trip-fit, html.trip-fit body { overscroll-behavior-y: none; }
+    /* 環境光可超出影片框,但不得造成橫向捲動 */
+    #page-main { overflow-x: clip; }
     .other-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
     .other-row::-webkit-scrollbar { display: none; }
   </style>
-<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css?v=2.1.2"><script src="/static/timeline.js"></script><script src="/static/playback-sync.js?v=2.1.5"></script></head>
+<script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css?v=2.1.2"><script src="/static/timeline.js"></script><script src="/static/playback-sync.js?v=2.1.5"></script><script src="/static/ambient-light.js?v=2.4.0"></script></head>
 <body>
 
 <header class="hdr">
@@ -507,19 +553,22 @@
 
     <!-- 觀看台 -->
     <div class="viewer">
-      <div class="stage" id="stage">
-        <div class="zoom-layer" id="zoom-layer"></div>
-        <div class="cam-tag" id="cam-tag" data-i18n="trip.camFront">前鏡頭</div>
-        <div class="zoom-tag" id="zoom-tag">100%</div>
-        <div class="stage-empty" id="stage-empty" style="display:none;" data-i18n="trip.noVideo">無影片</div>
+      <!-- 播放器:環境光畫布(影片後方) + 影片 + 影片下方的控制列;全螢幕時整組一起 -->
+      <div class="player" id="player">
+        <canvas class="ambient" id="ambient" width="48" height="27" aria-hidden="true"></canvas>
+        <div class="stage" id="stage">
+          <div class="zoom-layer" id="zoom-layer"></div>
+          <div class="cam-tag" id="cam-tag" data-i18n="trip.camFront">前鏡頭</div>
+          <div class="zoom-tag" id="zoom-tag">100%</div>
+          <div class="stage-empty" id="stage-empty" style="display:none;" data-i18n="trip.noVideo">無影片</div>
 
-        <!-- 子母畫面(後鏡頭) -->
-        <div class="pip" id="pip" style="display:none;" title="點擊切換主畫面" data-i18n-attr="title:trip.switchMain">
-          <span class="pip-tag" id="pip-tag" data-i18n="trip.camRear">後鏡頭</span>
-          <span class="pip-swap" data-i18n="trip.switch">⇄ 切換</span>
-        </div>
+          <!-- 子母畫面(後鏡頭) -->
+          <div class="pip" id="pip" style="display:none;" title="點擊切換主畫面" data-i18n-attr="title:trip.switchMain">
+            <span class="pip-tag" id="pip-tag" data-i18n="trip.camRear">後鏡頭</span>
+            <span class="pip-swap" data-i18n="trip.switch">⇄ 切換</span>
+          </div>
 
-        <!-- 播放器控制:上排=可預覽時間的進度軸;下排=浮動「島」——播放島 / 時間 / 工具島 -->
+                </div>
         <div class="ctrl dock" id="ctrl">
           <div class="dock-seek">
             <div class="ctrl-track" id="track">
@@ -530,7 +579,7 @@
             </div>
           </div>
           <div class="dock-row">
-            <div class="dock-island dock-transport">
+            <div class="dock-left">
               <button class="dock-btn" id="btn-rew" type="button" title="倒退 10 秒" aria-label="倒退 10 秒">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/></svg><small>10</small>
               </button>
@@ -541,18 +590,16 @@
               <button class="dock-btn" id="btn-ffw" type="button" title="快轉 10 秒" aria-label="快轉 10 秒">
                 <small>10</small><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 17l5-5-5-5"/><path d="M6 17l5-5-5-5"/></svg>
               </button>
-            </div>
-            <div class="dock-clock" id="dock-clock" title="點一下切換：實際時間 / 影片時間">
-              <b id="t-wall">--:--:--</b>
-              <span><span class="ctrl-time" id="t-cur">0:00</span> / <span class="ctrl-time" id="t-tot">0:00</span></span>
-            </div>
-            <div class="dock-island dock-frames" role="group" aria-label="逐格">
+            <div class="dock-frames" role="group" aria-label="逐格">
               <button class="dock-btn" id="btn-back" type="button" title="上一格 (,)" aria-label="上一格"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
               <span class="dock-frames-label">逐格</span>
               <button class="dock-btn" id="btn-fwd" type="button" title="下一格 (.)" aria-label="下一格"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button>
+            </div></div>
+            <div class="dock-clock" tabindex="0" role="button" id="dock-clock" title="點一下切換：實際時間 / 影片時間">
+              <b id="t-wall">--:--:--</b>
+              <span><span class="ctrl-time" id="t-cur">0:00</span> / <span class="ctrl-time" id="t-tot">0:00</span></span>
             </div>
-            <span class="dock-spacer"></span>
-            <div class="dock-island dock-tools">
+            <div class="dock-right">
               <button class="dock-chip" id="btn-cam" type="button" title="切換主鏡頭" aria-label="切換主鏡頭" hidden>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span id="btn-cam-label">前鏡頭</span>
               </button>
@@ -563,6 +610,7 @@
               <button class="dock-btn" id="btn-pip" type="button" title="顯示/隱藏子母畫面" aria-label="顯示或隱藏子母畫面" aria-pressed="true" hidden>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="3"/><rect x="12" y="11" width="7" height="6" rx="1.5" fill="currentColor" stroke="none"/></svg>
               </button>
+              <button class="dock-btn" id="btn-amb" type="button" title="環境光(依畫面顏色在影片周圍發光)" aria-label="環境光" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
               <button class="dock-btn" id="btn-snap" type="button" title="截圖存檔 (s)" aria-label="截圖">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
               </button>
@@ -572,6 +620,7 @@
                 </button>
                 <input type="range" id="vol" min="0" max="1" step="0.05" value="0.8" aria-label="音量">
               </div>
+              <button class="dock-btn dock-help" id="btn-help" type="button" aria-label="快捷鍵說明" title="滾輪縮放 · 拖曳平移 · 雙擊還原 · 空白鍵播放 · ←/→ 跳 5 秒 · ,/. 逐格 · S 截圖 · M 靜音 · F 全螢幕"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
               <button class="dock-btn" id="btn-full" type="button" title="全螢幕 (f)" aria-label="全螢幕">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
               </button>
@@ -912,13 +961,25 @@ function fitStage() {
   if (!stage || !page || page.style.display === 'none') return;
   if (document.fullscreenElement) return;   // 全螢幕交給 CSS,勿用 inline 上限蓋掉
   stage.style.maxHeight = '';               // 先還原成 CSS 基準再量(上下內容不受影片高影響)
+  document.getElementById('player')?.style.removeProperty('--stage-w');
   // 剪輯中:整頁鎖成一屏、影片以 flex 填滿(見 body.editing 樣式),不再用 inline 上限硬撐 → 清掉交給 flex
   if (editPanelOpen) return;
   const sRect = stage.getBoundingClientRect();
   const pRect = page.getBoundingClientRect();
   const below = pRect.bottom - sRect.bottom; // 影片下方:資訊條+備註+同天趟次+提示+內距
   const avail = window.innerHeight - sRect.top - below - 10; // 10px 喘息
-  stage.style.maxHeight = Math.max(200, Math.round(avail)) + 'px';
+  const maxH = Math.max(160, Math.round(avail));
+  stage.style.maxHeight = maxH + 'px';
+  // 影片框維持 16:9:高度受限時縮窄並置中(不留左右黑邊),控制列跟著影片寬度
+  const player = document.getElementById('player');
+  const fullW = player.clientWidth;
+  const w = Math.min(fullW, Math.round(maxH * 16 / 9));
+  player.style.setProperty('--stage-w', w < fullW - 2 ? w + 'px' : '100%');
+  ambient?.place();
+  // 一屏鎖定只在「真的放得下」時啟用;極矮的視窗改回可捲動,避免控制列被切掉而按不到
+  const root = document.documentElement;
+  root.classList.add('trip-fit');
+  if (root.scrollHeight > innerHeight + 1 || page.getBoundingClientRect().bottom > innerHeight + 1) root.classList.remove('trip-fit');
 }
 function scheduleFit() {
   if (fitRaf) cancelAnimationFrame(fitRaf);
@@ -983,6 +1044,7 @@ function swapCams() {
   resetZoom();
   layoutCams();
   playback.seek(position);
+  ambient?.refresh();
   // 切換主鏡頭後更新總長 —— 前後鏡頭長度可能略有差異,否則進度條/時間顯示/逐格夾制會沿用
   // 舊主鏡頭的長度而失準。
   const md = videos[mainCam] && videos[mainCam].duration;
@@ -1026,14 +1088,31 @@ function initPlayer() {
 
   // ── 控制列自動隱藏:播放中靜置約 2.6s 自動淡出;暫停或互動(移動/點擊)時喚回 ──
   let ctrlHideTimer = null;
+  const player = document.getElementById('player');
   function controlsWake() {
-    stage.classList.add('show-ctrl');
+    stage.classList.add('show-ctrl'); player.classList.add('show-ctrl');
     clearTimeout(ctrlHideTimer);
-    if (!main().paused) ctrlHideTimer = setTimeout(() => stage.classList.remove('show-ctrl'), 2600);
+    if (!main().paused) ctrlHideTimer = setTimeout(() => { stage.classList.remove('show-ctrl'); player.classList.remove('show-ctrl'); }, 2600);
   }
-  function controlsPin() { stage.classList.add('show-ctrl'); clearTimeout(ctrlHideTimer); }
-  stage.addEventListener('pointermove', controlsWake);
-  stage.addEventListener('pointerdown', controlsWake);
+  function controlsPin() { stage.classList.add('show-ctrl'); player.classList.add('show-ctrl'); clearTimeout(ctrlHideTimer); }
+  player.addEventListener('pointermove', controlsWake);
+  player.addEventListener('pointerdown', controlsWake);
+
+  // 環境光:依主畫面顏色在影片周圍發光(可關閉,記住選擇)
+  const ambBtn = document.getElementById('btn-amb');
+  let ambOn = true;
+  try { ambOn = localStorage.getItem('dc.ambient') !== 'off'; } catch {}
+  if (window.DashcamAmbient) {
+    ambient = DashcamAmbient.create({ canvas: document.getElementById('ambient'), stage, source: () => videos[mainCam] });
+    ambient.setEnabled(ambOn);
+  } else ambBtn.hidden = true;
+  ambBtn.setAttribute('aria-pressed', String(ambOn));
+  ambBtn.onclick = () => {
+    ambOn = !ambOn;
+    ambient?.setEnabled(ambOn);
+    ambBtn.setAttribute('aria-pressed', String(ambOn));
+    try { localStorage.setItem('dc.ambient', ambOn ? 'on' : 'off'); } catch {}
+  };
 
   const m0 = main();
   m0.addEventListener('loadedmetadata', () => {
@@ -1150,6 +1229,7 @@ function initPlayer() {
     return `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())}`;
   };
   try { clock.classList.toggle('elapsed-first', localStorage.getItem('dc.clock') === 'elapsed'); } catch {}
+  clock.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); clock.click(); } };
   clock.onclick = () => {
     const elapsed = clock.classList.toggle('elapsed-first');
     try { localStorage.setItem('dc.clock', elapsed ? 'elapsed' : 'wall'); } catch {}
@@ -1259,6 +1339,7 @@ function initPlayer() {
 }
 
 /* ── 縮放 / 平移 ──────────────────────────────────────────────────────────── */
+let ambient = null;   // 環境光控制器(initPlayer 建立)
 let dragMoved = false;
 let lastPointerType = 'mouse';   // 最近一次指標輸入型態(供單擊/雙擊消歧義)
 function applyZoom() {
@@ -1416,9 +1497,9 @@ function snapshot() {
 
 /* ── 全螢幕 ───────────────────────────────────────────────────────────────── */
 function toggleFull() {
-  const stage = document.getElementById('stage');
+  const player = document.getElementById('player');
   if (document.fullscreenElement) document.exitFullscreen();
-  else stage.requestFullscreen?.();
+  else player.requestFullscreen?.();
 }
 
 /* ── 同天其他旅程 ─────────────────────────────────────────────────────────── */
@@ -2181,21 +2262,27 @@ function renderNote() {
 }
 function startNoteEdit(event) {
   event?.stopPropagation();
-  const el = document.getElementById('note-inline');
-  el.className = 'note-inline editing';
-  el.innerHTML = `
-    <div class="note-edit">
-      <textarea class="form-input" id="note-textarea" rows="2" maxlength="2000"></textarea>
-      <div class="note-actions">
-        <span class="note-hint">Ctrl/⌘ + Enter 儲存 · Esc 取消</span>
-        <button class="btn btn--ghost btn--sm" type="button" id="note-cancel">${tt('trip.noteCancel')}</button>
-        <button class="btn btn--solid btn--sm" type="button" id="note-save">${tt('trip.noteSave')}</button>
-      </div>
+  closeNoteEdit();
+  // 浮動卡片:不插入頁面流,影片與資訊列位置完全不變
+  const pop = document.createElement('div');
+  pop.className = 'note-pop';
+  pop.id = 'note-pop';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', '編輯備註');
+  pop.innerHTML = `<h4>旅程備註</h4>
+    <textarea class="form-input" id="note-textarea" rows="4" maxlength="2000"></textarea>
+    <div class="note-actions">
+      <span class="note-hint">Ctrl/⌘ + Enter 儲存 · Esc 取消</span>
+      <button class="btn btn--ghost btn--sm" type="button" id="note-cancel"></button>
+      <button class="btn btn--solid btn--sm" type="button" id="note-save"></button>
     </div>`;
+  document.body.append(pop);
+  document.getElementById('note-cancel').textContent = tt('trip.noteCancel');
+  document.getElementById('note-save').textContent = tt('trip.noteSave');
   const ta = document.getElementById('note-textarea');
   ta.placeholder = tt('trip.notePlaceholder');
   ta.value = trip.note || '';
-  const cancel = (e) => { e?.preventDefault(); e?.stopPropagation(); renderNote(); };
+  const cancel = (e) => { e?.preventDefault(); e?.stopPropagation(); closeNoteEdit(); };
   document.getElementById('note-cancel').addEventListener('click', cancel);
   document.getElementById('note-save').addEventListener('click', (e) => { e.stopPropagation(); saveNote(); });
   ta.addEventListener('keydown', (e) => {
@@ -2204,7 +2291,12 @@ function startNoteEdit(event) {
   });
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
-  scheduleFit();   // 編輯框(textarea)較高 → 重算影片高度
+}
+function closeNoteEdit() {
+  const pop = document.getElementById('note-pop');
+  if (!pop) return;
+  pop.remove();
+  document.querySelector('#note-inline .note-open')?.focus();
 }
 async function saveNote() {
   const ta = document.getElementById('note-textarea');
@@ -2220,6 +2312,7 @@ async function saveNote() {
     });
     trip.note = val.trim();
     showToast(tt('trip.noteSaved'), 'success');
+    closeNoteEdit();
     renderNote();
   } catch (e) {
     showToast(tt('trip.noteSaveFail') + '：' + e.message, 'error');

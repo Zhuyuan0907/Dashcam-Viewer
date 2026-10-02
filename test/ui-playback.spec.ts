@@ -317,7 +317,7 @@ test("editor preview uses the buffering barrier and stops without accidental res
 test("trip page stays on one screen, note cancel works, and the dock offers speed and clock modes", async ({
   page,
   context,
-}) => {
+}, info) => {
   await context.addCookies([
     { name: "session_token", value: "ui-device-test-session", domain: "127.0.0.1", path: "/" },
   ]);
@@ -326,9 +326,24 @@ test("trip page stays on one screen, note cancel works, and the dock offers spee
   await expect(page.locator("#page-main")).toBeVisible();
   expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe("hidden");
   expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1);
-  // 備註:取消要真的關閉編輯框
+  // 影片框維持 16:9,控制列在影片下方、不壓在畫面上
+  const box = async () => (await page.locator("#stage").boundingBox())!;
+  const before = await box();
+  expect(Math.abs(before.width / before.height - 16 / 9)).toBeLessThan(0.06);
+  const ctrl = (await page.locator("#ctrl").boundingBox())!;
+  expect(ctrl.y).toBeGreaterThanOrEqual(before.y + before.height - 1);
+  // 環境光:播放後開始依畫面發光
+  await page.locator("#btn-play").click();
+  await expect(page.locator("#ambient")).toHaveClass(/is-live/);
+  await page.screenshot({ path: info.outputPath("trip-1440.png") });
+  await page.locator("#btn-play").click();
+  // 備註:浮動卡片,影片位置與大小不變;取消要真的關閉
   await page.locator(".note-open").click();
   await expect(page.locator("#note-textarea")).toBeVisible();
+  const during = await box();
+  expect(Math.round(during.height)).toBe(Math.round(before.height));
+  expect(Math.round(during.y)).toBe(Math.round(before.y));
+  await page.screenshot({ path: info.outputPath("trip-note.png") });
   await page.locator("#note-textarea").fill("暫存文字");
   await page.locator("#note-cancel").click();
   await expect(page.locator("#note-textarea")).toHaveCount(0);
@@ -336,7 +351,6 @@ test("trip page stays on one screen, note cancel works, and the dock offers spee
   await page.locator("#note-textarea").press("Escape");
   await expect(page.locator("#note-textarea")).toHaveCount(0);
   // 速度選單
-  await page.locator("#stage").hover();
   await page.locator("#btn-speed").click();
   await page.locator('#speed-menu button[data-rate="2"]').click();
   await expect(page.locator("#btn-speed")).toHaveText("2×");
@@ -345,4 +359,12 @@ test("trip page stays on one screen, note cancel works, and the dock offers spee
   await expect(page.locator("#t-wall")).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
   await page.locator("#dock-clock").click();
   await expect(page.locator("#dock-clock")).toHaveClass(/elapsed-first/);
+  // 環境光可關閉
+  await page.locator("#btn-amb").click();
+  await expect(page.locator("#ambient")).toBeHidden();
+  for (const [width, height] of [[1366, 768], [390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: info.outputPath(`trip-${width}.png`) });
+  }
 });
