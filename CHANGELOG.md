@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.1 — 2026-10-02
+
+- Fit the home overview to the window height instead of a fixed 16:9 image, so nothing is cut off on 1366×768, 1280×720/800 or other short screens; narrow or very short windows scroll normally.
+- Balance the two home columns: the latest trip fills the main column (kept landscape, with a compact fact strip on tall screens) and recent trips move into the side list, showing only rows that fit fully.
+- Fold secondary home blocks in order (this month, quick-action captions) when space is short, and scale the riding calendar to its panel.
+- Widen the shared content column on large monitors (1400px from 1680px wide, 1640px from 2200px).
+
 ## 2.2.0 — 2026-10-02
 
 - Replace the rotating home slogans with a one-screen overview: a data-driven headline (today / yesterday / days since the last ride), the latest trip as a large feature, recent trips, a compact riding calendar with longest streak, this month's totals and quick actions.

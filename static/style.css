@@ -58,6 +58,9 @@
   --font-display: "Hanken Grotesk", "Noto Sans TC", system-ui, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
 }
+/* 大螢幕放寬內容欄(全站一致,頁首與內容保持對齊) */
+@media (min-width: 1680px) { :root { --maxw: 1400px; } }
+@media (min-width: 2200px) { :root { --maxw: 1640px; } }
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 body {

@@ -26,16 +26,30 @@ test("the home calendar scrolls inside its own panel on a narrow phone", async (
   expect(calendar.content).toBeGreaterThan(calendar.viewport);
 });
 
-test("home headline comes from riding data and fits one desktop screen", async ({ page }) => {
+test("home headline comes from riding data and is never cut off on laptop screens", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#home-title")).toContainText(/騎了|上一趟|旅程/);
   await expect(page.locator(".feature")).toBeVisible();
   await expectNoPageOverflow(page);
-  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const [width, height] of [[1440, 900], [1366, 768], [1280, 720], [1920, 1080], [1024, 768]]) {
+    await page.setViewportSize({ width, height });
+    await page.reload();
+    await expect(page.locator(".feature")).toBeVisible();
+    // 一屏式:頁面不捲動,所有可見區塊都完整落在視窗內
+    expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1);
+    const bottom = await page.evaluate(() =>
+      Math.max(...[...document.querySelectorAll(".home-hero, .feature, .latest-facts, .panel-box, .quick")]
+        .filter((el) => el.getClientRects().length && getComputedStyle(el).display !== "none")
+        .map((el) => el.getBoundingClientRect().bottom)),
+    );
+    expect(bottom, `${width}x${height}`).toBeLessThanOrEqual(height);
+    await expect(page.locator("#app-footer")).toBeHidden();
+  }
+  // 窄桌面視窗改回一般捲動,不鎖住頁面
+  await page.setViewportSize({ width: 900, height: 700 });
   await page.reload();
   await expect(page.locator(".feature")).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1);
-  await expect(page.locator("#app-footer")).toBeHidden();
+  expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).not.toBe("hidden");
 });
 
 test("trip heading and metadata stay readable at 320px", async ({ page }) => {
