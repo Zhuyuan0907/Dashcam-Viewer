@@ -55,6 +55,7 @@
           card.removeAttribute("aria-current");
           card.classList.remove("is-front");
           card.tabIndex = -1;
+          card._tm = null;
         }
         continue;
       }
@@ -73,17 +74,29 @@
         opacity = Math.max(0, 1 - t * 2.4);
         shade = 0;
       }
-      card.style.transform = `translate3d(-50%, ${y.toFixed(2)}px, ${z.toFixed(1)}px)`;
-      card.style.opacity = opacity.toFixed(3);
-      card.style.setProperty("--shade", shade.toFixed(3));
-      card.style.zIndex = String(1000 - Math.round(d * 10));
-      card.style.pointerEvents = d > -0.4 && d < 4.5 ? "auto" : "none";
-      card.setAttribute("aria-hidden", Math.abs(d) < 0.5 ? "false" : "true");
+      // 只在數值改變時寫入 DOM,避免每格都觸發樣式重算;變暗用獨立合成層的 opacity,不重繪視窗內容
+      const state = card._tm || (card._tm = {});
+      const transform = `translate3d(-50%, ${y.toFixed(2)}px, ${z.toFixed(1)}px)`;
+      if (state.transform !== transform) card.style.transform = state.transform = transform;
+      const op = opacity.toFixed(3);
+      if (state.opacity !== op) card.style.opacity = state.opacity = op;
+      const sh = shade.toFixed(3);
+      if (state.shade !== sh) { (card._shade ||= card.querySelector(".tm-shade")).style.opacity = state.shade = sh; }
+      const zi = String(1000 - Math.round(d * 10));
+      if (state.z !== zi) card.style.zIndex = state.z = zi;
+      const pe = d > -0.4 && d < 4.5 ? "auto" : "none";
+      if (state.pe !== pe) card.style.pointerEvents = state.pe = pe;
+      const hidden = Math.abs(d) < 0.5 ? "false" : "true";
+      if (state.hidden !== hidden) card.setAttribute("aria-hidden", state.hidden = hidden);
       const front = i === focus;
-      card.tabIndex = front ? 0 : -1;
-      if (front) card.setAttribute("aria-current", "date");
-      else card.removeAttribute("aria-current");
-      card.classList.toggle("is-front", front && Math.abs(d) < 0.5);
+      if (state.front !== front) {
+        state.front = front;
+        card.tabIndex = front ? 0 : -1;
+        if (front) card.setAttribute("aria-current", "date");
+        else card.removeAttribute("aria-current");
+      }
+      const isFront = front && Math.abs(d) < 0.5;
+      if (state.isFront !== isFront) card.classList.toggle("is-front", state.isFront = isFront);
     }
     // 時間軸指示
     const at = clamp(Math.round(pos));
@@ -185,6 +198,7 @@
           <span class="tm-win-meta">${escapeHtml(tripsLabel(entry))}</span>
         </header>
         <div class="tm-win-body"><div class="tm-skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
+        <div class="tm-shade" aria-hidden="true"></div>
       </article>`).join("");
     cards = [...stage.querySelectorAll(".tm-card")];
   }
@@ -373,14 +387,16 @@
   // Dock 式放大:滑鼠附近的刻度放大
   timeline.addEventListener("pointermove", (event) => {
     if (event.pointerType !== "mouse") return;
-    for (const li of ticks) {
+    const near = nearestTick(event.clientY);
+    for (let i = 0; i < ticks.length; i++) {
+      const li = ticks[i];
       const r = li.getBoundingClientRect();
-      const dist = Math.abs(r.top + r.height / 2 - event.clientY);
-      const mag = Math.max(0, 1 - dist / 70);
+      const mag = Math.max(0, 1 - Math.abs(r.top + r.height / 2 - event.clientY) / 70);
       li.style.setProperty("--mag", mag.toFixed(3));
+      li.classList.toggle("is-hover", i === near);
     }
   });
-  timeline.addEventListener("pointerleave", () => ticks.forEach((li) => li.style.setProperty("--mag", "0")));
+  timeline.addEventListener("pointerleave", () => ticks.forEach((li) => { li.style.setProperty("--mag", "0"); li.classList.remove("is-hover"); }));
 
   function openDay() {
     const date = allDates[index]?.date;

@@ -22,7 +22,6 @@ body.tm-open { overflow: hidden; }
     radial-gradient(1px 1px at 230px 190px, rgba(255,255,255,.45), transparent 60%),
     radial-gradient(1.1px 1.1px at 60px 210px, rgba(255,255,255,.5), transparent 60%);
   background-size: 260px 240px;
-  animation: tm-drift 120s linear infinite;
   opacity: .8;
 }
 .tm-space::after {
@@ -32,9 +31,7 @@ body.tm-open { overflow: hidden; }
     radial-gradient(1.2px 1.2px at 300px 260px, rgba(190,220,255,.8), transparent 60%),
     radial-gradient(1px 1px at 180px 380px, rgba(255,255,255,.6), transparent 60%);
   background-size: 420px 460px;
-  animation: tm-drift 70s linear infinite reverse;
 }
-@keyframes tm-drift { to { transform: translate3d(-260px, 240px, 0); } }
 
 /* 標題 */
 .tm-top { position: absolute; z-index: 5; top: max(18px, env(safe-area-inset-top)); left: max(24px, env(safe-area-inset-left));
@@ -62,8 +59,8 @@ body.tm-open { overflow: hidden; }
   box-shadow: 0 30px 80px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.25);
   transform-origin: 50% 100%; backface-visibility: hidden; visibility: hidden; display: none; contain: layout paint;
   -webkit-user-select: text; user-select: text; }
-.tm-card::after { content: ""; position: absolute; inset: 0; background: #050a12; opacity: var(--shade, 0);
-  pointer-events: none; border-radius: inherit; }
+.tm-shade { position: absolute; inset: 0; background: #050a12; opacity: 0; pointer-events: none;
+  border-radius: inherit; will-change: opacity; }
 .tm-card:not(.is-front) { cursor: pointer; }
 .tm-card:not(.is-front) .tm-win-body { pointer-events: none; }
 .tm-win-bar { flex: none; position: relative; display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 14px;
@@ -112,8 +109,9 @@ body.tm-open { overflow: hidden; }
 .tm-timeline li.is-current button { color: #8ff0d6; }
 .tm-timeline li.is-current .tm-tick { width: 30px; height: 3px; background: #8ff0d6; box-shadow: 0 0 10px rgba(143, 240, 214, .7); }
 .tm-timeline li.is-current .tm-tick-label { opacity: 1; color: #fff; font-weight: 800; }
-.tm-timeline:hover li:not(.is-current) .tm-tick-label { opacity: clamp(0, calc((var(--mag) - .8) * 5), 1); }
-.tm-timeline:hover li.is-month:not(.is-quiet):not(.is-current) .tm-tick-label { opacity: clamp(.45, calc((var(--mag) - .8) * 5), 1); }
+.tm-timeline li.is-hover { z-index: 3; }
+.tm-timeline li.is-hover .tm-tick-label { opacity: 1; color: #fff; }
+.tm-timeline:hover li.is-current:not(.is-hover) .tm-tick-label { opacity: .5; }
 
 /* 底部操作列 */
 .tm-bar { position: absolute; z-index: 5; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%);
@@ -148,7 +146,4 @@ body.tm-open { overflow: hidden; }
   .tm-timeline li.is-current .tm-tick { width: 22px; }
   .tm-bar { gap: 8px; bottom: max(14px, env(safe-area-inset-bottom)); }
   .tm-bar-hint { display: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .tm-space, .tm-space::after { animation: none; }
 }

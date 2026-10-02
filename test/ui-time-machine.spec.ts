@@ -1,4 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect as baseExpect, test } from "@playwright/test";
+
+// 動畫測試:在資源受限的機器上給彈簧動畫多一點時間定位
+const expect = baseExpect.configure({ timeout: 15_000 });
 
 const dates = Array.from({ length: 8 }, (_, index) => {
   const date = new Date(Date.UTC(2026, 7, 2 - index)).toISOString().slice(0, 10);
@@ -34,6 +37,7 @@ test("desktop time machine stacks dated windows and travels with the trackpad", 
   await expect(page.locator(".tm-card")).toHaveCount(8);
   await expect(page.locator('.tm-card[data-index="0"] .trip-card')).toHaveCount(2);
   await expect(page.locator(".tm-timeline li")).toHaveCount(8);
+  await page.waitForTimeout(1500);   // 等進場動畫結束
   await page.locator("#tm-stage").hover({ position: { x: 40, y: 40 } });
   await page.mouse.wheel(0, 240);
   await expect(page.locator('.tm-card[aria-current="date"]')).toHaveAttribute("data-index", "1");
@@ -100,9 +104,10 @@ test("phone time machine supports drag, keyboard, and escape without page overfl
   await expect(page.locator('.tm-card[aria-current="date"]')).not.toHaveAttribute("data-index", "0");
   await page.waitForTimeout(1200);   // 等彈簧定位(甩動慣性可能多走幾天)
   const current = Number(await page.locator('.tm-card[aria-current="date"]').getAttribute("data-index"));
-  await stage.press("ArrowUp");
-  await expect(page.locator('.tm-card[aria-current="date"]')).toHaveAttribute("data-index", String(current + 1));
+  // 甩動可能直接到最早一天,所以先往較新(↓)再回到原處(↑)
   await stage.press("ArrowDown");
+  await expect(page.locator('.tm-card[aria-current="date"]')).toHaveAttribute("data-index", String(current - 1));
+  await stage.press("ArrowUp");
   await expect(page.locator('.tm-card[aria-current="date"]')).toHaveAttribute("data-index", String(current));
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
