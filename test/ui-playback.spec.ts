@@ -314,7 +314,13 @@ test("editor preview uses the buffering barrier and stops without accidental res
   ).toBe(true);
 });
 
-test("trip page stays on one screen, note cancel works, and the dock offers speed and clock modes", async ({ page }) => {
+test("trip page stays on one screen, note cancel works, and the dock offers speed and clock modes", async ({
+  page,
+  context,
+}) => {
+  await context.addCookies([
+    { name: "session_token", value: "ui-device-test-session", domain: "127.0.0.1", path: "/" },
+  ]);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/trip/${encodeURIComponent(tripId)}`);
   await expect(page.locator("#page-main")).toBeVisible();
