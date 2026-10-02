@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.0 — 2026-10-02
+
+- Rework the trip player controls after YouTube: a thin full-width progress bar along the bottom of the video that thickens on hover with a red scrubber, buffered range and a time preview; one row of plain white icons with hover tooltips (play, frame step, volume with an expanding slider, elapsed / total time with the dashcam's actual clock, camera switch, snapshot, settings and fullscreen).
+- Add a settings menu with a playback speed panel (0.25–4×) and a picture-in-picture switch; add J / K / L keyboard shortcuts.
+- Open the trip note editor as a floating card so editing no longer reflows the page or leaves blank gaps.
+- The ambient-light player from 2.4.0 was withdrawn.
+
 ## 2.3.0 — 2026-10-02
 
 - Keep the trip viewer on one screen on desktop: the page no longer scrolls or rubber-bands, and other trips of the day sit in a single horizontal row.
