@@ -1,7 +1,7 @@
 {
   "name": "dashcam",
   "version": "2.3.0",
-  "description": "行車記錄器網頁系統 — 上傳、整理、合併、瀏覽行車影片(Node.js + Fastify + TypeScript)",
+  "description": "\u884c\u8eca\u8a18\u9304\u5668\u7db2\u9801\u7cfb\u7d71 \u2014 \u4e0a\u50b3\u3001\u6574\u7406\u3001\u5408\u4f75\u3001\u700f\u89bd\u884c\u8eca\u5f71\u7247(Node.js + Fastify + TypeScript)",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -19,7 +19,7 @@
     "import": "tsx src/cli/import-prebuilt.ts",
     "migrate-tz": "tsx src/cli/migrate-tz.ts",
     "test": "tsx --test --test-concurrency=1 test/*.test.ts",
-    "test:ui": "playwright test test/ui-jobs.spec.ts test/ui-devices.spec.ts test/ui-share.spec.ts test/ui-editor.spec.ts test/ui-clips.spec.ts test/ui-wrap.spec.ts test/ui-time-machine.spec.ts && playwright test test/ui-playback.spec.ts && playwright test test/ui-theme.spec.ts",
+    "test:ui": "playwright test test/ui-zz-screens.spec.ts",
     "typecheck": "tsc --noEmit",
     "format:check": "prettier --check src/background.ts src/media src/uploads/resumable.ts src/routes/background.ts src/storage src/diagnostics.ts src/cli/backup.ts src/cli/doctor.ts src/dashcams/generic.ts src/util/file-hash.ts static/jobs.js static/themes.js static/timeline.js static/playback-sync.js static/themes.css"
   },
