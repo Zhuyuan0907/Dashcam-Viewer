@@ -326,23 +326,39 @@ test("trip page stays on one screen, note cancel works, and the dock offers spee
   await expect(page.locator("#page-main")).toBeVisible();
   expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe("hidden");
   expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1);
-  // 備註:取消要真的關閉編輯框
+  // 備註:浮動卡片,影片不移動也不縮小;取消要真的關閉編輯框
+  const stageBefore = (await page.locator("#stage").boundingBox())!;
   await page.locator(".note-open").click();
   await expect(page.locator("#note-textarea")).toBeVisible();
+  const stageDuring = (await page.locator("#stage").boundingBox())!;
+  expect(Math.round(stageDuring.height)).toBe(Math.round(stageBefore.height));
+  expect(Math.round(stageDuring.y)).toBe(Math.round(stageBefore.y));
   await page.locator("#note-textarea").fill("暫存文字");
   await page.locator("#note-cancel").click();
   await expect(page.locator("#note-textarea")).toHaveCount(0);
   await page.locator(".note-open").click();
   await page.locator("#note-textarea").press("Escape");
   await expect(page.locator("#note-textarea")).toHaveCount(0);
-  // 速度選單
+  // YouTube 式設定選單:播放速度子面板
   await page.locator("#stage").hover();
+  await page.locator("#btn-settings").click();
+  await expect(page.locator("#settings-menu")).toBeVisible();
   await page.locator("#btn-speed").click();
   await page.locator('#speed-menu button[data-rate="2"]').click();
-  await expect(page.locator("#btn-speed")).toHaveText("2×");
-  await expect(page.locator("#speed-menu")).toBeHidden();
-  // 時間:預設顯示實際時間,點一下切成影片時間
+  await expect(page.locator("#settings-menu")).toBeHidden();
+  await expect(page.locator("#speed-value")).toHaveText("2×");
+  expect(await page.locator("#stage video").first().evaluate((v: HTMLVideoElement) => v.playbackRate)).toBe(2);
+  // 子母畫面開關
+  await page.locator("#btn-settings").click();
+  await page.locator("#btn-pip").click();
+  await expect(page.locator("#btn-pip")).toHaveAttribute("aria-checked", "false");
+  await expect(page.locator("#pip")).toBeHidden();
+  await page.keyboard.press("Escape");
+  // 時間:影片時間 + 實際時間(車機牆鐘)
   await expect(page.locator("#t-wall")).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
-  await page.locator("#dock-clock").click();
-  await expect(page.locator("#dock-clock")).toHaveClass(/elapsed-first/);
+  // 進度條貼齊畫面底部、在影片框內(YouTube 式)
+  const stageBox = (await page.locator("#stage").boundingBox())!;
+  const trackBox = (await page.locator("#track").boundingBox())!;
+  expect(trackBox.y + trackBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height);
+  expect(trackBox.width).toBeGreaterThan(stageBox.width * 0.9);
 });
