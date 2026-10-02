@@ -4,101 +4,116 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title data-i18n-title="title.index">行車記錄</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/ui.css?v=2.2.0">
   <style>
-    /* ── 首頁 · simple.taipei 風 · 一屏一焦點(scoped:吃全域 token,不動全域 CSS) ──── */
-    /* (品牌 icon 去背已移至全域 style.css,全站一致) */
+    /* ── 首頁:一屏式概覽(重點明確、資訊密度適中;不再使用隨機標語) ───────── */
+    .home { display: flex; flex-direction: column; gap: clamp(14px, 2.4vh, 26px); }
+    .home-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px 32px; flex-wrap: wrap; }
+    .home-greet { font-size: 13.5px; margin-bottom: 8px; }
+    .home-title { font-family: var(--font-display); font-weight: 800; font-size: clamp(30px, 4.2vw, 50px);
+      line-height: 1.08; letter-spacing: -.035em; margin: 0; }
+    .home-title em { font-style: normal; color: var(--accent); }
+    .home-sub { margin-top: 10px; font-size: 14.5px; color: var(--ink-2); display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; }
+    .home-sub a { color: var(--accent); font-weight: 700; }
+    .home-sub a::after { content: " →"; }
+    .home-stats { display: flex; gap: 6px; flex-wrap: wrap; }
+    .home-stat { padding: 10px 16px; border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow-sm); min-width: 92px; }
+    .home-stat b { display: block; font-size: 22px; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--ink); letter-spacing: -.02em; }
+    .home-stat span { font-size: 11.5px; color: var(--ink-3); }
 
-    /* 點陣背景(深淺色自動適應) */
-    body {
-      background-color: var(--bg);
-      background-image: radial-gradient(color-mix(in oklch, var(--ink) 12%, transparent) 1px, transparent 1.4px);
-      background-size: 22px 22px;
-      background-position: -11px -11px;
-      background-attachment: fixed;
-    }
+    .home-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr); gap: clamp(16px, 2vw, 26px); min-height: 0; }
+    .home-col { display: flex; flex-direction: column; gap: clamp(14px, 2vh, 20px); min-width: 0; min-height: 0; }
+    .card-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .card-title h2 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+    .card-title a, .card-title span { font-size: 12.5px; color: var(--ink-3); }
+    .card-title a:hover { color: var(--accent); }
 
-    /* 滿版區段(僅控制高度;不使用 scroll-snap,避免非同步內容載入時跳動) */
-    .screen {
-      min-height: 100svh; box-sizing: border-box;
-      display: flex; flex-direction: column; justify-content: center;
-      padding: calc(var(--hdr-h) + var(--safe-top) + clamp(24px, 5vh, 60px)) 0 clamp(28px, 6vh, 72px);
-    }
-    /* 關鍵:flex 子項 .wrap 帶 auto margin 會縮成內容寬並置中;撐滿欄寬才會與頁首一樣
-       「1200 置中欄、內容靠左」,左緣對齊頁首品牌 icon。 */
-    .screen > .wrap { width: 100%; }
+    /* 最新一趟:大縮圖 + 疊字資訊 */
+    .feature { position: relative; display: block; border-radius: var(--radius-lg); overflow: hidden; color: #fff;
+      background: linear-gradient(160deg, oklch(.42 .04 200), oklch(.26 .03 220)); box-shadow: var(--shadow-md);
+      aspect-ratio: 16 / 9; max-height: calc(100dvh - 380px); width: 100%; transition: transform .25s ease, box-shadow .25s ease; }
+    .feature:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); color: #fff; }
+    .feature img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+    .feature:hover img { transform: scale(1.02); }
+    .feature::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 45%, rgba(5, 15, 18, .78)); }
+    .feature-info { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; padding: clamp(14px, 2vw, 22px);
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+    .feature-tag { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; padding: 3px 9px; border-radius: 99px;
+      background: rgba(255,255,255,.18); backdrop-filter: blur(6px); margin-bottom: 8px; }
+    .feature h3 { font-size: clamp(18px, 2vw, 24px); letter-spacing: -.02em; }
+    .feature p { font-size: 13px; opacity: .85; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .feature .play { flex: none; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
+      background: rgba(255,255,255,.94); color: var(--accent); box-shadow: var(--shadow-md); transition: transform .2s ease; }
+    .feature:hover .play { transform: scale(1.08); }
 
-    /* ── 第一屏:Hero(靠左,左緣對齊頁首「行車記錄」icon = gutter) ───────── */
-    .hero { position: relative; text-align: left; }
-    .hero-greet { font-size: clamp(13px, 2vw, 16px); margin-bottom: clamp(18px, 3vh, 30px); }
-    .hero-title {
-      font-family: var(--font-display); font-weight: 800;
-      font-size: clamp(38px, 9vw, 86px); line-height: 1.02;
-      letter-spacing: -.04em; margin: 0;
-    }
-    .hero-title em {
-      font-style: normal; color: var(--accent);
-      background: linear-gradient(transparent 60%, var(--accent-soft) 60%);
-      padding: 0 .03em;
-    }
-    .hero-sub {
-      margin-top: clamp(18px, 3vh, 30px); font-size: clamp(15px, 2.2vw, 21px);
-      color: var(--ink-2); max-width: 48ch; line-height: 1.65; text-wrap: pretty;
-    }
-    @media (min-width: 900px) {
-      .hero-sub { margin-left: clamp(100px, 18vw, 260px); }
-    }
-    .hero-cta { margin-top: clamp(26px, 4vh, 44px); }
-    /* 無框文字 CTA + 箭頭(箭頭用 ::after,不受伺服器文字注入影響) */
-    .hero-cta .btn { font-size: clamp(16px, 2vw, 19px); padding: 6px 0; gap: 9px; }
-    .hero-cta .btn::after { content: "→"; font-weight: 600; transition: transform .16s cubic-bezier(.2,.7,.3,1); }
-    .hero-cta .btn:hover { text-decoration: none; transform: none; }
-    .hero-cta .btn:hover::after { transform: translateX(4px); }
+    /* 最近旅程(精簡列) */
+    .recent { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .recent a { display: flex; flex-direction: column; border-radius: var(--radius); overflow: hidden; background: var(--surface);
+      box-shadow: var(--shadow-sm); transition: transform .2s ease, box-shadow .2s ease; color: var(--ink); }
+    .recent a:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .recent .thumb { aspect-ratio: 16 / 7; background: var(--surface-3); position: relative; overflow: hidden; }
+    .recent .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .recent .txt { padding: 8px 11px 10px; }
+    .recent b { display: block; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .recent small { font-size: 11.5px; color: var(--ink-3); }
 
-    .scroll-cue {
-      position: absolute; left: var(--gutter); bottom: clamp(8px, 3vh, 28px);
-      display: inline-flex; align-items: center; gap: 8px;
-      color: var(--ink-3); font-size: 12px; letter-spacing: .04em;
-      animation: cue 2s ease-in-out infinite;
-    }
-    @keyframes cue { 0%,100% { transform: translateY(0); opacity: .7; } 50% { transform: translateY(5px); opacity: 1; } }
+    .panel-box { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 16px 18px; }
 
-    /* ── 第二屏:騎乘日曆 + 回味一下(放在一起) ───────────────────────── */
-    .combo { display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(28px, 4vw, 52px); align-items: start; }
-    .combo > * { min-width: 0; }
-    @media (min-width: 920px) {
-      .combo { grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); }
-    }
-    .focus-title { font-family: var(--font-display); font-weight: 700;
-      font-size: clamp(22px, 3.4vw, 32px); letter-spacing: -.025em; margin: 0 0 clamp(14px, 2vh, 22px); }
-    .cal-total { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); font-weight: 500; margin-bottom: 16px; }
-
-    /* GitHub 風騎乘日曆 */
-    .cal-scroll { max-width: 100%; overflow-x: auto; padding-bottom: 6px; }
-    .cal-scroll::-webkit-scrollbar { height: 7px; }
-    .cal-scroll::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; }
-    .cal { display: inline-block; min-width: 100%; --cell: clamp(12px, 1.5vw, 17px); --gap: clamp(3px, .4vw, 4px); }
-    .cal-months { display: grid; grid-auto-flow: column;
-      grid-auto-columns: calc(var(--cell) + var(--gap)); margin-left: calc(28px + var(--gap));
-      margin-bottom: 6px; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); }
+    /* GitHub 風騎乘日曆(精簡版) */
+    .cal-scroll { max-width: 100%; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+    .cal { display: inline-block; min-width: 100%; --cell: 11px; --gap: 3px; }
+    .cal-months { display: grid; grid-auto-flow: column; grid-auto-columns: calc(var(--cell) + var(--gap));
+      margin-left: calc(18px + var(--gap)); margin-bottom: 5px; font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
     .cal-months span { white-space: nowrap; overflow: visible; }
     .cal-body { display: flex; gap: var(--gap); }
-    .cal-weekdays { display: grid; grid-template-rows: repeat(7, var(--cell)); gap: var(--gap);
-      width: 28px; font-size: 10px; color: var(--ink-3); }
+    .cal-weekdays { display: grid; grid-template-rows: repeat(7, var(--cell)); gap: var(--gap); width: 18px; font-size: 9.5px; color: var(--ink-3); }
     .cal-weekdays span { display: flex; align-items: center; line-height: 1; }
-    .cal-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, var(--cell));
-      grid-auto-columns: var(--cell); gap: var(--gap); }
-    .cal-grid .heat-cell { width: var(--cell); height: var(--cell); aspect-ratio: auto;
-      border-radius: 3px; outline: 1px solid color-mix(in oklch, var(--ink) 7%, transparent); outline-offset: -1px; }
-    .cal-grid a.heat-cell:hover { transform: scale(1.25); outline-color: var(--accent); }
+    .cal-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, var(--cell)); grid-auto-columns: var(--cell); gap: var(--gap); }
+    .cal-grid .heat-cell { width: var(--cell); height: var(--cell); aspect-ratio: auto; border-radius: 3px;
+      outline: 1px solid color-mix(in oklch, var(--ink) 6%, transparent); outline-offset: -1px; }
+    .cal-grid a.heat-cell:hover { transform: scale(1.3); outline-color: var(--accent); }
     .cal-grid .heat-cell.is-future { background: transparent; outline: none; pointer-events: none; }
+    .cal-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 11.5px; color: var(--ink-3); }
+    .cal-foot .heat-legend { margin: 0; }
 
-    @media (max-width: 700px) { .hero-title em { background: none; } }
+    /* 快速動作 */
+    .quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .quick a, .quick button { appearance: none; border: 0; font: inherit; text-align: left; cursor: pointer;
+      display: flex; align-items: center; gap: 11px; padding: 12px 13px; border-radius: var(--radius-sm);
+      background: var(--surface); box-shadow: var(--shadow-sm); color: var(--ink); transition: background-color .15s ease, transform .15s ease; }
+    .quick a:hover, .quick button:hover { background: var(--surface-2); transform: translateY(-1px); }
+    .quick i { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+    .quick i svg { width: 17px; height: 17px; }
+    .quick b { display: block; font-size: 13.5px; }
+    .quick small { display: block; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .quick .live { color: var(--accent); font-weight: 700; }
+
+    .home-empty { padding: 60px 20px; }
+    .month .card-title { margin-bottom: 6px; }
+    .month-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .month-nums div { min-width: 0; }
+    .month-nums b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+    .month-nums span { font-size: 11.5px; color: var(--ink-3); }
+    .month-up { color: var(--ok); font-weight: 700; } .month-down { color: var(--ink-3); }
+    @media (min-width: 761px) and (max-height: 820px) { .month { display: none; } }
+    @media (min-width: 761px) and (max-height: 760px) { .recent { display: none; } }
+    @media (max-width: 980px) {
+      .home-grid { grid-template-columns: minmax(0, 1fr); }
+      .feature { max-height: none; }
+    }
+    @media (max-width: 760px) {
+      .home { padding-block: 12px 32px; }
+      .home-stats { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .home-stat { min-width: 0; padding: 8px 10px; }
+      .home-stat b { font-size: 17px; }
+      .home-stat span { font-size: 10.5px; white-space: nowrap; display: block; overflow: hidden; text-overflow: ellipsis; }
+      .recent { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .recent a:nth-child(3) { display: none; }
+    }
   </style>
 <script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css?v=2.1.2"></head>
-<body>
+<body class="fit-page">
 
 <header class="hdr">
   <div class="wrap hdr-inner">
@@ -118,188 +133,210 @@
   </div>
 </header>
 
-<!-- ── 第一屏:Hero ─────────────────────────────────────────────── -->
-<section class="screen hero">
-  <div class="wrap">
-    <div class="hero-greet eyebrow"><span class="tick"></span><span id="greeting">歡迎回來</span></div>
-    <h1 class="hero-title" id="hero-title">每一段路，<br><em>都值得回放</em>。</h1>
-    <p class="hero-sub" id="hero-sub">前後雙鏡頭自動整理成一段段旅程——隨時回到那條路、那個瞬間。</p>
-    <div class="hero-cta">
-      <a class="btn btn--lg" href="/browse" data-i18n="nav.browse">瀏覽旅程</a>
-    </div>
-  </div>
-  <span class="scroll-cue">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-    <span data-i18n="index.scrollMore">向下捲動</span>
-  </span>
-</section>
-<script>
-/* Hero 標語:每次進站隨機一組(同步執行,先於非同步主程式,避免閃爍)。
-   第一組與 HTML 預設相同,作為無 JS 時的後備。 */
-(function () {
-  const LINES = [
-    { t: '每一段路，<br><em>都值得回放</em>。', s: '前後雙鏡頭自動整理成一段段旅程——隨時回到那條路、那個瞬間。' },
-    { t: '風景留在路上，<br><em>記憶留在這裡</em>。', s: '前後鏡頭自動合併、依趟分類,你只管騎,剩下的交給它。' },
-    { t: '那天的風，<br><em>還在這裡</em>。', s: '每段旅程自動整理成冊,雙鏡頭同步回放,細節一格不漏。' },
-    { t: '騎過的路，<br><em>從不消失</em>。', s: '前後畫面與感測數據一次到位——隨時倒帶回那個瞬間。' },
-    { t: '出發很快，<br><em>回味很慢</em>。', s: '把細碎片段無損合併成完整旅程,好好回放每一次出門。' },
-    { t: '路會結束，<br><em>故事不會</em>。', s: '雙鏡頭子母畫面、逐格回放,留住每一條走過的路。' },
-    { t: '每一次出門，<br><em>都是一段故事</em>。', s: '自動依日期與趟次整理,回家就能重溫今天的路。' },
-    { t: '按下回放，<br><em>重回那條路</em>。', s: '前後雙鏡頭無縫接軌,那個轉角、那道光,都還在。' },
-    { t: '路過的日常，<br><em>值得被記得</em>。', s: '當時沒留意的街景，回放時可能就是最想念的一幕。' },
-    { t: '天色會暗，<br><em>那天不會淡</em>。', s: '夕陽落下以後，那段回家的路仍在這裡等你。' },
-    { t: '向前走時，<br><em>也別忘了回望</em>。', s: '讓前後鏡頭留下當下，給未來的自己慢慢看。' },
-    { t: '那個轉角，<br><em>還有光</em>。', s: '停在喜歡的畫面，再走一遍當時的路。' },
-    { t: '把今天，<br><em>留給明天看</em>。', s: '平常的一趟出門，也能成為以後珍惜的記憶。' },
-    { t: '總有一天，<br><em>會想念今天</em>。', s: '路上的風、熟悉的街，現在都能好好保存。' },
-    { t: '平凡的路，<br><em>也會發光</em>。', s: '不必等到遠行，每天經過的地方也值得回放。' },
-    { t: '路還很長，<br><em>故事慢慢說</em>。', s: '把一段段短片接起來，讓旅程按自己的步調繼續。' },
-    { t: '每次回家，<br><em>都帶回一段路</em>。', s: '今天走過的地方，改天還能從頭細細看。' },
-    { t: '那些遠方，<br><em>還能再靠近</em>。', s: '打開旅程，重新看見當時眼前的風景。' },
-    { t: '一起看過的，<br><em>不只風景</em>。', s: '珍貴的片刻不必靠回想，畫面會替你留下。' },
-    { t: '路途有終點，<br><em>記憶沒有</em>。', s: '整理每一趟出發，想回去時隨時都能回放。' },
-  ];
-  const storageKey = 'dashcam.hero.last';
-  let previous = null;
-  try { previous = sessionStorage.getItem(storageKey); } catch { /* 禁用儲存時仍顯示標語 */ }
-  const choices = LINES.filter(line => line.t !== previous);
-  const pick = choices[Math.floor(Math.random() * choices.length)];
-  try { sessionStorage.setItem(storageKey, pick.t); } catch { /* 禁用儲存時仍可隨機顯示 */ }
-  const titleEl = document.getElementById('hero-title');
-  const subEl = document.getElementById('hero-sub');
-  if (titleEl) titleEl.innerHTML = pick.t;
-  if (subEl) subEl.textContent = pick.s;
-})();
-</script>
+<div class="page-body">
+  <div class="wrap fit-wrap home">
+    <section class="home-hero">
+      <div>
+        <div class="home-greet eyebrow"><span class="tick"></span><span id="greeting">歡迎回來</span></div>
+        <h1 class="home-title" id="home-title">&nbsp;</h1>
+        <div class="home-sub" id="home-sub"></div>
+      </div>
+      <div class="home-stats" id="home-stats" aria-label="騎乘統計"></div>
+    </section>
 
-<!-- ── 第二屏:騎乘日曆 + 回味一下 ─────────────────────────────────── -->
-<section class="screen">
-  <div class="wrap combo">
-    <div>
-      <h2 class="focus-title" data-i18n="index.calTitle">騎乘日曆</h2>
-      <div class="cal-total" id="cal-total"></div>
-      <div class="cal-scroll">
-        <div class="cal">
-          <div class="cal-months" id="cal-months"></div>
-          <div class="cal-body">
-            <div class="cal-weekdays" aria-hidden="true">
-              <span></span><span>一</span><span></span><span>三</span><span></span><span>五</span><span></span>
+    <section class="home-grid">
+      <div class="home-col">
+        <div id="feature"><div class="loading-row"><div class="spinner"></div><span data-i18n="common.loading">載入中…</span></div></div>
+        <div>
+          <div class="card-title"><h2 data-i18n="index.recentTitle">最近旅程</h2><a href="/browse" data-i18n="index.viewAll">查看全部</a></div>
+          <div class="recent" id="recent"></div>
+        </div>
+      </div>
+      <div class="home-col">
+        <div class="panel-box">
+          <div class="card-title"><h2 data-i18n="index.calTitle">騎乘日曆</h2><span id="cal-total"></span></div>
+          <div class="cal-scroll">
+            <div class="cal">
+              <div class="cal-months" id="cal-months"></div>
+              <div class="cal-body">
+                <div class="cal-weekdays" aria-hidden="true">
+                  <span></span><span>一</span><span></span><span>三</span><span></span><span>五</span><span></span>
+                </div>
+                <div class="cal-grid" id="heatmap"></div>
+              </div>
             </div>
-            <div class="cal-grid" id="heatmap">
-              <div class="loading-row" style="padding:6px;"><div class="spinner"></div></div>
+          </div>
+          <div class="cal-foot">
+            <span id="cal-streak"></span>
+            <div class="heat-legend">
+              <span data-i18n="index.calLess">少</span>
+              <i style="background:var(--surface-3)"></i>
+              <i style="background:color-mix(in oklch,var(--accent) 28%,var(--surface-3))"></i>
+              <i style="background:color-mix(in oklch,var(--accent) 55%,var(--surface-3))"></i>
+              <i style="background:var(--accent)"></i>
+              <span data-i18n="index.calMore">多</span>
             </div>
           </div>
         </div>
+        <div class="panel-box month" id="month-box" hidden>
+          <div class="card-title"><h2 id="month-title">本月</h2><span id="month-compare"></span></div>
+          <div class="month-nums" id="month-nums"></div>
+        </div>
+        <div class="quick" id="quick">
+          <a href="/upload"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></i><span><b>上傳影片</b><small>拖入記憶卡資料夾</small></span></a>
+          <a href="/jobs"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></i><span><b>背景作業</b><small id="quick-jobs">處理進度與紀錄</small></span></a>
+          <a href="/clips"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg></i><span><b>片段</b><small>匯出、下載與檢舉</small></span></a>
+          <button type="button" id="quick-random"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></i><span><b>隨機回顧</b><small>挑一趟舊旅程重看</small></span></button>
+        </div>
       </div>
-      <div class="heat-legend">
-        <span data-i18n="index.calLess">少</span>
-        <i style="background:var(--surface-3)"></i>
-        <i style="background:color-mix(in oklch,var(--accent) 28%,var(--surface-3))"></i>
-        <i style="background:color-mix(in oklch,var(--accent) 55%,var(--surface-3))"></i>
-        <i style="background:var(--accent)"></i>
-        <span data-i18n="index.calMore">多</span>
-      </div>
-    </div>
-
-    <div>
-      <h2 class="focus-title" data-i18n="index.latestTitle">回味一下？</h2>
-      <div id="spotlight"><div class="loading-row"><div class="spinner"></div><span data-i18n="common.loading">載入中…</span></div></div>
-    </div>
+    </section>
   </div>
-</section>
+</div>
 
 <div id="toast-container"></div>
-<script src="/static/app.js?v=2.1.3"></script>
+<script src="/static/app.js?v=2.2.0"></script>
 <script>
+const PLAY_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+let homeStats = null;
+
 (async () => {
   await configReady;
   const user = await checkAuth();
+  if (!user) return;
   renderHeader(user);
   setGreeting(user);
-  loadSpotlight();
+  try { homeStats = await apiFetch('/api/trips/stats'); } catch {}
+  renderStats();
+  loadLatest();
   loadHeatmap();
+  loadJobsHint();
+  document.getElementById('quick-random').addEventListener('click', openRandom);
 })();
 
-/** 依時段給問候語 + 使用者名(個性化)。 */
+/** 依時段給問候語 + 使用者名。 */
 function setGreeting(user) {
   const h = new Date().getHours();
-  const g = h < 5 ? '夜深了' : h < 11 ? '早安' : h < 14 ? '午安'
-          : h < 18 ? '午後好' : h < 22 ? '晚安' : '夜深了';
-  document.getElementById('greeting').textContent =
-    user && user.username ? `${g}，${user.username}` : g;
+  const g = h < 5 ? '夜深了' : h < 11 ? '早安' : h < 14 ? '午安' : h < 18 ? '午後好' : h < 22 ? '晚安' : '夜深了';
+  const name = userDisplayName(user);
+  document.getElementById('greeting').textContent = name ? `${g}，${name}` : g;
 }
 
-async function loadSpotlight() {
-  const el = document.getElementById('spotlight');
-  try {
-    // 隨機挑一趟回味:先問總數,再用隨機 offset 取一筆(總數為 0/1 時退回第一筆)。
-    let offset = 0;
-    try {
-      const s = await apiFetch('/api/trips/stats');
-      const total = s.total_trips || 0;
-      if (total > 1) offset = Math.floor(Math.random() * total);
-    } catch {}
-    const data = await apiFetch(`/api/trips?limit=1&offset=${offset}`);
-    if (!data.trips.length) {
-      el.innerHTML = `<div class="empty"><div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
-        <h3>${t('index.emptyTitle')}</h3><p>${t('index.emptyHint')}</p></div>`;
-      return;
-    }
-    const tr = data.trips[0];
-    const dateLabel = new Date(tr.date).toLocaleDateString(cfgLocale(), { year:'numeric', month:'long', day:'numeric', weekday:'short', timeZone:'UTC' });
-    const cams = [tr.has_front && t('trip.camFrontShort'), tr.has_rear && t('trip.camRearShort')].filter(Boolean).join('+') + t('trip.camSuffix');
-    const g = tr.peak_gforce || 0;
-    const gTxt = g > 0 ? ` · ${g.toFixed(2)}g` : '';
-    const sizeTxt = tr.bytes ? ` · ${fmtBytes(tr.bytes)}` : '';
-    el.innerHTML = `
-      <a class="spotlight" href="/trip/${encodeURIComponent(tr.trip_id)}">
-        <div class="spotlight-frame">
-          <img class="spot-thumb" loading="lazy" alt="" src="/video/${encodeURIComponent(tr.trip_id)}/thumbnail" onerror="this.remove()">
-          <div class="play"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>
-          <div class="osd">${tr.date} · ${fmtTime(tr.start_epoch)}–${fmtTime(tr.end_epoch)}</div>
-        </div>
-        <div class="spotlight-body">
-          <h3>${dateLabel}</h3>
-          <div class="meta">${fmtDuration(tr.duration_sec)} · ${cams}${gTxt}${sizeTxt}</div>
-        </div>
-      </a>`;
-  } catch (e) {
-    el.innerHTML = `<div class="empty"><h3>${t('common.loadFail')}</h3><p>${escapeHtml(e.message)}</p></div>`;
+function renderStats() {
+  const s = homeStats || {};
+  const items = [
+    [s.total_trips ?? 0, t('index.stat.trips')],
+    [s.total_days ?? 0, t('index.stat.days')],
+    [s.total_sec ? (s.total_sec / 3600).toFixed(1) : '0', t('index.stat.hours')],
+    [s.max_gforce ? s.max_gforce.toFixed(2) + 'g' : '—', t('index.stat.gforce')],
+  ];
+  document.getElementById('home-stats').innerHTML = items.map(([v, l]) =>
+    `<div class="home-stat"><b>${escapeHtml(String(v))}</b><span>${escapeHtml(l)}</span></div>`).join('');
+}
+
+/** 本機日期(YYYY-MM-DD);旅程日期為車機牆鐘日期。 */
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function daysBetween(a, b) { return Math.round((Date.parse(a) - Date.parse(b)) / 86400000); }
+
+/** 標題由資料決定:今天/昨天騎了幾趟,或距離上一趟幾天。 */
+async function loadLatest() {
+  const title = document.getElementById('home-title');
+  const sub = document.getElementById('home-sub');
+  const feature = document.getElementById('feature');
+  let data;
+  try { data = await apiFetch('/api/trips?limit=4&offset=0'); }
+  catch (e) { feature.innerHTML = `<div class="empty"><h3>${t('common.loadFail')}</h3><p>${escapeHtml(e.message)}</p></div>`; return; }
+  if (!data.trips.length) {
+    title.innerHTML = '還沒有<em>任何旅程</em>';
+    sub.innerHTML = `<a href="/upload">上傳第一批行車影片</a>`;
+    feature.innerHTML = `<div class="empty home-empty panel-box"><div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+      <h3>${t('index.emptyTitle')}</h3><p>${t('index.emptyHint')}</p></div>`;
+    document.getElementById('recent').closest('div').parentElement.querySelector('.recent').innerHTML = '';
+    return;
   }
+  const latest = data.trips[0];
+  const sameDay = data.trips.filter(tr => tr.date === latest.date).length;
+  const gap = daysBetween(localToday(), latest.date);
+  if (gap <= 0) title.innerHTML = `今天騎了 <em>${sameDay}${sameDay >= 4 ? '+' : ''} 趟</em>`;
+  else if (gap === 1) title.innerHTML = `昨天騎了 <em>${sameDay}${sameDay >= 4 ? '+' : ''} 趟</em>`;
+  else title.innerHTML = `上一趟是 <em>${gap} 天前</em>`;
+
+  const dateLabel = new Date(latest.date).toLocaleDateString(cfgLocale(), { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'UTC' });
+  const cams = [latest.has_front && t('trip.camFrontShort'), latest.has_rear && t('trip.camRearShort')].filter(Boolean).join('+') + t('trip.camSuffix');
+  const device = latest.device && (latest.device.nickname || latest.device.model);
+  const href = `/trip/${encodeURIComponent(latest.trip_id)}`;
+  sub.innerHTML = `<span>${escapeHtml(dateLabel)} ${fmtTime(latest.start_epoch)}–${fmtTime(latest.end_epoch)} · ${fmtDuration(latest.duration_sec)}</span><a href="${href}">播放最新一趟</a>`;
+
+  const meta = [cams, device, latest.peak_gforce > 0 ? `${latest.peak_gforce.toFixed(2)}g` : '', latest.bytes ? fmtBytes(latest.bytes) : '']
+    .filter(Boolean).map(escapeHtml).join(' · ');
+  feature.innerHTML = `
+    <a class="feature" href="${href}">
+      <img loading="eager" alt="" src="/video/${encodeURIComponent(latest.trip_id)}/thumbnail" onerror="this.remove()">
+      <div class="feature-info">
+        <div>
+          <span class="feature-tag">最新一趟 · 第 ${latest.day_order} 趟</span>
+          <h3>${escapeHtml(dateLabel)}　${fmtTime(latest.start_epoch)} — ${fmtTime(latest.end_epoch)}</h3>
+          <p>${fmtDuration(latest.duration_sec)} · ${meta}</p>
+        </div>
+        <span class="play">${PLAY_SVG}</span>
+      </div>
+    </a>`;
+
+  document.getElementById('recent').innerHTML = data.trips.slice(1, 4).map(tr => `
+    <a href="/trip/${encodeURIComponent(tr.trip_id)}">
+      <span class="thumb"><img loading="lazy" alt="" src="/video/${encodeURIComponent(tr.trip_id)}/thumbnail" onerror="this.remove()"></span>
+      <span class="txt"><b>${escapeHtml(new Date(tr.date).toLocaleDateString(cfgLocale(), { month: 'numeric', day: 'numeric', timeZone: 'UTC' }))} ${fmtTime(tr.start_epoch)}</b>
+      <small>${fmtDuration(tr.duration_sec)}${tr.peak_gforce > 0 ? ` · ${tr.peak_gforce.toFixed(2)}g` : ''}</small></span>
+    </a>`).join('') || `<span style="font-size:13px;color:var(--ink-3)">只有一趟旅程</span>`;
 }
 
-/** GitHub 風貢獻圖:直 7 列(週幾)× 橫向一週一欄,含月份標籤;並彙總統計到標題下。 */
+async function openRandom() {
+  const total = homeStats?.total_trips || 0;
+  if (!total) { location.href = '/upload'; return; }
+  try {
+    const data = await apiFetch(`/api/trips?limit=1&offset=${Math.floor(Math.random() * total)}`);
+    if (data.trips[0]) location.href = `/trip/${encodeURIComponent(data.trips[0].trip_id)}`;
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadJobsHint() {
+  try {
+    const jobs = await apiFetch('/api/jobs?offset=0');
+    const active = jobs.filter(j => ['queued', 'running', 'cancelling'].includes(j.status)).length;
+    const el = document.getElementById('quick-jobs');
+    if (active) { el.textContent = `${active} 個處理中`; el.classList.add('live'); }
+    else if (jobs[0]) el.textContent = `最近：${jobs[0].message || '已完成'}`;
+  } catch {}
+}
+
+/** GitHub 風騎乘日曆(約半年)+ 連續騎乘統計。 */
 async function loadHeatmap() {
   const grid = document.getElementById('heatmap');
   let dates = [];
-  try { dates = await apiFetch('/api/trips/dates'); }
-  catch { grid.innerHTML = ''; return; }
-
+  try { dates = await apiFetch('/api/trips/dates'); } catch { grid.innerHTML = ''; return; }
   const counts = new Map(dates.map(d => [d.date, d.trip_count || 0]));
   const lv = c => c >= 5 ? 3 : c >= 3 ? 2 : c >= 1 ? 1 : 0;
   const pad = n => String(n).padStart(2, '0');
   const DAY = 86400000;
-  const WEEKS = 26; // 約半年
-
+  const WEEKS = 26;
   const now = new Date();
-  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const todayUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   const endSat = todayUTC + (6 - new Date(todayUTC).getUTCDay()) * DAY;
   const startSun = endSat - (WEEKS * 7 - 1) * DAY;
-
-  let cells = '', total = 0, activeDays = 0;
+  let cells = '', active = 0, trips = 0;
   for (let ms = startSun; ms <= endSat; ms += DAY) {
     const d = new Date(ms);
     const key = `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`;
     if (ms > todayUTC) { cells += `<div class="heat-cell is-future"></div>`; continue; }
     const c = counts.get(key) || 0;
-    if (c > 0) { total += c; activeDays++; }
+    if (c) { active++; trips += c; }
     const title = `${key} · ${c} ${t('index.stat.tripsUnit')}`;
-    cells += c
-      ? `<a class="heat-cell" data-lv="${lv(c)}" href="/browse#${key}" title="${title}"></a>`
-      : `<div class="heat-cell" data-lv="0" title="${title}"></div>`;
+    cells += c ? `<a class="heat-cell" data-lv="${lv(c)}" href="/browse#${key}" title="${title}"></a>`
+               : `<div class="heat-cell" data-lv="0" title="${title}"></div>`;
   }
   grid.innerHTML = cells;
-
   let months = '', prevM = -1;
   for (let w = 0; w < WEEKS; w++) {
     const ws = new Date(startSun + w * 7 * DAY);
@@ -309,15 +346,39 @@ async function loadHeatmap() {
     months += `<span>${lbl}</span>`;
   }
   document.getElementById('cal-months').innerHTML = months;
+  document.getElementById('cal-total').textContent = `近 ${WEEKS} 週 · ${active} 天 · ${trips} ${t('index.stat.tripsUnit')}`;
+  // 最長連續騎乘天數
+  const days = [...counts.keys()].sort();
+  let best = 0, run = 0, prev = null;
+  for (const d of days) { run = prev && daysBetween(d, prev) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = d; }
+  document.getElementById('cal-streak').textContent = best > 1 ? `最長連續 ${best} 天` : '';
+  renderMonth(dates);
+}
 
-  let line = `${total} ${t('index.stat.tripsUnit')} · ${activeDays} ${t('index.stat.daysUnit')} · 過去 ${WEEKS} 週`;
-  try {
-    const s = await apiFetch('/api/trips/stats');
-    const hrs = s.total_sec ? (s.total_sec / 3600).toFixed(1) : 0;
-    const gf = s.max_gforce ? ` · 最高 ${s.max_gforce.toFixed(2)}g` : '';
-    line = `共 ${s.total_trips ?? 0} ${t('index.stat.tripsUnit')} · ${s.total_days ?? 0} ${t('index.stat.daysUnit')} · ${hrs} ${t('index.stat.hoursUnit')}${gf}`;
-  } catch {}
-  document.getElementById('cal-total').textContent = line;
+/** 本月 vs 上月:天數、趟數、時數。 */
+function renderMonth(dates) {
+  const now = new Date();
+  const ym = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`;
+  const cur = ym(now.getFullYear(), now.getMonth());
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prev = ym(prevDate.getFullYear(), prevDate.getMonth());
+  const sum = (key) => dates.filter(d => d.date.startsWith(key)).reduce((a, d) =>
+    ({ days: a.days + 1, trips: a.trips + (d.trip_count || 0), sec: a.sec + (d.total_sec || 0) }), { days: 0, trips: 0, sec: 0 });
+  const a = sum(cur), b = sum(prev);
+  // 月初還沒騎時改看上個月,避免整塊都是 0
+  const show = a.trips ? a : b;
+  if (!show.trips) return;
+  const label = a.trips ? '本月' : `${prevDate.getMonth() + 1} 月`;
+  document.getElementById('month-title').textContent = label;
+  document.getElementById('month-nums').innerHTML = [
+    [show.trips, t('index.stat.tripsUnit')], [show.days, t('index.stat.daysUnit')], [(show.sec / 3600).toFixed(1), t('index.stat.hoursUnit')],
+  ].map(([v, u]) => `<div><b>${v}</b><span>${escapeHtml(u)}</span></div>`).join('');
+  if (a.trips && b.trips) {
+    const diff = a.trips - b.trips;
+    document.getElementById('month-compare').innerHTML = diff >= 0
+      ? `<span class="month-up">比上月多 ${diff} 趟</span>` : `<span class="month-down">上月 ${b.trips} 趟</span>`;
+  }
+  document.getElementById('month-box').hidden = false;
 }
 </script>
 </body>

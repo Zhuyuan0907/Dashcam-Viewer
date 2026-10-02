@@ -26,68 +26,16 @@ test("the home calendar scrolls inside its own panel on a narrow phone", async (
   expect(calendar.content).toBeGreaterThan(calendar.viewport);
 });
 
-test("all home slogans fit a phone and a refresh avoids the previous one", async ({ page }) => {
-  await page.addInitScript(() => {
-    const draw = sessionStorage.getItem("uiHeroDraw");
-    if (draw !== null) Math.random = () => Number(draw);
-  });
+test("home headline comes from riding data and fits one desktop screen", async ({ page }) => {
   await page.goto("/");
-  const seen = new Set<string>();
-  for (let index = 0; index < 20; index++) {
-    await page.evaluate(
-      (draw) => {
-        sessionStorage.setItem("dashcam.hero.last", "__other_slogan__");
-        sessionStorage.setItem("uiHeroDraw", String(draw));
-      },
-      (index + 0.1) / 20,
-    );
-    await page.reload();
-    const layout = await page.locator("#hero-title").evaluate((title) => {
-      const walker = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
-      const tops = new Set<number>();
-      for (let node; (node = walker.nextNode()); ) {
-        if (!node.textContent?.trim()) continue;
-        const range = document.createRange();
-        range.selectNodeContents(node);
-        for (const rect of range.getClientRects()) {
-          if (rect.width > 0) tops.add(Math.round(rect.top));
-        }
-      }
-      return { text: title.textContent!.trim(), lines: tops.size };
-    });
-    expect(layout.lines, layout.text).toBeLessThanOrEqual(2);
-    await expectNoPageOverflow(page);
-    seen.add(layout.text);
-  }
-  expect(seen.size).toBe(20);
+  await expect(page.locator("#home-title")).toContainText(/騎了|上一趟|旅程/);
+  await expect(page.locator(".feature")).toBeVisible();
+  await expectNoPageOverflow(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  for (let index = 0; index < 20; index++) {
-    await page.evaluate(
-      (draw) => {
-        sessionStorage.setItem("dashcam.hero.last", "__other_slogan__");
-        sessionStorage.setItem("uiHeroDraw", String(draw));
-      },
-      (index + 0.1) / 20,
-    );
-    await page.reload();
-    await expectNoPageOverflow(page);
-    const sub = await page.locator("#hero-sub").evaluate((element) => ({
-      lines:
-        element.getBoundingClientRect().height /
-        Number.parseFloat(getComputedStyle(element).lineHeight),
-      left: element.getBoundingClientRect().left,
-    }));
-    expect(sub.lines).toBeLessThan(2.2);
-    expect(sub.left - (await page.locator("#hero-title").boundingBox())!.x).toBeGreaterThan(150);
-  }
-  await page.evaluate(() => {
-    sessionStorage.removeItem("dashcam.hero.last");
-    sessionStorage.setItem("uiHeroDraw", "0");
-  });
   await page.reload();
-  const first = await page.locator("#hero-title").textContent();
-  await page.reload();
-  expect(await page.locator("#hero-title").textContent()).not.toBe(first);
+  await expect(page.locator(".feature")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1);
+  await expect(page.locator("#app-footer")).toBeHidden();
 });
 
 test("trip heading and metadata stay readable at 320px", async ({ page }) => {

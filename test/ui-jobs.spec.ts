@@ -88,9 +88,13 @@ for (const [name, width, height] of [
     await page.goto("/jobs");
     await expect(page.getByRole("heading", { name: "背景作業" })).toBeVisible();
     await expect(page.locator(".job-card")).toHaveCount(1);
-    await page.getByText("查看處理紀錄").click();
-    await expect(page.locator(".job-timeline li")).toHaveCount(3);
-    await expect(page.getByText("找到 8 組拍攝片段")).toBeVisible();
+    await page.locator(".job-card").click();
+    // 結構化紀錄:階段、重點數據、步驟;原始紀錄收合在最後
+    await expect(page.locator(".jobs-detail .jl-step")).toHaveCount(2);
+    await expect(page.locator(".jobs-detail .jl-fact").first()).toContainText("8");
+    await expect(page.locator(".jobs-detail").getByText("找到 8 組拍攝片段")).toBeVisible();
+    await page.locator(".jobs-detail .jl-raw summary").click();
+    await expect(page.locator(".jobs-detail .jl-raw li")).toHaveCount(3);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

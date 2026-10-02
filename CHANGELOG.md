@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.0 — 2026-10-02
+
+- Replace the rotating home slogans with a one-screen overview: a data-driven headline (today / yesterday / days since the last ride), the latest trip as a large feature, recent trips, a compact riding calendar with longest streak, this month's totals and quick actions.
+- Keep Browse on one screen on desktop and phones; only the date list and the day's trips scroll, and the footer is hidden. Phones get a horizontally draggable date strip.
+- Rebuild the date gallery as a macOS Time Machine-style view: dated windows recede into a starfield, a spring-driven stack follows trackpad, drag, arrows and keyboard, and a magnifying timeline jumps to any date.
+- Give exported clip cards a single action row (download, edit again, report, and a menu for rename / open source / delete).
+- Copy SFTP server, user, password and FileZilla command by clicking the field itself.
+- Turn Admin, Ops and Account into single-screen consoles with side tabs instead of long scrolling pages.
+- Make the database viewer readable for non-specialists: plain-language table and column names, formatted times, sizes, durations and JSON, a details drawer, and a raw-column mode.
+- Summarize background job logs into phases, key figures and a per-trip merge table instead of repeating every progress line; the upload page uses the same live view. The jobs page becomes a list with a detail panel.
+
 ## 2.1.7 — 2026-09-28
 
 - Keep the home calendar inside its own horizontal scroller on narrow phones instead of widening the whole page.

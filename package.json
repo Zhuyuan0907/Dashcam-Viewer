@@ -1,6 +1,6 @@
 {
   "name": "dashcam",
-  "version": "2.1.7",
+  "version": "2.2.0",
   "description": "行車記錄器網頁系統 — 上傳、整理、合併、瀏覽行車影片(Node.js + Fastify + TypeScript)",
   "type": "module",
   "license": "MIT",

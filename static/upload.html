@@ -5,16 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title data-i18n-title="title.upload">上傳影片 — 行車記錄</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/ui.css?v=2.2.0">
   <style>
     .sftp-card { padding:18px 20px; margin-top:16px; }
     .sftp-card-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
     .sftp-rows { display:flex; flex-direction:column; gap:8px; }
     .sftp-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .sftp-row .lbl { width:88px; flex:none; color:var(--ink-3); font-size:13px; }
-    .sftp-row .val { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; color:var(--ink-1);
-                     background:var(--surface-2); border:1px solid var(--border); border-radius:6px;
-                     padding:5px 9px; flex:1; min-width:140px; overflow:auto; white-space:nowrap; }
-    .copy-btn { flex:none; }
+    .sftp-row .copy-field { flex:1; width:auto; min-width:160px; }
+    #prog-detail { margin-top:16px; }
+    #prog-log:empty { display:none; }
     .sftp-meta { display:flex; gap:14px; flex-wrap:wrap; color:var(--ink-2); font-size:13px; margin:14px 0 4px; }
     .create-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:4px; }
     .create-actions { display:flex; align-items:stretch; gap:8px; height:42px; }
@@ -185,6 +185,7 @@
         <div class="progress-track">
           <div class="progress-fill" id="prog-bar" style="width:0%"></div>
         </div>
+        <div id="prog-detail"></div>
         <div class="progress-log" id="prog-log"></div>
         <p style="margin:12px 0 0;font-size:13px;"><a href="/jobs">查看背景作業與完整處理紀錄 ↗</a></p>
       </div>
@@ -194,7 +195,9 @@
 </div>
 
 <div id="toast-container"></div>
-<script src="/static/app.js?v=2.1.3"></script>
+<script src="/static/app.js?v=2.2.0"></script>
+<script src="/static/panes.js?v=2.2.0"></script>
+<script src="/static/job-log.js?v=2.2.0"></script>
 <script>
 /* ── 狀態 ────────────────────────────────────────────────────────────────── */
 let pollTimer = null;
@@ -478,10 +481,13 @@ function buildCard(s) {
 }
 
 function row(label, value) {
+  // 整個欄位就是複製鈕:點一下即複製,免找旁邊的小按鈕
   return `<div class="sftp-row">
       <span class="lbl">${label}</span>
-      <span class="val">${escapeHtml(value)}</span>
-      <button class="btn btn--ghost btn--sm copy-btn" type="button" data-copy="${escapeAttr(value)}">${t('common.copy')}</button>
+      <button class="copy-field" type="button" data-copy="${escapeAttr(value)}" aria-label="${escapeAttr(label)}：點一下複製">
+        <span class="copy-value">${escapeHtml(value)}</span>
+        <span class="copy-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span class="copy-hint-text">點一下複製</span></span>
+      </button>
     </div>`;
 }
 
@@ -801,26 +807,29 @@ window.addEventListener('beforeunload', (e) => {
 
 /* ── 複製到剪貼簿 ────────────────────────────────────────────────────────── */
 async function copy(text, btn) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); ta.remove();
-  }
-  if (btn) {
-    const orig = btn.textContent; btn.textContent = t('common.copied');
-    setTimeout(() => { btn.textContent = orig; }, 1200);
-  }
+  await DashcamUI.copyText(text, btn);
+  showToast(t('common.copied'), 'success');
 }
 
 /* ── SSE 進度(確認處理後;斷線自動重連) ─────────────────────────────────── */
 let sseRetries = 0;
+let sseEvents = [], sseRenderTimer = null;
+/** 把 SSE 事件整理成與背景作業相同的結構化紀錄(階段、重點數據、每趟合併明細)。 */
+function trackEvent(d, final = false) {
+  if (!d.message && !final) return;
+  sseEvents.push({ stage: d.stage, message: d.message || '', done: d.done ?? null, total: d.total ?? null, created_at: Date.now() });
+  clearTimeout(sseRenderTimer);
+  const draw = () => JobLog.render(document.getElementById('prog-detail'), sseEvents,
+    { status: final ? (d.stage === 'error' ? 'failed' : 'succeeded') : 'running' });
+  if (final) draw(); else sseRenderTimer = setTimeout(draw, 250);
+}
 function listenSSE(sid) {
+  sseEvents = [];   // 重連時伺服器會重播全部事件,從頭整理
   const es = new EventSource(`/api/process/${sid}/events`);
   es.onmessage = e => {
     sseRetries = 0;   // 有訊息 = 連線正常,重置重連額度
     const d = JSON.parse(e.data);
+    trackEvent(d, d.stage === 'done' || d.stage === 'error');
     if (d.stage === 'done') {
       setStage(t('upload.done'), 100);
       document.querySelector('.progress-stage .spinner')?.remove();
@@ -846,7 +855,6 @@ function listenSSE(sid) {
     let pct = stageMap[d.stage] ?? 50;
     if (d.total && d.done !== undefined) pct = Math.round(d.done / d.total * 100);
     setStage(d.message, pct);
-    log(d.message);
   };
   // 連線中斷:處理仍在背景進行,channel 會保留一段時間 → 自動重連幾次再放棄
   es.onerror = () => {

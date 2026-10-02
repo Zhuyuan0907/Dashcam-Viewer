@@ -57,14 +57,22 @@ for (const width of [1440, 390]) {
       await expect(page.locator("#acct-username")).toHaveCSS("border-top-style", "dashed");
       await page.locator("#acct-display").focus();
       await expect(page.locator("#acct-display")).toHaveCSS("outline-width", "3px");
-      await page.evaluate(() => window.scrollTo(0, 500));
-      await expect(page.locator(".hdr")).toHaveClass(/is-scrolled/);
-      await expect(page.locator(".hdr")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-      await expect(page.locator(".hdr-brand")).not.toHaveCSS("color", "rgb(255, 255, 255)");
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
       ).toBeLessThanOrEqual(1);
     }
+    // 個人設定已改為一屏式(不捲動);捲動後的頁首在一般可捲動頁面驗證。
+    await page.goto("/clips");
+    await page.evaluate(() => { document.body.style.minHeight = "3000px"; });
+    for (const palette of Object.keys(palettes)) {
+      await page.evaluate((p) => (window as any).DashcamThemes.apply(p), palette);
+      await page.evaluate(() => window.scrollTo(0, 500));
+      await expect(page.locator(".hdr")).toHaveClass(/is-scrolled/);
+      await expect(page.locator(".hdr")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await expect(page.locator(".hdr-brand")).not.toHaveCSS("color", "rgb(255, 255, 255)");
+      await page.evaluate(() => window.scrollTo(0, 0));
+    }
+    await page.goto("/account#devices");
     if (width < 860) {
       await page.locator(".hdr-burger").click();
       await expect(page.locator(".m-drawer")).toBeVisible();

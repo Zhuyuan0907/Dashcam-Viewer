@@ -1,0 +1,154 @@
+/* ── 時光機(仿 macOS Time Machine) ─────────────────────────────────────────── */
+body.tm-open { overflow: hidden; }
+.time-machine[hidden] { display: none; }
+.time-machine {
+  position: fixed; inset: 0; z-index: 1000; overflow: hidden; color: #eef3f6;
+  background:
+    radial-gradient(ellipse 80% 55% at 50% 112%, rgba(76, 128, 140, .55), transparent 70%),
+    radial-gradient(ellipse 70% 50% at 50% -12%, rgba(52, 66, 110, .55), transparent 70%),
+    linear-gradient(#060a12, #0b1420 55%, #0d1a22);
+  opacity: 0; transition: opacity .35s ease;
+  -webkit-user-select: none; user-select: none;
+}
+.time-machine.is-open { opacity: 1; }
+
+/* 星空(兩層不同速度緩慢漂移) */
+.tm-space, .tm-space::after { position: absolute; inset: -20%; pointer-events: none; }
+.tm-space {
+  background-image:
+    radial-gradient(1.2px 1.2px at 20px 30px, rgba(255,255,255,.75), transparent 60%),
+    radial-gradient(1px 1px at 90px 120px, rgba(255,255,255,.55), transparent 60%),
+    radial-gradient(1.4px 1.4px at 170px 60px, rgba(210,230,255,.7), transparent 60%),
+    radial-gradient(1px 1px at 230px 190px, rgba(255,255,255,.45), transparent 60%),
+    radial-gradient(1.1px 1.1px at 60px 210px, rgba(255,255,255,.5), transparent 60%);
+  background-size: 260px 240px;
+  animation: tm-drift 120s linear infinite;
+  opacity: .8;
+}
+.tm-space::after {
+  content: ""; inset: 0;
+  background-image:
+    radial-gradient(1.6px 1.6px at 40px 80px, rgba(255,255,255,.9), transparent 60%),
+    radial-gradient(1.2px 1.2px at 300px 260px, rgba(190,220,255,.8), transparent 60%),
+    radial-gradient(1px 1px at 180px 380px, rgba(255,255,255,.6), transparent 60%);
+  background-size: 420px 460px;
+  animation: tm-drift 70s linear infinite reverse;
+}
+@keyframes tm-drift { to { transform: translate3d(-260px, 240px, 0); } }
+
+/* 標題 */
+.tm-top { position: absolute; z-index: 5; top: max(18px, env(safe-area-inset-top)); left: max(24px, env(safe-area-inset-left));
+  right: max(24px, env(safe-area-inset-right)); display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  pointer-events: none; }
+.tm-heading { min-width: 0; }
+.tm-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .18em; color: rgba(225, 238, 245, .6); text-transform: uppercase; }
+.tm-heading h2 { margin: 6px 0 0; font-size: clamp(22px, 3vw, 34px); line-height: 1.15; color: #fff;
+  letter-spacing: -.02em; text-shadow: 0 2px 24px rgba(0,0,0,.4); }
+.tm-heading p { margin: 6px 0 0; font-size: 13px; color: rgba(225, 238, 245, .72); font-variant-numeric: tabular-nums; }
+.tm-close { pointer-events: auto; display: grid; place-items: center; flex: none; width: 40px; height: 40px;
+  border: 1px solid rgba(255,255,255,.18); border-radius: 50%; background: rgba(255,255,255,.08); color: #fff;
+  cursor: pointer; transition: background-color .2s ease; }
+.tm-close svg { width: 18px; height: 18px; }
+.tm-close:hover { background: rgba(255,255,255,.18); }
+
+/* 舞台與視窗 */
+.tm-stage { position: absolute; z-index: 2; left: 0; right: 150px; top: 132px; bottom: 96px;
+  perspective: 1400px; perspective-origin: 50% 0%; touch-action: none; outline: none; cursor: grab; }
+.tm-stage.dragging { cursor: grabbing; }
+.tm-stage:focus-visible .tm-card.is-front { box-shadow: 0 0 0 3px rgba(150, 230, 210, .8), 0 40px 90px rgba(0,0,0,.55); }
+.tm-card { position: absolute; left: 50%; bottom: 0; width: min(960px, 72vw); height: min(calc(100dvh - 300px), 600px);
+  display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; color: var(--ink);
+  background: var(--bg); border: 1px solid rgba(255,255,255,.22);
+  box-shadow: 0 30px 80px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.25);
+  transform-origin: 50% 100%; backface-visibility: hidden; visibility: hidden; display: none; contain: layout paint;
+  -webkit-user-select: text; user-select: text; }
+.tm-card::after { content: ""; position: absolute; inset: 0; background: #050a12; opacity: var(--shade, 0);
+  pointer-events: none; border-radius: inherit; }
+.tm-card:not(.is-front) { cursor: pointer; }
+.tm-card:not(.is-front) .tm-win-body { pointer-events: none; }
+.tm-win-bar { flex: none; position: relative; display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 14px;
+  background: linear-gradient(var(--surface), var(--surface-2)); border-bottom: 1px solid var(--line); }
+.tm-dots { display: flex; gap: 7px; flex: none; }
+.tm-dots i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.2); }
+.tm-dots i:nth-child(2) { background: #febc2e; }
+.tm-dots i:nth-child(3) { background: #28c840; }
+.tm-win-title { position: absolute; left: 50%; transform: translateX(-50%); max-width: 56%; font-size: 13px; font-weight: 700;
+  color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-win-meta { margin-left: auto; font-size: 12px; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tm-win-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px;
+  scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; touch-action: pan-y; }
+.tm-win-body .trips-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.tm-empty { padding: 40px 0; text-align: center; color: var(--ink-3); font-size: 14px; }
+.tm-skeleton { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.tm-skeleton i { display: block; aspect-ratio: 16 / 12; border-radius: var(--radius); background: var(--surface-3);
+  animation: tm-shimmer 1.4s ease-in-out infinite; }
+@keyframes tm-shimmer { 50% { opacity: .55; } }
+
+/* 上/下箭頭(Time Machine 右側) */
+.tm-arrows { position: absolute; z-index: 4; right: 128px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 12px; }
+.tm-arrows button { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.1); color: #fff;
+  transition: background-color .2s ease, transform .2s ease; }
+.tm-arrows button svg { width: 20px; height: 20px; }
+.tm-arrows button:hover { background: rgba(255,255,255,.22); transform: scale(1.06); }
+.tm-arrows button:active { transform: scale(.96); }
+
+/* 右側時間軸:最新在下、越早越上,滑過放大 */
+.tm-timeline { cursor: pointer; touch-action: none; position: absolute; z-index: 4; right: max(14px, env(safe-area-inset-right)); top: 110px; bottom: 100px; width: 96px;
+  margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column-reverse; }
+.tm-timeline li { --mag: 0; flex: 1 1 0; min-height: 0; position: relative; }
+.tm-timeline button { position: absolute; right: 0; top: 50%; transform: translateY(-50%); height: 14px; min-height: 2px; width: 100%;
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 0; border: 0; background: none;
+  color: rgba(225, 238, 245, .55); cursor: pointer; font: inherit; pointer-events: none; }
+.tm-tick { flex: none; height: 1.5px; border-radius: 2px; background: currentColor;
+  width: calc(8px + var(--mag) * 16px); transition: width .12s ease; }
+.tm-timeline li.is-month .tm-tick { width: calc(16px + var(--mag) * 12px); color: rgba(225, 238, 245, .8); }
+.tm-tick-label { pointer-events: none; font-size: 11px; font-weight: 600; white-space: nowrap; opacity: 0; color: rgba(235, 244, 248, .85);
+  transform: scale(calc(1 + var(--mag) * .35)); transform-origin: right center; transition: opacity .12s ease; }
+.tm-timeline li.is-month:not(.is-quiet) .tm-tick-label,
+.tm-timeline li:first-child .tm-tick-label { opacity: .85; }
+.tm-timeline li.is-current { z-index: 2; }
+.tm-timeline li.is-current button { color: #8ff0d6; }
+.tm-timeline li.is-current .tm-tick { width: 30px; height: 3px; background: #8ff0d6; box-shadow: 0 0 10px rgba(143, 240, 214, .7); }
+.tm-timeline li.is-current .tm-tick-label { opacity: 1; color: #fff; font-weight: 800; }
+.tm-timeline:hover li:not(.is-current) .tm-tick-label { opacity: clamp(0, calc((var(--mag) - .8) * 5), 1); }
+.tm-timeline:hover li.is-month:not(.is-quiet):not(.is-current) .tm-tick-label { opacity: clamp(.45, calc((var(--mag) - .8) * 5), 1); }
+
+/* 底部操作列 */
+.tm-bar { position: absolute; z-index: 5; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 14px; padding: 7px; border-radius: 999px;
+  background: rgba(16, 26, 34, .88); border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 10px 40px rgba(0,0,0,.35); max-width: calc(100vw - 24px); }
+.tm-bar-hint { font-size: 12px; color: rgba(225, 238, 245, .62); white-space: nowrap; }
+.tm-btn { border: 0; border-radius: 999px; padding: 10px 20px; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+  background: rgba(255,255,255,.12); color: #fff; transition: background-color .2s ease, transform .2s ease; white-space: nowrap; }
+.tm-btn:hover { background: rgba(255,255,255,.22); }
+.tm-btn--primary { background: #e9fbf4; color: #0f3f37; }
+.tm-btn--primary:hover { background: #fff; }
+.tm-btn:focus-visible, .tm-arrows button:focus-visible, .tm-close:focus-visible { outline: 3px solid #8ff0d6; outline-offset: 3px; }
+
+@media (max-width: 1100px) {
+  .tm-stage { right: 120px; }
+  .tm-arrows { right: 108px; }
+  .tm-card { width: min(860px, 70vw); }
+}
+@media (max-width: 760px) {
+  .tm-top { top: max(12px, env(safe-area-inset-top)); left: 16px; right: 12px; }
+  .tm-heading h2 { font-size: 20px; }
+  .tm-stage { right: 46px; top: 120px; bottom: 86px; perspective: 900px; }
+  .tm-card { width: calc(100vw - 72px); height: min(calc(100dvh - 300px), 520px); }
+  .tm-win-body { padding: 12px; }
+  .tm-win-body .trips-grid, .tm-skeleton { grid-template-columns: minmax(0, 1fr); }
+  .tm-win-meta { display: none; }
+  .tm-win-title { max-width: 70%; }
+  .tm-arrows { display: none; }
+  .tm-timeline { width: 40px; right: max(4px, env(safe-area-inset-right)); top: 104px; bottom: 96px; }
+  .tm-tick-label { display: none; }
+  .tm-timeline li.is-current .tm-tick { width: 22px; }
+  .tm-bar { gap: 8px; bottom: max(14px, env(safe-area-inset-bottom)); }
+  .tm-bar-hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-space, .tm-space::after { animation: none; }
+}

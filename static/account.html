@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title data-i18n-title="title.account">個人設定 — 行車記錄</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/ui.css?v=2.2.0">
   <style>
     /* ── 個人設定 scoped(只吃全域 token) ─────────────────────────────────────── */
-    .acct { max-width: 720px; display: flex; flex-direction: column; gap: 18px; }
+    .acct .pane-body { max-width: 100%; }
+    .acct .pane-body > *:not(.device-list):not(.device-section-head) { max-width: 720px; }
+    .acct .pane-section-title { color: var(--accent); }
     .acct .panel-title { font-size: 14px; }
     .acct-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
     .acct-row:last-child { margin-bottom: 0; }
@@ -43,7 +46,7 @@
     .device-section-copy .acct-hint { display: block; max-width: 54ch; }
     .device-count { display: inline-flex; flex: none; margin-left: 0; color: var(--ink-3); font-weight: 500;
       font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .device-list { margin: 15px -18px -16px; }
+    .device-list { margin: 15px -20px -18px; }
     .device-item { padding: 16px 18px; border-top: 1px solid var(--line); }
     .device-item-top { display: flex; align-items: flex-start; gap: 12px; }
     .device-icon { width: 38px; height: 38px; flex: none; display: grid; place-items: center;
@@ -129,7 +132,7 @@
     }
   </style>
 <script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css?v=2.1.2"></head>
-<body>
+<body class="fit-page fit-mobile">
 
 <header class="hdr">
   <div class="wrap hdr-inner">
@@ -150,17 +153,50 @@
 </header>
 
 <div class="page-body">
-  <div class="wrap section-tight">
+  <div class="wrap fit-wrap">
 
-    <div class="eyebrow" style="margin-bottom:12px;"><span class="tick"></span><span data-i18n="account.eyebrow">我的帳號</span></div>
-    <h1 class="page-title" data-i18n="account.title">個人設定</h1>
-    <p class="page-sub" data-i18n="account.sub">管理你的帳號、看片偏好與介面外觀。</p>
+    <div class="page-head">
+      <div class="page-head-title">
+        <h1 data-i18n="account.title">個人設定</h1>
+        <span class="page-head-sub" data-i18n="account.sub">管理你的帳號、看片偏好與介面外觀。</span>
+      </div>
+    </div>
 
-    <div class="acct">
+    <div class="console acct" id="acct-console">
+      <nav class="console-nav" aria-label="設定分頁">
+        <button class="console-tab" data-pane="profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>個人資料</button>
+        <button class="console-tab" data-pane="security"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>帳號與密碼</button>
+        <button class="console-tab" data-pane="prefs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>看片與外觀</button>
+        <button class="console-tab" data-pane="devices"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>行車記錄器<small id="tab-device-count"></small></button>
+      </nav>
+      <div class="console-main">
 
-      <!-- 帳號 + 改密碼 -->
-      <section class="panel">
-        <div class="panel-title" data-i18n="account.section.account">帳號</div>
+        <section class="pane" id="pane-profile">
+          <div class="pane-head"><div><h2 data-i18n="account.section.email">Email(頭像)</h2><p>顯示名稱與頭像會出現在頁首、瀏覽選單與管理列表</p></div></div>
+          <div class="pane-body">
+        <div class="acct-row">
+          <label class="form-label" for="acct-display" data-i18n="account.displayName">顯示名稱</label>
+          <input class="form-input" id="acct-display" type="text" maxlength="60" placeholder="例如 Zhuyuan">
+          <span class="acct-hint" data-i18n="account.displayNameHint">各處介面(頁首、瀏覽選單、管理列表)會優先顯示此名稱;留空則顯示帳號。</span>
+        </div>
+        <div class="acct-id">
+          <div class="acct-avatar" id="acct-avatar">?</div>
+          <div class="grow">
+            <label class="form-label" for="acct-email" data-i18n="account.email">Email</label>
+            <input class="form-input" id="acct-email" type="email" autocomplete="email" placeholder="you@example.com">
+          </div>
+        </div>
+        <span class="acct-hint" data-i18n="account.emailHint">用於顯示 Gravatar 頭像;留空則用文字頭像。</span>
+        <div class="acct-actions">
+          <button type="button" class="btn btn--solid btn--sm" onclick="saveProfile()" data-i18n="account.save">儲存</button>
+        </div>
+      
+          </div>
+        </section>
+
+        <section class="pane" id="pane-security">
+          <div class="pane-head"><div><h2 data-i18n="account.section.account">帳號</h2><p>登入帳號與更改密碼</p></div></div>
+          <div class="pane-body">
         <div class="acct-row">
           <label class="form-label" for="acct-username" data-i18n="account.username">帳號</label>
           <input class="form-input" id="acct-username" type="text" readonly disabled>
@@ -186,32 +222,14 @@
         <div class="acct-actions">
           <button type="button" class="btn btn--solid btn--sm" onclick="changePassword()" data-i18n="account.changePassword">更新密碼</button>
         </div>
-      </section>
-
-      <!-- 顯示名稱 + Email(頭像) -->
-      <section class="panel">
-        <div class="panel-title" data-i18n="account.section.email">Email(頭像)</div>
-        <div class="acct-row">
-          <label class="form-label" for="acct-display" data-i18n="account.displayName">顯示名稱</label>
-          <input class="form-input" id="acct-display" type="text" maxlength="60" placeholder="例如 Zhuyuan">
-          <span class="acct-hint" data-i18n="account.displayNameHint">各處介面(頁首、瀏覽選單、管理列表)會優先顯示此名稱;留空則顯示帳號。</span>
-        </div>
-        <div class="acct-id">
-          <div class="acct-avatar" id="acct-avatar">?</div>
-          <div class="grow">
-            <label class="form-label" for="acct-email" data-i18n="account.email">Email</label>
-            <input class="form-input" id="acct-email" type="email" autocomplete="email" placeholder="you@example.com">
+      
           </div>
-        </div>
-        <span class="acct-hint" data-i18n="account.emailHint">用於顯示 Gravatar 頭像;留空則用文字頭像。</span>
-        <div class="acct-actions">
-          <button type="button" class="btn btn--solid btn--sm" onclick="saveProfile()" data-i18n="account.save">儲存</button>
-        </div>
-      </section>
+        </section>
 
-      <!-- 看片偏好 -->
-      <section class="panel">
-        <div class="panel-title" data-i18n="account.section.viewing">看片偏好</div>
+        <section class="pane" id="pane-prefs">
+          <div class="pane-head"><div><h2>看片與外觀</h2><p>預設鏡頭、播放速度、旅程公開與介面主題</p></div></div>
+          <div class="pane-body">
+            <div class="pane-section"><div class="pane-section-title" data-i18n="account.section.viewing">看片偏好</div>
         <div class="acct-grid2">
           <div class="acct-row">
             <label class="form-label" for="acct-camera" data-i18n="account.camera">預設主鏡頭</label>
@@ -234,22 +252,16 @@
         <div class="acct-actions">
           <button type="button" class="btn btn--solid btn--sm" onclick="savePrefs()" data-i18n="account.save">儲存</button>
         </div>
-      </section>
-
-      <!-- 旅程可見性(即時儲存) -->
-      <section class="panel">
-        <div class="panel-title" data-i18n="account.section.visibility">旅程可見性</div>
+      </div>
+            <div class="pane-section"><div class="pane-section-title" data-i18n="account.section.visibility">旅程可見性</div>
         <label class="vis-toggle">
           <input type="checkbox" id="acct-public" onchange="saveVisibility(this.checked)">
           <span class="vis-switch" aria-hidden="true"></span>
           <span class="vis-label" data-i18n="account.publicTrips">公開我的旅程</span>
         </label>
         <span class="acct-hint" style="margin-top:10px;display:block;" data-i18n="account.publicTripsHint">開啟後,其他登入的使用者可在「瀏覽旅程」的選單看到並觀看你的旅程;關閉則僅你本人與管理員可見。</span>
-      </section>
-
-      <!-- 介面主題(即時套用,免按儲存) -->
-      <section class="panel">
-        <div class="panel-title" data-i18n="account.section.theme">介面主題</div>
+      </div>
+            <div class="pane-section"><div class="pane-section-title" data-i18n="account.section.theme">介面主題</div>
         <div class="acct-row">
           <label class="form-label" for="acct-theme" data-i18n="account.theme">主題</label>
           <select class="form-input form-select" id="acct-theme" onchange="onThemeChange(this.value)">
@@ -258,10 +270,12 @@
             <option value="slate">暮山 · 岩灰與鳶尾</option>
           </select>
         </div>
-      </section>
+      </div>
+          </div>
+        </section>
 
-      <!-- 使用的行車記錄器 -->
-      <section class="panel" id="devices" aria-labelledby="device-section-title">
+        <section class="pane" id="pane-devices" aria-labelledby="device-section-title">
+          <div class="pane-body" id="devices">
         <div class="device-section-head">
           <div class="device-section-copy">
             <div class="panel-title" id="device-section-title">
@@ -278,9 +292,13 @@
           <div class="loading-row"><span class="spinner" aria-hidden="true"></span><span>載入記錄器...</span></div>
         </div>
         <span class="acct-hint device-limit" id="device-limit">每個帳號最多可管理 12 台記錄器。</span>
-      </section>
+      
+          </div>
+        </section>
 
+      </div>
     </div>
+
   </div>
 </div>
 
@@ -342,7 +360,9 @@
 </div>
 
 <div id="toast-container"></div>
-<script src="/static/app.js?v=2.1.3"></script>
+<script src="/static/app.js?v=2.2.0"></script>
+<script src="/static/panes.js?v=2.2.0"></script>
+<script>DashcamUI.initConsole(document.getElementById("acct-console"));</script>
 <script>
 let user = null;
 let devices = [];
@@ -468,6 +488,7 @@ function renderDeviceList() {
   const atLimit = devices.length >= DEVICE_LIMIT;
   list.setAttribute('aria-busy', 'false');
   document.getElementById('device-count').textContent = `${devices.length} / ${DEVICE_LIMIT} 台`;
+  document.getElementById('tab-device-count').textContent = devices.length;
   document.getElementById('device-limit').textContent = atLimit
     ? '已達每個帳號 12 台的管理上限；如需新增，請先封存不再使用的記錄器。'
     : '每個帳號最多可管理 12 台記錄器。';
