@@ -380,7 +380,9 @@
     .ctrl-hover span { opacity: .7; font-size: 11px; }
     .ctrl-track:hover .ctrl-hover { display: flex; }
 
-    .dock-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; min-width: 0; }
+    .dock-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; }
+    .dock-row .dock-clock { justify-self: center; }
+    .dock-left, .dock-right { min-width: max-content; }
     .dock-left, .dock-right { display: flex; align-items: center; gap: 4px; min-width: 0; }
     .dock-right { justify-content: flex-end; flex-wrap: nowrap; }
     .dock-frames-label { white-space: nowrap; }
@@ -456,6 +458,7 @@
     }
 
     @media (max-width: 900px) { .dock-frames { display: none; } }
+    @media (max-width: 1180px) { #btn-cam-label { display: none; } }
     @media (max-width: 640px) {
       .player { gap: 8px; }
       .dock-row { grid-template-columns: auto 1fr auto; gap: 6px; }
