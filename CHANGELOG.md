@@ -1,12 +1,5 @@
 # Changelog
 
-## 2.4.0 — 2026-10-02
-
-- Add ambient light to the trip player: the video casts a soft glow in its own colours, sampled only on new frames into a tiny canvas with frame blending, GPU blur and a fading mask. The approach is adapted from youtube-ambilight (MIT, Wessel Kroos); it can be turned off from the player and the choice is remembered.
-- Move the player controls out of the picture into an open bar below the video, keep the video frame at 16:9 instead of letterboxing, and keep the bar on one line at common widths. Fullscreen includes the controls as an auto-hiding overlay.
-- Open the trip note editor as a floating card so editing no longer reflows the page, shrinks the video or leaves blank gaps.
-- Move keyboard shortcut hints into a help button in the player.
-
 ## 2.3.0 — 2026-10-02
 
 - Keep the trip viewer on one screen on desktop: the page no longer scrolls or rubber-bands, and other trips of the day sit in a single horizontal row.
