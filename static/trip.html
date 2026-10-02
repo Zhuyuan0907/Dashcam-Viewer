@@ -481,6 +481,8 @@
       html.trip-fit #app-footer { display: none; }
     }
     html.trip-fit, html.trip-fit body { overscroll-behavior-y: none; }
+    /* 環境光可超出影片框,但不得造成橫向捲動 */
+    #page-main { overflow-x: clip; }
     .other-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
     .other-row::-webkit-scrollbar { display: none; }
   </style>
@@ -961,7 +963,7 @@ function fitStage() {
   const pRect = page.getBoundingClientRect();
   const below = pRect.bottom - sRect.bottom; // 影片下方:資訊條+備註+同天趟次+提示+內距
   const avail = window.innerHeight - sRect.top - below - 10; // 10px 喘息
-  const maxH = Math.max(200, Math.round(avail));
+  const maxH = Math.max(160, Math.round(avail));
   stage.style.maxHeight = maxH + 'px';
   // 影片框維持 16:9:高度受限時縮窄並置中(不留左右黑邊),控制列跟著影片寬度
   const player = document.getElementById('player');
@@ -969,6 +971,10 @@ function fitStage() {
   const w = Math.min(fullW, Math.round(maxH * 16 / 9));
   player.style.setProperty('--stage-w', w < fullW - 2 ? w + 'px' : '100%');
   ambient?.place();
+  // 一屏鎖定只在「真的放得下」時啟用;極矮的視窗改回可捲動,避免控制列被切掉而按不到
+  const root = document.documentElement;
+  root.classList.add('trip-fit');
+  if (root.scrollHeight > innerHeight + 1 || page.getBoundingClientRect().bottom > innerHeight + 1) root.classList.remove('trip-fit');
 }
 function scheduleFit() {
   if (fitRaf) cancelAnimationFrame(fitRaf);
