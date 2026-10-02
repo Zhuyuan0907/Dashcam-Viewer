@@ -7,7 +7,14 @@
   <link rel="stylesheet" href="/static/style.css">
   <style>
     /* ── trip 頁 scoped(只吃全域 token) ─────────────────────────────────────── */
-    /* 行內備註:緊接統計列(最高G)下方的一句話;管理員可點即編 */
+    /* 行內備註:緊接統計列(最高G)下方的一句話;擁有者/管理員按一下編輯 */
+    .note-open { appearance: none; display: block; width: 100%; text-align: left; border: 0; background: none; font: inherit;
+      color: inherit; cursor: text; padding: 0; white-space: pre-wrap; overflow: hidden; display: -webkit-box;
+      -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .note-inline.editing { background: var(--surface); box-shadow: var(--shadow-sm); padding: 10px 12px; border-radius: var(--radius-sm); }
+    .note-edit textarea { width: 100%; resize: none; min-height: 64px; }
+    .note-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+    .note-hint { margin-right: auto; font-size: 11.5px; color: var(--ink-3); }
     .note-inline { font-size: 14.5px; line-height: 1.7; color: var(--ink);
       white-space: pre-wrap; word-break: break-word; }
     .note-inline.editable { cursor: text; border-radius: var(--radius-sm);
@@ -336,6 +343,107 @@
         white-space: nowrap; }
       .info-strip .chip span { white-space: nowrap; }
     }
+
+    /* ── 播放器控制 2.3:浮動「島」式 dock ───────────────────────────────────────
+       進度軸獨立一排(滑過放大、顯示實際時間預覽、已緩衝區段);下排三種形狀分工:
+       圓角方形主播放鈕、膠囊「島」群組、文字 chip(鏡頭/速度)。不再是一排同款圓鈕。 */
+    .stage .ctrl.dock { display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+      padding: 40px 16px 14px; background: linear-gradient(to top, rgba(4,8,12,.82) 0%, rgba(4,8,12,.45) 55%, transparent 100%); }
+    .dock-seek { position: relative; padding: 0 4px; }
+    .dock .ctrl-track { height: 18px; }
+    .dock .ctrl-track::before { top: 7px; height: 4px; background: rgba(255,255,255,.22); border-radius: 99px; transition: top .15s, height .15s; }
+    .dock .ctrl-buffer { position: absolute; left: 0; top: 7px; height: 4px; width: 0; border-radius: 99px;
+      background: rgba(255,255,255,.38); pointer-events: none; transition: top .15s, height .15s; }
+    .dock .ctrl-fill { top: 7px; height: 4px; border-radius: 99px; background: linear-gradient(90deg, #8ff0d6, #fff); transition: top .15s, height .15s; }
+    .dock .ctrl-fill::after { width: 14px; height: 14px; right: -7px; background: #fff; box-shadow: 0 0 0 4px rgba(143,240,214,.35), 0 2px 6px rgba(0,0,0,.4);
+      transform: translateY(-50%) scale(.7); opacity: 0; transition: transform .15s, opacity .15s; }
+    .dock .ctrl-track:hover::before, .dock .ctrl-track:hover .ctrl-buffer, .dock .ctrl-track:hover .ctrl-fill { top: 5px; height: 8px; }
+    .dock .ctrl-track:hover .ctrl-fill::after, .dock .ctrl-track:focus-within .ctrl-fill::after { transform: translateY(-50%) scale(1); opacity: 1; }
+    .ctrl-hover { position: absolute; bottom: 24px; left: 0; transform: translateX(-50%); display: none; flex-direction: column; align-items: center;
+      padding: 6px 10px; border-radius: 10px; background: rgba(14,20,26,.92); border: 1px solid rgba(255,255,255,.14);
+      color: #fff; font-family: var(--font-mono); font-size: 12px; line-height: 1.3; white-space: nowrap; pointer-events: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+    .ctrl-hover b { font-size: 14px; }
+    .ctrl-hover span { opacity: .7; font-size: 11px; }
+    .ctrl-track:hover .ctrl-hover { display: flex; }
+
+    .dock-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .dock-spacer { flex: 1; }
+    .dock-island { display: inline-flex; align-items: center; gap: 2px; padding: 4px; border-radius: 16px;
+      background: rgba(18,24,30,.58); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+    .dock-btn { appearance: none; border: 0; background: transparent; color: #fff; height: 36px; min-width: 36px; padding: 0 8px;
+      border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; cursor: pointer;
+      transition: background-color .15s ease, transform .1s ease; }
+    .dock-btn svg { width: 18px; height: 18px; }
+    .dock-btn small { font: 700 10.5px/1 var(--font-mono); opacity: .9; }
+    .dock-btn:hover { background: rgba(255,255,255,.14); }
+    .dock-btn:active, .dock-play:active, .dock-chip:active { transform: scale(.94); }
+    .dock-btn[aria-pressed="false"] { opacity: .55; }
+    .dock-play { appearance: none; border: 0; width: 48px; height: 40px; margin: 0 2px; border-radius: 13px; cursor: pointer;
+      display: inline-grid; place-items: center; background: #fff; color: #0f2a2e; box-shadow: 0 4px 14px rgba(0,0,0,.3);
+      transition: transform .12s ease, background-color .15s ease; }
+    .dock-play svg { width: 20px; height: 20px; }
+    .dock-play:hover { background: #e9fbf4; }
+    .dock-clock { display: flex; flex-direction: column; justify-content: center; padding: 0 6px; color: #fff; cursor: pointer;
+      user-select: none; min-width: 0; line-height: 1.2; }
+    .dock-clock b { font: 700 16px/1.15 var(--font-mono); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+    .dock-clock > span { font-size: 11.5px; opacity: .72; white-space: nowrap; }
+    .dock-clock .ctrl-time { font-size: 11.5px; color: inherit; }
+    .dock-clock.elapsed-first b { font-size: 11.5px; opacity: .72; order: 2; font-weight: 600; }
+    .dock-clock.elapsed-first > span { font: 700 16px/1.15 var(--font-mono); opacity: 1; order: 1; }
+    .dock-clock.elapsed-first > span .ctrl-time { font-size: 16px; }
+    .dock-frames { gap: 0; }
+    .dock-frames .dock-btn { min-width: 30px; padding: 0 5px; }
+    .dock-frames-label { font-size: 11.5px; color: rgba(255,255,255,.7); padding: 0 2px; }
+    .dock-chip { appearance: none; border: 0; height: 32px; padding: 0 11px; border-radius: 10px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,.1); color: #fff;
+      font: 600 12.5px/1 var(--font-sans); white-space: nowrap; transition: background-color .15s ease; }
+    .dock-chip svg { width: 15px; height: 15px; }
+    .dock-chip:hover, .dock-chip[aria-expanded="true"] { background: rgba(255,255,255,.22); }
+    .dock-speed { font-family: var(--font-mono); min-width: 46px; justify-content: center; }
+    .dock-menu-wrap { position: relative; }
+    .dock-menu { position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%); z-index: 20;
+      display: flex; flex-direction: column; gap: 2px; padding: 5px; border-radius: 14px; min-width: 84px;
+      background: rgba(14,20,26,.95); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 12px 32px rgba(0,0,0,.45); }
+    .dock-menu[hidden] { display: none; }
+    .dock-menu button { appearance: none; border: 0; background: transparent; color: #fff; font: 600 13px/1 var(--font-mono);
+      padding: 9px 12px; border-radius: 9px; cursor: pointer; text-align: center; }
+    .dock-menu button:hover { background: rgba(255,255,255,.12); }
+    .dock-menu button[aria-checked="true"] { background: #fff; color: #0f2a2e; }
+    .dock-vol { display: inline-flex; align-items: center; gap: 0; }
+    .dock-vol input { width: 0; opacity: 0; accent-color: #fff; transition: width .2s ease, opacity .2s ease, margin .2s ease; margin: 0; }
+    .dock-vol:hover input, .dock-vol:focus-within input { width: 72px; opacity: 1; margin: 0 8px 0 2px; }
+    .dock-vol.muted .vol-wave { opacity: 0; }
+    .dock-vol.muted .dock-btn { color: #ffb4b4; }
+    .stage .ctrl.dock .dock-btn:focus-visible, .dock-play:focus-visible, .dock-chip:focus-visible { outline: 2px solid #8ff0d6; outline-offset: 2px; }
+    /* 子母畫面隱藏 */
+    .stage.pip-off .pip { display: none !important; }
+    /* 子母畫面避開 dock(dock 比舊控制列高) */
+    .stage .pip { bottom: 112px; }
+    @media (max-width: 900px) { .dock-frames { display: none; } }
+    @media (max-width: 640px) {
+      .stage .ctrl.dock { padding: 26px 10px calc(8px + var(--safe-bottom)); gap: 6px; flex-wrap: nowrap;
+        background: linear-gradient(to top, rgba(4,8,12,.85) 0%, rgba(4,8,12,.4) 60%, transparent 100%); }
+      .dock-row { gap: 6px; }
+      .dock-island { padding: 2px; border-radius: 13px; }
+      .dock-btn { height: 34px; min-width: 32px; padding: 0 5px; }
+      .dock-btn small { display: none; }
+      .dock-play { width: 42px; height: 36px; }
+      .dock-clock b { font-size: 13.5px; }
+      .dock-clock > span { font-size: 10.5px; }
+      .dock-vol, #btn-snap, #btn-pip { display: none; }
+      .dock-chip { height: 30px; padding: 0 8px; }
+      #btn-cam-label { display: none; }
+      .stage .pip { bottom: auto; }
+    }
+    /* ── 一屏式觀看台(桌機):頁面本身不捲動、不回彈;影片吃剩餘高度 ───────── */
+    @media (min-width: 761px) {
+      html.trip-fit, html.trip-fit body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+      html.trip-fit #app-footer { display: none; }
+    }
+    html.trip-fit, html.trip-fit body { overscroll-behavior-y: none; }
+    .other-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .other-row::-webkit-scrollbar { display: none; }
   </style>
 <script src="/static/themes.js"></script><link rel="stylesheet" href="/static/themes.css?v=2.1.2"><script src="/static/timeline.js"></script><script src="/static/playback-sync.js?v=2.1.5"></script></head>
 <body>
@@ -411,42 +519,63 @@
           <span class="pip-swap" data-i18n="trip.switch">⇄ 切換</span>
         </div>
 
-        <!-- 控制列:左=播放控制組、中=進度、右=工具組 -->
-        <div class="ctrl" id="ctrl">
-          <div class="ctrl-group ctrl-transport">
-            <button class="ctrl-btn" id="btn-play" type="button" title="播放/暫停 (空白鍵)"
-              data-play-label="播放" data-pause-label="暫停" aria-label="播放">
-              <svg data-playback-icon viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-            </button>
-            <button class="ctrl-btn" id="btn-back" title="上一格 (,)">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 5v14l-9-7zM7 5h2v14H7z"/></svg>
-            </button>
-            <button class="ctrl-btn" id="btn-fwd" title="下一格 (.)">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5l9 7-9 7zM15 5h2v14h-2z"/></svg>
-            </button>
-          </div>
-
-          <div class="ctrl-seek">
-            <span class="ctrl-time" id="t-cur">0:00</span>
+        <!-- 播放器控制:上排=可預覽時間的進度軸;下排=浮動「島」——播放島 / 時間 / 工具島 -->
+        <div class="ctrl dock" id="ctrl">
+          <div class="dock-seek">
             <div class="ctrl-track" id="track">
+              <div class="ctrl-buffer" id="buffered"></div>
               <div class="ctrl-fill" id="fill"></div>
-              <input type="range" id="seek" min="0" max="100" value="0" step="0.05">
+              <div class="ctrl-hover" id="seek-hover" aria-hidden="true"><b></b><span></span></div>
+              <input type="range" id="seek" min="0" max="100" value="0" step="0.05" aria-label="播放進度">
             </div>
-            <span class="ctrl-time" id="t-tot">0:00</span>
           </div>
-
-          <div class="ctrl-group ctrl-tools">
-            <button class="ctrl-btn wide" id="btn-speed" title="播放速度">1×</button>
-            <button class="ctrl-btn" id="btn-snap" title="截圖存檔 (s)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            </button>
-            <div class="ctrl-vol">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-              <input type="range" id="vol" min="0" max="1" step="0.05" value="0.8">
+          <div class="dock-row">
+            <div class="dock-island dock-transport">
+              <button class="dock-btn" id="btn-rew" type="button" title="倒退 10 秒" aria-label="倒退 10 秒">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/></svg><small>10</small>
+              </button>
+              <button class="dock-play" id="btn-play" type="button" title="播放/暫停 (空白鍵)"
+                data-play-label="播放" data-pause-label="暫停" aria-label="播放">
+                <svg data-playback-icon viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+              </button>
+              <button class="dock-btn" id="btn-ffw" type="button" title="快轉 10 秒" aria-label="快轉 10 秒">
+                <small>10</small><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 17l5-5-5-5"/><path d="M6 17l5-5-5-5"/></svg>
+              </button>
             </div>
-            <button class="ctrl-btn" id="btn-full" title="全螢幕 (f)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-            </button>
+            <div class="dock-clock" id="dock-clock" title="點一下切換：實際時間 / 影片時間">
+              <b id="t-wall">--:--:--</b>
+              <span><span class="ctrl-time" id="t-cur">0:00</span> / <span class="ctrl-time" id="t-tot">0:00</span></span>
+            </div>
+            <div class="dock-island dock-frames" role="group" aria-label="逐格">
+              <button class="dock-btn" id="btn-back" type="button" title="上一格 (,)" aria-label="上一格"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+              <span class="dock-frames-label">逐格</span>
+              <button class="dock-btn" id="btn-fwd" type="button" title="下一格 (.)" aria-label="下一格"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button>
+            </div>
+            <span class="dock-spacer"></span>
+            <div class="dock-island dock-tools">
+              <button class="dock-chip" id="btn-cam" type="button" title="切換主鏡頭" aria-label="切換主鏡頭" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span id="btn-cam-label">前鏡頭</span>
+              </button>
+              <div class="dock-menu-wrap">
+                <button class="dock-chip dock-speed" id="btn-speed" type="button" title="播放速度" aria-haspopup="menu" aria-expanded="false">1×</button>
+                <div class="dock-menu" id="speed-menu" role="menu" hidden></div>
+              </div>
+              <button class="dock-btn" id="btn-pip" type="button" title="顯示/隱藏子母畫面" aria-label="顯示或隱藏子母畫面" aria-pressed="true" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="3"/><rect x="12" y="11" width="7" height="6" rx="1.5" fill="currentColor" stroke="none"/></svg>
+              </button>
+              <button class="dock-btn" id="btn-snap" type="button" title="截圖存檔 (s)" aria-label="截圖">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              </button>
+              <div class="ctrl-vol dock-vol">
+                <button class="dock-btn" id="btn-mute" type="button" title="靜音 (m)" aria-label="靜音">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/><path class="vol-wave" d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                </button>
+                <input type="range" id="vol" min="0" max="1" step="0.05" value="0.8" aria-label="音量">
+              </div>
+              <button class="dock-btn" id="btn-full" type="button" title="全螢幕 (f)" aria-label="全螢幕">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -726,6 +855,7 @@ function render() {
 
   document.getElementById('loading-state').style.display = 'none';
   document.getElementById('page-main').style.display = '';
+  document.documentElement.classList.add('trip-fit');
   // 一開始(暫停中)先顯示控制列;播放後由 controlsWake 接手自動淡出
   document.getElementById('stage').classList.add('show-ctrl');
   scheduleFit();   // 依實際警告/趟次量測,壓影片高度讓快捷鍵提示免捲動可見
@@ -788,7 +918,7 @@ function fitStage() {
   const pRect = page.getBoundingClientRect();
   const below = pRect.bottom - sRect.bottom; // 影片下方:資訊條+備註+同天趟次+提示+內距
   const avail = window.innerHeight - sRect.top - below - 10; // 10px 喘息
-  stage.style.maxHeight = Math.max(240, Math.round(avail)) + 'px';
+  stage.style.maxHeight = Math.max(200, Math.round(avail)) + 'px';
 }
 function scheduleFit() {
   if (fitRaf) cancelAnimationFrame(fitRaf);
@@ -818,6 +948,13 @@ function layoutCams() {
   main.className = 'stage-video';
   layer.replaceChildren(main);
   document.getElementById('cam-tag').textContent = mainCam === 'front' ? tt('trip.camFront') : tt('trip.camRear');
+  const camBtn = document.getElementById('btn-cam');
+  if (camBtn) {
+    camBtn.hidden = cams.length < 2;
+    document.getElementById('btn-cam-label').textContent = mainCam === 'front' ? tt('trip.camFront') : tt('trip.camRear');
+  }
+  const pipBtn = document.getElementById('btn-pip');
+  if (pipBtn) pipBtn.hidden = cams.length < 2;
 
   const subCam = cams.find(c => c !== mainCam);
   if (subCam) {
@@ -962,23 +1099,81 @@ function initPlayer() {
   document.getElementById('btn-play').onclick = toggle;
   document.getElementById('btn-back').onclick = () => step(-1);
   document.getElementById('btn-fwd').onclick = () => step(1);
+  document.getElementById('btn-rew').onclick = () => seekBy(-10);
+  document.getElementById('btn-ffw').onclick = () => seekBy(10);
   document.getElementById('btn-full').onclick = toggleFull;
   document.getElementById('btn-snap').onclick = snapshot;
   document.getElementById('btn-link').onclick = copyTimeLink;
   document.getElementById('pip').onclick = swapCams;
-
-  const speeds = [1, 1.5, 2];
-  // 預設播放速度:採個人偏好(在清單內才生效),否則 1×
-  let si = Math.max(0, speeds.indexOf(currentUser && currentUser.pref_speed));
-  if (si > 0) {
-    all().forEach(v => { v.playbackRate = speeds[si]; });
-    document.getElementById('btn-speed').textContent = speeds[si] + '×';
-  }
-  document.getElementById('btn-speed').onclick = () => {
-    si = (si + 1) % speeds.length;
-    all().forEach(v => { v.playbackRate = speeds[si]; });
-    document.getElementById('btn-speed').textContent = speeds[si] + '×';
+  document.getElementById('btn-cam').onclick = swapCams;
+  const pipBtn = document.getElementById('btn-pip');
+  pipBtn.onclick = () => {
+    const off = stage.classList.toggle('pip-off');
+    pipBtn.setAttribute('aria-pressed', String(!off));
   };
+
+  // 播放速度:彈出選單(0.5×–4×);個人偏好在清單內才生效
+  const speeds = [0.5, 1, 1.5, 2, 4];
+  const speedBtn = document.getElementById('btn-speed');
+  const speedMenu = document.getElementById('speed-menu');
+  let currentSpeed = speeds.includes(currentUser && currentUser.pref_speed) ? currentUser.pref_speed : 1;
+  function setSpeed(rate) {
+    currentSpeed = rate;
+    all().forEach(v => { v.playbackRate = rate; });
+    speedBtn.textContent = rate + '×';
+    speedMenu.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', String(Number(b.dataset.rate) === rate)));
+  }
+  speedMenu.innerHTML = speeds.slice().reverse().map(r => `<button type="button" role="menuitemradio" data-rate="${r}">${r}×</button>`).join('');
+  speedMenu.addEventListener('click', e => {
+    const b = e.target.closest('button[data-rate]');
+    if (!b) return;
+    setSpeed(Number(b.dataset.rate));
+    speedMenu.hidden = true; speedBtn.setAttribute('aria-expanded', 'false');
+  });
+  speedBtn.onclick = e => {
+    e.stopPropagation();
+    speedMenu.hidden = !speedMenu.hidden;
+    speedBtn.setAttribute('aria-expanded', String(!speedMenu.hidden));
+    if (!speedMenu.hidden) controlsPin();
+  };
+  document.addEventListener('click', e => {
+    if (!speedMenu.hidden && !e.target.closest('.dock-menu-wrap')) { speedMenu.hidden = true; speedBtn.setAttribute('aria-expanded', 'false'); }
+  });
+  setSpeed(currentSpeed);
+
+  // 時間:預設顯示車機牆鐘(實際時間),點一下切成影片經過時間;記住選擇
+  const clock = document.getElementById('dock-clock');
+  const tWall = document.getElementById('t-wall');
+  const wallAt = sec => {
+    const d = new Date((Number(trip.start_epoch) + sec) * 1000);
+    const p2 = n => String(n).padStart(2, '0');
+    return `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())}`;
+  };
+  try { clock.classList.toggle('elapsed-first', localStorage.getItem('dc.clock') === 'elapsed'); } catch {}
+  clock.onclick = () => {
+    const elapsed = clock.classList.toggle('elapsed-first');
+    try { localStorage.setItem('dc.clock', elapsed ? 'elapsed' : 'wall'); } catch {}
+  };
+
+  // 進度軸滑過:預覽該處的實際時間與影片時間
+  const track = document.getElementById('track');
+  const hoverTip = document.getElementById('seek-hover');
+  track.addEventListener('pointermove', e => {
+    const rect = track.getBoundingClientRect();
+    const d = dur || main().duration || 0;
+    if (!rect.width || !d) return;
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    hoverTip.style.left = (ratio * 100) + '%';
+    hoverTip.querySelector('b').textContent = wallAt(ratio * d);
+    hoverTip.querySelector('span').textContent = fmtSecs(ratio * d, d);
+  });
+
+  // 靜音鈕(音量滑桿滑過才展開)
+  const volWrap = document.querySelector('.dock-vol');
+  const syncMute = () => volWrap.classList.toggle('muted', !!videos[mainCam]?.muted || Number(vol.value) === 0);
+  document.getElementById('btn-mute').onclick = () => { videos[mainCam].muted = !videos[mainCam].muted; syncMute(); };
+  vol.addEventListener('input', syncMute);
+  const buffered = document.getElementById('buffered');
 
   // 以可見軌道的實際座標換算百分比，避開原生 range 滑塊兩端內縮造成的左右偏差。
   // seek 完成前保持使用者指定的位置，不讓尚未更新的 currentTime 把指標拉回舊位置。
@@ -1001,6 +1196,14 @@ function initPlayer() {
       const pct = m.currentTime / d * 100;
       seekControl.render(pct);
       if (!seekControl.seeking) tCur.textContent = fmtSecs(m.currentTime, d);
+      const wall = wallAt(m.currentTime);
+      if (tWall.textContent !== wall) tWall.textContent = wall;
+      // 已緩衝:目前位置所在的緩衝區段
+      const br = m.buffered;
+      let end = 0;
+      for (let i = 0; i < br.length; i++) if (br.start(i) <= m.currentTime + 0.5 && br.end(i) >= m.currentTime) end = br.end(i);
+      const bw = (end / d * 100).toFixed(1) + '%';
+      if (buffered.style.width !== bw) buffered.style.width = bw;
     }
     playback.update();
     if (!m.paused) saveResume(false);   // 續看記憶(內部 5 秒節流)
@@ -1050,7 +1253,7 @@ function initPlayer() {
       case '.': step(1); break;
       case 'f': case 'F': toggleFull(); break;
       case 's': case 'S': snapshot(); break;
-      case 'm': case 'M': videos[mainCam].muted = !videos[mainCam].muted; break;
+      case 'm': case 'M': videos[mainCam].muted = !videos[mainCam].muted; syncMute(); break;
     }
   });
 }
@@ -1960,30 +2163,55 @@ function renderNote() {
   if (!note && !editable) { el.style.display = 'none'; return; }
   el.style.display = '';
   el.className = 'note-inline' + (editable ? ' editable' : '') + (note ? '' : ' empty');
-  el.onclick = editable ? startNoteEdit : null;
-  el.textContent = note || (editable ? '＋ ' + tt('trip.noteAdd') : '');
+  el.onclick = null;
+  el.replaceChildren();
+  if (editable) {
+    // 以按鈕觸發編輯(不再把整塊設成 onclick):避免「取消」的點擊冒泡又立刻重新進入編輯
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'note-open';
+    btn.textContent = note || '＋ ' + tt('trip.noteAdd');
+    btn.title = '編輯備註';
+    btn.addEventListener('click', startNoteEdit);
+    el.append(btn);
+  } else {
+    el.textContent = note;
+  }
   scheduleFit();   // 備註顯示/隱藏/編輯改變影片下方高度 → 重算
 }
-function startNoteEdit() {
+function startNoteEdit(event) {
+  event?.stopPropagation();
   const el = document.getElementById('note-inline');
-  el.className = 'note-inline';
-  el.onclick = null;
+  el.className = 'note-inline editing';
   el.innerHTML = `
     <div class="note-edit">
-      <textarea class="form-input" id="note-textarea" rows="4"></textarea>
+      <textarea class="form-input" id="note-textarea" rows="2" maxlength="2000"></textarea>
       <div class="note-actions">
-        <button class="btn btn--sm" type="button" onclick="saveNote()">${tt('trip.noteSave')}</button>
-        <button class="btn btn--ghost btn--sm" type="button" onclick="renderNote()">${tt('trip.noteCancel')}</button>
+        <span class="note-hint">Ctrl/⌘ + Enter 儲存 · Esc 取消</span>
+        <button class="btn btn--ghost btn--sm" type="button" id="note-cancel">${tt('trip.noteCancel')}</button>
+        <button class="btn btn--solid btn--sm" type="button" id="note-save">${tt('trip.noteSave')}</button>
       </div>
     </div>`;
   const ta = document.getElementById('note-textarea');
   ta.placeholder = tt('trip.notePlaceholder');
   ta.value = trip.note || '';
+  const cancel = (e) => { e?.preventDefault(); e?.stopPropagation(); renderNote(); };
+  document.getElementById('note-cancel').addEventListener('click', cancel);
+  document.getElementById('note-save').addEventListener('click', (e) => { e.stopPropagation(); saveNote(); });
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') cancel(e);
+    else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveNote(); }
+  });
   ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
   scheduleFit();   // 編輯框(textarea)較高 → 重算影片高度
 }
 async function saveNote() {
-  const val = document.getElementById('note-textarea').value;
+  const ta = document.getElementById('note-textarea');
+  if (!ta) return;
+  const val = ta.value;
+  const saveBtn = document.getElementById('note-save');
+  if (saveBtn) saveBtn.disabled = true;
   try {
     await apiFetch('/api/trip-note/' + encodeURIComponent(tripId), {
       method: 'PUT',
@@ -1995,6 +2223,7 @@ async function saveNote() {
     renderNote();
   } catch (e) {
     showToast(tt('trip.noteSaveFail') + '：' + e.message, 'error');
+    if (saveBtn) saveBtn.disabled = false;
   }
 }
 </script>
