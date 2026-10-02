@@ -1,13 +1,19 @@
 /* ── 時光機:仿 macOS Time Machine 的時間穿越瀏覽 ───────────────────────────────
- * 每個騎乘日是一扇視窗,越早的日期越往畫面深處(上方)退去;捲動 / 拖曳 / 方向鍵
- * 會以臨界阻尼彈簧推動整疊視窗,穿過的視窗朝觀看者飛出並淡去。右側時間軸可直接跳轉,
- * 滑過時像 Dock 一樣放大。依賴 browse.html 的 allDates、currentOwner、selectDate。 */
+ * 每個騎乘日是一扇視窗,越早的日期越往深處退去;捲動 / 拖曳 / 方向鍵以臨界阻尼彈簧推動。
+ * 效能:只建立目前位置附近的視窗(虛擬化,約 8 扇),跨越日期時才建立/回收;每格只寫 transform
+ * 與 opacity,變暗用獨立合成層;縮圖只載入最前面幾扇。
+ * 視窗內容不需要二次捲動:上方是當日 24 小時時間帶,下方格狀排版會依可用空間自動計算欄列,
+ * 讓當天所有旅程一次放得下;超過上限時最後一格顯示「+N 趟」。
+ * 依賴 browse.html 的 allDates、currentOwner、selectDate。 */
 (() => {
   const dialog = document.getElementById("time-machine");
   const stage = document.getElementById("tm-stage");
   const timeline = document.getElementById("tm-timeline");
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
   const cache = new Map();
+  const MAX_TILES = 24;
+  const BEHIND = 6;      // 往後(更早)渲染幾扇
+  const AHEAD = 1;       // 已穿過(較新)保留幾扇做飛出動畫
 
   let pos = 0;          // 目前(連續)位置:0 = 最新一天
   let target = 0;       // 彈簧目標
@@ -20,13 +26,16 @@
   let drag = null;
   let suppressClick = false;
   let previousFocus = null;
-  let cards = [];
+  const windows = new Map();   // 日期索引 → 視窗元素(只含渲染範圍內)
   let ticks = [];
+  let lastFocus = -1;
 
   const count = () => allDates.length;
   const clamp = (v) => Math.max(0, Math.min(count() - 1, v));
   const longDate = (date) => new Date(date).toLocaleDateString(cfgLocale(),
     { year: "numeric", month: "long", day: "numeric", weekday: "long", timeZone: "UTC" });
+  const shortDate = (date) => new Date(date).toLocaleDateString(cfgLocale(),
+    { month: "long", day: "numeric", weekday: "short", timeZone: "UTC" });
   const tripsLabel = (entry) => `${entry.trip_count} 趟 · ${fmtDuration(entry.total_sec || 0)}`;
 
   window.setTimeMachineReady = (ready) => {
@@ -34,76 +43,116 @@
   };
   window.resetTimeMachineCache = () => cache.clear();
 
-  /* ── 版面:依深度計算每扇視窗的 3D 位置 ─────────────────────────────── */
+  /* ── 視窗建立 / 回收 ─────────────────────────────────────────────── */
+  function makeWindow(i) {
+    const entry = allDates[i];
+    const el = document.createElement("article");
+    el.className = "tm-card";
+    el.dataset.index = String(i);
+    el.tabIndex = -1;
+    el.setAttribute("aria-label", `${longDate(entry.date)}，${entry.trip_count} 趟`);
+    el.innerHTML = `
+      <header class="tm-win-bar">
+        <span class="tm-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="tm-win-heading"><b>${escapeHtml(shortDate(entry.date))}</b><small>${escapeHtml(new Date(entry.date).getUTCFullYear() + " 年")}</small></span>
+        <span class="tm-win-pill">${escapeHtml(tripsLabel(entry))}</span>
+      </header>
+      <div class="tm-win-body">
+        <div class="tm-day" aria-hidden="true"><div class="tm-day-track"></div>
+          <div class="tm-day-hours"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div></div>
+        <div class="tm-grid"></div>
+      </div>
+      <div class="tm-shade" aria-hidden="true"></div>`;
+    el.style.display = "none";
+    stage.append(el);
+    return el;
+  }
+  function syncWindows() {
+    const focus = Math.round(pos);
+    const lo = Math.max(0, Math.floor(pos) - AHEAD);
+    const hi = Math.min(count() - 1, focus + BEHIND);
+    for (const [i, el] of windows) {
+      if (i < lo || i > hi) { el.remove(); windows.delete(i); }
+    }
+    for (let i = lo; i <= hi; i++) if (!windows.has(i)) windows.set(i, makeWindow(i));
+  }
+
+  /* ── 版面:依深度計算每扇視窗的 3D 位置(每格只寫有變化的值) ─────── */
+  // 尺寸只在開啟/縮放視窗時量一次:動畫中每格讀 clientHeight 會強制同步排版(layout thrash)
+  let cachedMetrics = null;
   function metrics() {
-    const h = stage.clientHeight || innerHeight;
-    const phone = innerWidth <= 760;
-    return { lift: h * (phone ? 0.03 : 0.032), depth: phone ? 150 : 230 };
+    if (!cachedMetrics) {
+      const h = stage.clientHeight || innerHeight;
+      const phone = innerWidth <= 760;
+      cachedMetrics = { lift: h * (phone ? 0.03 : 0.034), depth: phone ? 150 : 230 };
+    }
+    return cachedMetrics;
   }
   function layout() {
+    syncWindows();
     const { lift, depth } = metrics();
     const focus = Math.round(pos);
-    for (let i = 0; i < cards.length; i++) {
-      const card = cards[i];
+    for (const [i, card] of windows) {
       const d = i - pos;                       // >0:更早(往後退);<0:已穿過(朝觀看者飛出)
-      const visible = d > -1.05 && d < 6;
+      const visible = d > -1.05 && d < BEHIND;
+      const state = card._tm || (card._tm = {});
       if (!visible) {
-        if (card.style.display !== "none") {
-          card.style.display = "none";          // 不渲染、不佔合成圖層
-          card.style.visibility = "hidden";
+        if (state.shown !== false) { card.style.display = "none"; state.shown = false; }
+        if (state.front) {
+          state.front = state.isFront = false;
+          card.tabIndex = -1;
           card.setAttribute("aria-hidden", "true");
           card.removeAttribute("aria-current");
           card.classList.remove("is-front");
-          card.tabIndex = -1;
-          card._tm = null;
         }
         continue;
       }
-      if (card.style.display !== "flex") card.style.display = "flex";
-      card.style.visibility = "visible";
+      if (state.shown !== true) { card.style.display = "flex"; state.shown = true; }
       let y, z, opacity, shade;
       if (d >= 0) {
         y = -d * lift;
         z = -d * depth;
-        opacity = d > 4 ? Math.max(0, 6 - d) / 2 : 1;
-        shade = Math.min(0.6, d * 0.13);
+        opacity = d > BEHIND - 2 ? Math.max(0, BEHIND - d) / 2 : 1;
+        shade = Math.min(0.62, d * 0.14);
       } else {
-        const t = -d;                          // 0..1
+        const t = -d;
         y = t * lift * 3;
         z = t * depth * 1.5;
         opacity = Math.max(0, 1 - t * 2.4);
         shade = 0;
       }
-      // 只在數值改變時寫入 DOM,避免每格都觸發樣式重算;變暗用獨立合成層的 opacity,不重繪視窗內容
-      const state = card._tm || (card._tm = {});
-      const transform = `translate3d(-50%, ${y.toFixed(2)}px, ${z.toFixed(1)}px)`;
+      const transform = `translate3d(-50%, ${y.toFixed(1)}px, ${z.toFixed(0)}px)`;
       if (state.transform !== transform) card.style.transform = state.transform = transform;
-      const op = opacity.toFixed(3);
+      const op = opacity.toFixed(2);
       if (state.opacity !== op) card.style.opacity = state.opacity = op;
-      const sh = shade.toFixed(3);
-      if (state.shade !== sh) { (card._shade ||= card.querySelector(".tm-shade")).style.opacity = state.shade = sh; }
+      const sh = shade.toFixed(2);
+      if (state.shade !== sh) (card._shade ||= card.querySelector(".tm-shade")).style.opacity = state.shade = sh;
       const zi = String(1000 - Math.round(d * 10));
       if (state.z !== zi) card.style.zIndex = state.z = zi;
-      const pe = d > -0.4 && d < 4.5 ? "auto" : "none";
+      const pe = d > -0.4 && d < BEHIND - 1.5 ? "auto" : "none";
       if (state.pe !== pe) card.style.pointerEvents = state.pe = pe;
-      const hidden = Math.abs(d) < 0.5 ? "false" : "true";
-      if (state.hidden !== hidden) card.setAttribute("aria-hidden", state.hidden = hidden);
       const front = i === focus;
+      const isFront = front && Math.abs(d) < 0.5;
       if (state.front !== front) {
         state.front = front;
         card.tabIndex = front ? 0 : -1;
+        card.setAttribute("aria-hidden", String(!front));
         if (front) card.setAttribute("aria-current", "date");
         else card.removeAttribute("aria-current");
       }
-      const isFront = front && Math.abs(d) < 0.5;
       if (state.isFront !== isFront) card.classList.toggle("is-front", state.isFront = isFront);
     }
-    // 時間軸指示
-    const at = clamp(Math.round(pos));
-    for (let i = 0; i < ticks.length; i++) ticks[i].classList.toggle("is-current", i === at);
+    if (focus !== lastFocus) {
+      if (ticks[lastFocus]) ticks[lastFocus].classList.remove("is-current");
+      if (ticks[focus]) ticks[focus].classList.add("is-current");
+      lastFocus = focus;
+    }
   }
 
   /* ── 彈簧動畫 ──────────────────────────────────────────────────────── */
+  function settleFill() {
+    for (let k = index - 1; k <= index + 2; k++) if (k >= 0 && k < count()) void fill(k);
+  }
   function step(ts) {
     const dt = Math.min(0.032, (ts - (lastTs || ts)) / 1000) || 0.016;
     lastTs = ts;
@@ -111,39 +160,39 @@
       pos = target;
       vel = 0;
     } else {
-      const k = 150;                          // 剛性
-      const c = 2 * Math.sqrt(k) * 1.02;      // 略高於臨界阻尼:絲滑、不回彈
-      const a = k * (target - pos) - c * vel;
-      vel += a * dt;
+      const k = 150;
+      const c = 2 * Math.sqrt(k) * 1.02;     // 略高於臨界阻尼:絲滑、不回彈
+      vel += (k * (target - pos) - c * vel) * dt;
       pos += vel * dt;
     }
-    layout();
     const settled = Math.abs(target - pos) < 0.0015 && Math.abs(vel) < 0.002;
+    if (settled) { pos = target; vel = 0; }
+    layout();
     if (settled) {
-      pos = target;
-      layout();
       raf = 0;
       lastTs = 0;
+      stage.classList.remove("moving");
+      settleFill();
       return;
     }
     raf = requestAnimationFrame(step);
   }
   function kick() {
+    stage.classList.add("moving");
     if (!raf) raf = requestAnimationFrame(step);
   }
-  /** 移動到第 i 天(吸附)。 */
   function goTo(i, { snap = true } = {}) {
     if (!count()) return;
     target = snap ? clamp(Math.round(i)) : clamp(i);
-    // 遠距跳轉:先瞬移到目標前幾扇,再以彈簧滑入,避免一路渲染幾十扇視窗
-    const far = 5;
+    // 遠距跳轉:先瞬移到目標前幾扇,再以彈簧滑入
+    const far = 4;
     if (Math.abs(target - pos) > far && !reduceMotion.matches) {
       pos = target - Math.sign(target - pos) * far;
-      vel = Math.sign(target - pos) * 4;
+      vel = Math.sign(target - pos) * 3;
     }
     if (snap) commit(target);
     kick();
-    // 保底:裝置太忙、掉幀或分頁在背景時,仍保證最後停在選定的日期
+    // 保底:掉幀或分頁在背景時,仍保證最後停在選定的日期
     clearTimeout(settleTimer);
     settleTimer = setTimeout(() => {
       if (dialog.hidden || Math.abs(target - pos) < 0.01) return;
@@ -153,6 +202,8 @@
       pos = target;
       vel = 0;
       layout();
+      stage.classList.remove("moving");
+      settleFill();
     }, 1400);
   }
   function commit(i) {
@@ -162,49 +213,78 @@
     const entry = allDates[i];
     document.getElementById("tm-title").textContent = longDate(entry.date);
     document.getElementById("tm-sub").textContent = tripsLabel(entry);
-    for (let k = i - 1; k <= i + 3; k++) if (k >= 0 && k < count()) void fill(k);
   }
 
-  /* ── 視窗內容(延遲載入當日旅程) ───────────────────────────────────── */
+  /* ── 視窗內容:24 小時時間帶 + 一次放得下的格狀排版(不需二次捲動) ─── */
+  function bestGrid(n, w, h) {
+    let best = { cols: 1, rows: n, size: 0 };
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      const size = Math.min(w / cols, (h / rows) * 1.6);   // 以 16:10 的磚為目標比例
+      if (size > best.size) best = { cols, rows, size };
+    }
+    return best;
+  }
+  function gColor(g) {
+    return g >= 2.5 ? "var(--crit)" : g >= 1.8 ? "var(--warn)" : "var(--accent)";
+  }
   async function fill(i) {
-    const card = cards[i];
+    const card = windows.get(i);
     if (!card || card.dataset.filled) return;
     card.dataset.filled = "1";
-    const body = card.querySelector(".tm-win-body");
+    const grid = card.querySelector(".tm-grid");
+    const track = card.querySelector(".tm-day-track");
     const date = allDates[i].date;
     const key = `${currentOwner}:${date}`;
     try {
       let data = cache.get(key);
       if (!data) {
-        data = await apiFetch(`/api/trips?date=${encodeURIComponent(date)}&owner=${encodeURIComponent(currentOwner)}&limit=24&offset=0`);
+        data = await apiFetch(`/api/trips?date=${encodeURIComponent(date)}&owner=${encodeURIComponent(currentOwner)}&limit=${MAX_TILES}&offset=0`);
         cache.set(key, data);
       }
-      if (dialog.hidden || cards[i] !== card) return;
-      body.innerHTML = data.trips.length
-        ? `<div class="trips-grid">${data.trips.map(renderTripCard).join("")}</div>`
-        : `<div class="tm-empty">${t("browse.noTripThisDay")}</div>`;
+      if (dialog.hidden || windows.get(i) !== card) return;
+      const trips = [...data.trips].sort((a, b) => a.start_epoch - b.start_epoch);
+      // 時間帶:每趟依開始/結束時刻畫在 0–24 時上,顏色代表晃動強度
+      track.innerHTML = trips.map((tr) => {
+        const s = ((tr.start_epoch % 86400) + 86400) % 86400;
+        const left = s / 864;
+        const width = Math.max(0.6, Math.min(100 - left, (tr.duration_sec || 0) / 864));
+        return `<i style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%;background:${gColor(tr.peak_gforce || 0)}" title="${fmtTime(tr.start_epoch)}–${fmtTime(tr.end_epoch)}"></i>`;
+      }).join("");
+      if (!trips.length) {
+        grid.innerHTML = `<div class="tm-empty">${t("browse.noTripThisDay")}</div>`;
+        return;
+      }
+      const gw = grid.clientWidth || 800, gh = grid.clientHeight || 360;
+      const total = data.total || trips.length;
+      // 放不下時(磚太小)減少顯示數量,最後一格改成「+N 趟」——永遠不需要捲動
+      const minTile = innerWidth <= 760 ? 44 : 58;
+      let shown = trips.length;
+      let layoutGrid = bestGrid(shown + (total > shown ? 1 : 0), gw, gh);
+      while (shown > 1 && gh / layoutGrid.rows < minTile) {
+        shown--;
+        layoutGrid = bestGrid(shown + 1, gw, gh);
+      }
+      trips.length = shown;
+      const more = Math.max(0, total - shown);
+      const n = shown + (more ? 1 : 0);
+      const { cols, rows } = layoutGrid;
+      grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+      grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+      grid.classList.toggle("dense", n > 6);
+      grid.innerHTML = trips.map((tr) => `
+        <a class="tm-trip" href="/trip/${encodeURIComponent(tr.trip_id)}">
+          <img loading="lazy" decoding="async" alt="" src="/video/${encodeURIComponent(tr.trip_id)}/thumbnail" onerror="this.remove()">
+          <span class="tm-trip-info"><b>${fmtTime(tr.start_epoch)}</b><small>${fmtDuration(tr.duration_sec)}${tr.peak_gforce > 0 ? ` · ${tr.peak_gforce.toFixed(1)}g` : ""}</small></span>
+        </a>`).join("") + (more ? `<button type="button" class="tm-trip tm-more">+${more} 趟<small>查看這天</small></button>` : "");
     } catch (error) {
       delete card.dataset.filled;
-      body.innerHTML = `<div class="tm-empty">${t("common.loadFail")}：${escapeHtml(error.message)}</div>`;
+      grid.innerHTML = `<div class="tm-empty">${t("common.loadFail")}：${escapeHtml(error.message)}</div>`;
     }
   }
 
-  function buildCards() {
-    stage.innerHTML = allDates.map((entry, i) => `
-      <article class="tm-card" data-index="${i}" aria-label="${escapeHtml(longDate(entry.date))}，${entry.trip_count} 趟">
-        <header class="tm-win-bar">
-          <span class="tm-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="tm-win-title">${escapeHtml(longDate(entry.date))}</span>
-          <span class="tm-win-meta">${escapeHtml(tripsLabel(entry))}</span>
-        </header>
-        <div class="tm-win-body"><div class="tm-skeleton" aria-hidden="true"><i></i><i></i><i></i></div></div>
-        <div class="tm-shade" aria-hidden="true"></div>
-      </article>`).join("");
-    cards = [...stage.querySelectorAll(".tm-card")];
-  }
-
   function buildTimeline() {
-    // 最新在下、越早越往上(與 Time Machine 相同);月份交界與目前日期顯示標籤
+    // 最新在下、越早越往上(與 Time Machine 相同);月份交界顯示標籤
     let prevMonth = "";
     timeline.innerHTML = allDates.map((entry, i) => {
       const month = entry.date.slice(0, 7);
@@ -218,7 +298,7 @@
         <span class="tm-tick-label">${escapeHtml(i === 0 ? "最近" : label)}</span><span class="tm-tick"></span></button></li>`;
     }).join("");
     ticks = [...timeline.querySelectorAll("li")];
-    // 太多日期時,只顯示部分月份標籤以免擁擠
+    lastFocus = -1;
     const every = Math.max(1, Math.ceil(ticks.filter((li) => li.classList.contains("is-month")).length / 14));
     let n = 0;
     ticks.forEach((li) => { if (li.classList.contains("is-month") && n++ % every) li.classList.add("is-quiet"); });
@@ -230,16 +310,19 @@
     previousFocus = document.activeElement;
     const selected = decodeURIComponent(location.hash.slice(1));
     const start = Math.max(0, allDates.findIndex((d) => d.date === selected));
-    buildCards();
+    stage.replaceChildren();
+    windows.clear();
     buildTimeline();
     dialog.dataset.ready = "";
     dialog.hidden = false;
+    cachedMetrics = null;
+    metrics();
     document.body.classList.add("tm-open");
     document.querySelector("header.hdr").inert = true;
     document.querySelector(".page-body").inert = true;
     requestAnimationFrame(() => dialog.classList.add("is-open"));
-    // 進場:整疊視窗從觀看者這端滑入定位
     pos = reduceMotion.matches ? start : start - 0.9;
+    target = start;
     vel = 0;
     index = -1;
     layout();
@@ -255,8 +338,8 @@
     clearTimeout(settleTimer);
     dialog.classList.remove("is-open");
     dialog.hidden = true;
-    stage.innerHTML = "";
-    cards = [];
+    stage.replaceChildren();
+    windows.clear();
     document.body.classList.remove("tm-open");
     document.querySelector("header.hdr").inert = false;
     document.querySelector(".page-body").inert = false;
@@ -264,17 +347,12 @@
   };
 
   /* ── 輸入:滾輪 / 觸控板、拖曳、鍵盤、時間軸 ───────────────────────── */
-  function scrollableInside(element, delta) {
-    const body = element.closest?.(".tm-card.is-front .tm-win-body");
-    if (!body || body.scrollHeight <= body.clientHeight + 2) return false;
-    return delta > 0 ? body.scrollTop + body.clientHeight < body.scrollHeight - 1 : body.scrollTop > 0;
-  }
+  // 視窗內容一次放得下,滾輪一律用來穿越時間(不再與視窗內捲動搶手勢)
   dialog.addEventListener("wheel", (event) => {
     if (dialog.hidden || count() < 2) return;
+    event.preventDefault();
     const vertical = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
     const delta = vertical ? event.deltaY : event.deltaX;
-    if (vertical && scrollableInside(event.target, delta)) return;   // 讓前景視窗內容自己捲
-    event.preventDefault();
     const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 800 : 1;
     target = clamp(target + Math.max(-1.4, Math.min(1.4, (delta * unit) / 160)));
     kick();
@@ -284,9 +362,8 @@
 
   stage.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || count() < 2) return;
-    if (event.target.closest(".tm-card.is-front .tm-win-body") && event.pointerType !== "mouse") return;
     clearTimeout(wheelTimer);
-    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, start: target, moved: false, t: performance.now(), last: target };
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, start: target, moved: false, t: performance.now(), last: target, v: 0 };
   });
   stage.addEventListener("pointermove", (event) => {
     if (!drag || event.pointerId !== drag.id) return;
@@ -300,7 +377,7 @@
       stage.classList.add("dragging");
     }
     const now = performance.now();
-    const next = clamp(drag.start + dist / (metrics().lift * 1.6));
+    const next = clamp(drag.start + dist / (metrics().lift * 4));
     drag.v = (next - drag.last) / Math.max(1, now - drag.t) * 1000;
     drag.last = next;
     drag.t = now;
@@ -325,7 +402,8 @@
     const card = event.target.closest(".tm-card");
     if (!card) return;
     const i = Number(card.dataset.index);
-    if (i !== index) { event.preventDefault(); goTo(i); }   // 點後方視窗 = 回到那天
+    if (i !== index) { event.preventDefault(); goTo(i); return; }   // 點後方視窗 = 回到那天
+    if (event.target.closest(".tm-more")) { event.preventDefault(); openDay(); }
   }, true);
   stage.addEventListener("dblclick", (event) => {
     const card = event.target.closest(".tm-card.is-front");
@@ -354,17 +432,15 @@
   document.getElementById("tm-older").addEventListener("click", () => goTo(index + 1));
   document.getElementById("tm-newer").addEventListener("click", () => goTo(index - 1));
 
-  // 時間軸是一條拖曳條:點或沿著它拖曳,依垂直位置挑最近的日期(刻度很密時也點得準)
+  // 時間軸是一條拖曳條:點或沿著它拖曳,依垂直位置換算日期(由下=最新往上=較早均分)
   function nearestTick(clientY) {
-    let best = 0, bestDist = Infinity;
-    for (let i = 0; i < ticks.length; i++) {
-      const r = ticks[i].getBoundingClientRect();
-      const dist = Math.abs(r.top + r.height / 2 - clientY);
-      if (dist < bestDist) { bestDist = dist; best = i; }
-    }
-    return best;
+    const r = timeline.getBoundingClientRect();
+    if (!ticks.length || !r.height) return 0;
+    const ratio = Math.max(0, Math.min(1, (r.bottom - clientY) / r.height));
+    return clamp(Math.floor(ratio * ticks.length - 1e-9));
   }
   let scrubbing = null;
+  let hovered = null;
   timeline.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || !ticks.length) return;
     event.preventDefault();
@@ -373,9 +449,15 @@
     goTo(nearestTick(event.clientY));
   });
   timeline.addEventListener("pointermove", (event) => {
-    if (scrubbing !== event.pointerId) return;
     const i = nearestTick(event.clientY);
-    if (i !== index) goTo(i);
+    if (scrubbing === event.pointerId && i !== index) goTo(i);
+    if (event.pointerType !== "mouse") return;
+    // 只標記最接近的刻度,不逐一量測每個刻度(避免卡頓)
+    if (hovered !== ticks[i]) {
+      hovered?.classList.remove("is-hover");
+      hovered = ticks[i];
+      hovered?.classList.add("is-hover");
+    }
   });
   const endScrub = (event) => {
     if (scrubbing !== event.pointerId) return;
@@ -384,19 +466,7 @@
   };
   timeline.addEventListener("pointerup", endScrub);
   timeline.addEventListener("pointercancel", endScrub);
-  // Dock 式放大:滑鼠附近的刻度放大
-  timeline.addEventListener("pointermove", (event) => {
-    if (event.pointerType !== "mouse") return;
-    const near = nearestTick(event.clientY);
-    for (let i = 0; i < ticks.length; i++) {
-      const li = ticks[i];
-      const r = li.getBoundingClientRect();
-      const mag = Math.max(0, 1 - Math.abs(r.top + r.height / 2 - event.clientY) / 70);
-      li.style.setProperty("--mag", mag.toFixed(3));
-      li.classList.toggle("is-hover", i === near);
-    }
-  });
-  timeline.addEventListener("pointerleave", () => ticks.forEach((li) => { li.style.setProperty("--mag", "0"); li.classList.remove("is-hover"); }));
+  timeline.addEventListener("pointerleave", () => { hovered?.classList.remove("is-hover"); hovered = null; });
 
   function openDay() {
     const date = allDates[index]?.date;
@@ -404,5 +474,11 @@
     if (date) selectDate(date);
   }
   document.getElementById("tm-open-day").addEventListener("click", openDay);
-  addEventListener("resize", () => { if (!dialog.hidden) layout(); });
+  addEventListener("resize", () => {
+    cachedMetrics = null;
+    if (dialog.hidden) return;
+    for (const el of windows.values()) delete el.dataset.filled;   // 依新尺寸重排格線
+    layout();
+    settleFill();
+  });
 })();

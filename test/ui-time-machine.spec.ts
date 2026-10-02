@@ -34,8 +34,16 @@ test("desktop time machine stacks dated windows and travels with the trackpad", 
   expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1);
   await page.locator(".tm-launch").click();
   await expect(page.locator("#time-machine")).toBeVisible();
-  await expect(page.locator(".tm-card")).toHaveCount(8);
-  await expect(page.locator('.tm-card[data-index="0"] .trip-card')).toHaveCount(2);
+  // 虛擬化:只渲染目前位置附近的視窗
+  expect(await page.locator(".tm-card").count()).toBeLessThanOrEqual(8);
+  await expect(page.locator('.tm-card[data-index="0"] .tm-trip')).toHaveCount(2);
+  // 視窗內容一次放得下,不需要二次捲動
+  expect(
+    await page.locator('.tm-card[data-index="0"]').evaluate((card) =>
+      [...card.querySelectorAll(".tm-win-body, .tm-grid")].some((el) => el.scrollHeight > el.clientHeight + 2),
+    ),
+  ).toBe(false);
+  await expect(page.locator('.tm-card[data-index="0"] .tm-day-track i')).toHaveCount(2);
   await expect(page.locator(".tm-timeline li")).toHaveCount(8);
   await page.waitForTimeout(1500);   // 等進場動畫結束
   await page.locator("#tm-stage").hover({ position: { x: 40, y: 40 } });
@@ -57,7 +65,7 @@ test("a trip in the front window opens that recording", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/browse");
   await page.locator(".tm-launch").click();
-  const cards = page.locator('.tm-card[aria-current="date"] .trip-card');
+  const cards = page.locator('.tm-card[aria-current="date"] .tm-trip');
   await expect(cards).toHaveCount(2);
   await cards.first().click();
   await expect(page).toHaveURL(/\/trip\//);

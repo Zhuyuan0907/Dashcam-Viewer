@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.0 — 2026-10-02
+
+- Keep the trip viewer on one screen on desktop: the page no longer scrolls or rubber-bands, and other trips of the day sit in a single horizontal row.
+- Redesign the player controls as a floating dock: a prominent play key between 10-second jumps, the dashcam's actual clock (click to switch to elapsed time), a separate frame-step island, and a tools island with camera switch, a 0.5–4× speed menu, picture-in-picture toggle, snapshot, mute with a slide-out volume and fullscreen. The progress bar thickens on hover, shows buffered video and previews the actual time.
+- Fix the trip note editor: Cancel now closes it (the click no longer reopens the editor), Esc cancels and Ctrl/⌘+Enter saves.
+- Make the Time Machine faster: render only the windows near the current date, stop reading layout during animation, drop per-frame repaints and load thumbnails only for the front windows.
+- Restyle Time Machine windows after current macOS: larger corners, unified toolbar with a date heading and summary pill, and an inset content panel.
+- Remove nested scrolling in Time Machine windows: a 24-hour ribbon shows each trip of the day, and the tile grid sizes itself to fit every trip; days that cannot fit end with a "+N trips" tile.
+
 ## 2.2.1 — 2026-10-02
 
 - Fit the home overview to the window height instead of a fixed 16:9 image, so nothing is cut off on 1366×768, 1280×720/800 or other short screens; narrow or very short windows scroll normally.

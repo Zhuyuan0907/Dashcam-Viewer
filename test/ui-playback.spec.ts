@@ -313,3 +313,36 @@ test("editor preview uses the buffering barrier and stops without accidental res
       .evaluateAll((videos: HTMLVideoElement[]) => videos.every((v) => v.paused)),
   ).toBe(true);
 });
+
+test("trip page stays on one screen, note cancel works, and the dock offers speed and clock modes", async ({
+  page,
+  context,
+}) => {
+  await context.addCookies([
+    { name: "session_token", value: "ui-device-test-session", domain: "127.0.0.1", path: "/" },
+  ]);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/trip/${encodeURIComponent(tripId)}`);
+  await expect(page.locator("#page-main")).toBeVisible();
+  expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe("hidden");
+  expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1);
+  // 備註:取消要真的關閉編輯框
+  await page.locator(".note-open").click();
+  await expect(page.locator("#note-textarea")).toBeVisible();
+  await page.locator("#note-textarea").fill("暫存文字");
+  await page.locator("#note-cancel").click();
+  await expect(page.locator("#note-textarea")).toHaveCount(0);
+  await page.locator(".note-open").click();
+  await page.locator("#note-textarea").press("Escape");
+  await expect(page.locator("#note-textarea")).toHaveCount(0);
+  // 速度選單
+  await page.locator("#stage").hover();
+  await page.locator("#btn-speed").click();
+  await page.locator('#speed-menu button[data-rate="2"]').click();
+  await expect(page.locator("#btn-speed")).toHaveText("2×");
+  await expect(page.locator("#speed-menu")).toBeHidden();
+  // 時間:預設顯示實際時間,點一下切成影片時間
+  await expect(page.locator("#t-wall")).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
+  await page.locator("#dock-clock").click();
+  await expect(page.locator("#dock-clock")).toHaveClass(/elapsed-first/);
+});
