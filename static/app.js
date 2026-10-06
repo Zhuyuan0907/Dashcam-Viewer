@@ -336,7 +336,7 @@ function initNavActive() {
 }
 
 /* ── 行動版導覽(漢堡 + 右側拉抽屜) ─────────────────────────────────────────────
- * 桌機維持 .hdr-nav 置中膠囊列;窄螢幕(≤860px,由 style.css 控制顯隱)隱藏桌機列,
+ * 桌機維持 .hdr-nav 置中膠囊列;窄螢幕(≤1120px,由 style.css 控制顯隱)隱藏桌機列,
  * 改用注入的 .hdr-burger 開啟 .m-drawer。抽屜內容(使用者、連結、登出)由
  * buildMobileNav(user) 依登入者/角色填入,故與 renderHeader 的權限/i18n 一致。 */
 const MNAV = [
@@ -398,8 +398,8 @@ function initMobileNav() {
     document.body.appendChild(drawer);
   }
   document.addEventListener('keydown', e => { if (e.key === 'Escape') mnavClose(); });
-  // 旋轉/縮放回到桌機尺寸時自動收起(與 CSS max-width:860px 接壤,避免出現「漢堡消失但抽屜還開」的縫隙)
-  try { matchMedia('(min-width: 860px)').addEventListener('change', e => { if (e.matches) mnavClose(); }); } catch {}
+  // 旋轉/縮放回到桌機尺寸時自動收起(與 CSS max-width:1120px 接壤,避免出現「漢堡消失但抽屜還開」的縫隙)
+  try { matchMedia('(min-width: 1121px)').addEventListener('change', e => { if (e.matches) mnavClose(); }); } catch {}
   buildMobileNav(cacheGet('user'));   // 先用快取使用者填一次(避免首開空白)
 }
 

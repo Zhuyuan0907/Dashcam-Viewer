@@ -544,6 +544,12 @@ html.m-nav-open, html.m-nav-open body { overflow: hidden; }
   .hdr-burger { display: inline-flex; }
 }
 
+/* 平板保留桌機頁首高度，導覽較多時使用同一個抽屜，避免與帳號控制重疊。 */
+@media (min-width: 861px) and (max-width: 1120px) {
+  .hdr-nav, .hdr-ctrls { display: none; }
+  .hdr-burger { display: inline-flex; }
+}
+
 /* ── 表格:窄螢幕縮排 + 提供水平捲動容器(.table-scroll 由各頁套用) ─────────── */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
 .table-scroll .data-table { min-width: 520px; }

@@ -3,18 +3,16 @@ const tripId = "v2|u:1|d:2|MS279WG-ui-test";
 const baseURL = process.env.DASHCAM_E2E_BASE_URL ?? "http://127.0.0.1:8181";
 const token = process.env.DASHCAM_E2E_SESSION_TOKEN ?? "ui-device-test-session";
 async function setup(page: Page) {
-  await page
-    .context()
-    .addCookies([
-      {
-        name: "session_token",
-        value: token,
-        domain: new URL(baseURL).hostname,
-        path: "/",
-        httpOnly: true,
-        sameSite: "Lax",
-      },
-    ]);
+  await page.context().addCookies([
+    {
+      name: "session_token",
+      value: token,
+      domain: new URL(baseURL).hostname,
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
 }
 async function noOverflow(page: Page) {
   expect(
@@ -32,12 +30,20 @@ test("fixed desktop and mobile panels, metadata preview, OAuth setup and navigat
   page.on("pageerror", (e) => errors.push(e.message));
   for (const viewport of [
     { width: 1366, height: 768 },
+    { width: 1024, height: 768 },
     { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(viewport);
     await page.goto("/youtube");
     await expect(page.locator("#yt-trips .yt-row")).toHaveCount(2);
     await noOverflow(page);
+    if (viewport.width === 1024) {
+      await expect(page.locator(".hdr-nav")).toBeHidden();
+      await page.locator(".hdr-burger").click();
+      await expect(page.locator('.m-nav-link[href="/youtube"]')).toBeVisible();
+      await page.locator('.m-nav-link[href="/youtube"]').click();
+      await expect(page.locator("#yt-trips .yt-row")).toHaveCount(2);
+    }
     await page.locator(`[data-trip="${tripId}"]`).check();
     await page.locator("#yt-next").click();
     await expect(page.locator("#yt-settings-metadata")).toBeVisible();
