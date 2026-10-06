@@ -433,120 +433,132 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
       trip_total: toProcess.length,
     };
 
-    let tripDir = path.join(opts.tripsDir, trip.date, folderName(trip));
-    // Display names round to minutes; distinct trips must never overwrite one another.
-    if (await dirExists(tripDir)) {
-      const suffix = createHash("sha256").update(effectiveTripId(trip)).digest("hex").slice(0, 12);
-      tripDir += `-${suffix}`;
-      if (await dirExists(tripDir))
-        throw Error(`旅程目錄已存在，為避免覆寫請先由管理員檢查：${tripDir}`);
-    }
-    await fs.mkdir(path.dirname(tripDir), { recursive: true });
-    await fs.mkdir(tripDir); // Exclusive directory admission also rejects concurrent collisions.
-    const bases = trip.segments.map((s) => s.base);
+    const dayDir = path.join(opts.tripsDir, trip.date);
+    const idHash = createHash("sha256").update(effectiveTripId(trip)).digest("hex").slice(0, 12);
+    // 先寫進隱藏的暫存夾，全部成功後才 rename 成正式旅程夾：服務在合併途中被重啟／中斷時，
+    // 半成品只會留在 .partial-*（啟動時 sweepPartialTripDirs 清除），不會變成佔空間的孤兒旅程夾。
+    const stagingDir = path.join(dayDir, `${PARTIAL_PREFIX}${idHash}`);
+    await fs.mkdir(dayDir, { recursive: true });
+    await fs.mkdir(stagingDir); // Exclusive admission also rejects concurrent runs of the same trip.
+    let committed = false;
+    try {
+      const bases = trip.segments.map((s) => s.base);
 
-    const frontOut = path.join(tripDir, "前鏡頭.mp4");
-    const rearOut = path.join(tripDir, "後鏡頭.mp4");
-    const tolerant = opts.tolerant ?? false;
+      const frontOut = path.join(stagingDir, "前鏡頭.mp4");
+      const rearOut = path.join(stagingDir, "後鏡頭.mp4");
+      const tolerant = opts.tolerant ?? false;
 
-    // 合併前後鏡頭(成功與否以實際合併結果為準,而非檔案是否存在)。
-    const frontRes: MergeResult = { ok: false, found: 0, dropped: 0 };
-    for await (const ev of mergeCameraEvents(
-      trip.segments,
-      frontDir,
-      "F",
-      frontOut,
-      frontRes,
-      tolerant,
-    ))
-      yield ev;
-    const frontOk = frontRes.ok;
-    const rearRes: MergeResult = { ok: false, found: 0, dropped: 0 };
-    for await (const ev of mergeCameraEvents(
-      trip.segments,
-      rearDir,
-      "R",
-      rearOut,
-      rearRes,
-      tolerant,
-    ))
-      yield ev;
-    const rearOk = rearRes.ok;
+      // 合併前後鏡頭(成功與否以實際合併結果為準,而非檔案是否存在)。
+      const frontRes: MergeResult = { ok: false, found: 0, dropped: 0 };
+      for await (const ev of mergeCameraEvents(
+        trip.segments,
+        frontDir,
+        "F",
+        frontOut,
+        frontRes,
+        tolerant,
+      ))
+        yield ev;
+      const frontOk = frontRes.ok;
+      const rearRes: MergeResult = { ok: false, found: 0, dropped: 0 };
+      for await (const ev of mergeCameraEvents(
+        trip.segments,
+        rearDir,
+        "R",
+        rearOut,
+        rearRes,
+        tolerant,
+      ))
+        yield ev;
+      const rearOk = rearRes.ok;
 
-    // 前後鏡頭都沒合成出有效影片:不寫入空旅程(否則介面會出現無法播放的項目),
-    // 並夾帶結構化失敗內容供善後系統持久記錄。
-    if (!frontOk && !rearOk) {
-      await fs.rm(tripDir, { recursive: true, force: true }).catch(() => {});
-      const detail = [
-        `前鏡頭(找到 ${frontRes.found} 段):${frontRes.error ?? "未知錯誤"}`,
-        `後鏡頭(找到 ${rearRes.found} 段):${rearRes.error ?? "未知錯誤"}`,
-      ].join("\n");
-      yield {
-        stage: "merge",
-        message: `  ⚠ 旅程 ${tripLabel} 合併失敗,未產生有效影片,已略過`,
-        incident: {
-          kind: "trip_skipped",
-          severity: "error",
-          trip_label: tripLabel,
-          title: `旅程合併失敗:${tripLabel}`,
-          detail,
-          context: {
-            date: trip.date,
-            folder: folderName(trip),
-            segment_count: trip.segments.length,
-            segment_bases: bases,
-            owner_id: opts.ownerId ?? null,
-            device_id: opts.deviceId ?? null,
-            device: opts.device ?? null,
-            front: { found: frontRes.found, dropped: frontRes.dropped, error: frontRes.error },
-            rear: { found: rearRes.found, dropped: rearRes.dropped, error: rearRes.error },
+      // 前後鏡頭都沒合成出有效影片:不寫入空旅程(否則介面會出現無法播放的項目),
+      // 並夾帶結構化失敗內容供善後系統持久記錄。
+      if (!frontOk && !rearOk) {
+        const detail = [
+          `前鏡頭(找到 ${frontRes.found} 段):${frontRes.error ?? "未知錯誤"}`,
+          `後鏡頭(找到 ${rearRes.found} 段):${rearRes.error ?? "未知錯誤"}`,
+        ].join("\n");
+        yield {
+          stage: "merge",
+          message: `  ⚠ 旅程 ${tripLabel} 合併失敗,未產生有效影片,已略過`,
+          incident: {
+            kind: "trip_skipped",
+            severity: "error",
+            trip_label: tripLabel,
+            title: `旅程合併失敗:${tripLabel}`,
+            detail,
+            context: {
+              date: trip.date,
+              folder: folderName(trip),
+              segment_count: trip.segments.length,
+              segment_bases: bases,
+              owner_id: opts.ownerId ?? null,
+              device_id: opts.deviceId ?? null,
+              device: opts.device ?? null,
+              front: { found: frontRes.found, dropped: frontRes.dropped, error: frontRes.error },
+              rear: { found: rearRes.found, dropped: rearRes.dropped, error: rearRes.error },
+            },
           },
-        },
-      };
-      continue;
-    }
+        };
+        continue;
+      }
 
-    // 分析 NMEA
-    let peakG = 0;
-    let gEvents = 0;
-    if (await dirExists(nmeaDir)) {
-      for (const seg of trip.segments) {
-        const nf = path.join(nmeaDir, seg.nmeaFilename ?? `${seg.base}F.NMEA`);
-        if (await fileExists(nf)) {
-          const r = await analyzeNmea(nf);
-          if (r.peakG > peakG) peakG = r.peakG;
-          gEvents += r.eventCount;
+      // 分析 NMEA
+      let peakG = 0;
+      let gEvents = 0;
+      if (await dirExists(nmeaDir)) {
+        for (const seg of trip.segments) {
+          const nf = path.join(nmeaDir, seg.nmeaFilename ?? `${seg.base}F.NMEA`);
+          if (await fileExists(nf)) {
+            const r = await analyzeNmea(nf);
+            if (r.peakG > peakG) peakG = r.peakG;
+            gEvents += r.eventCount;
+          }
         }
       }
+
+      const info: TripInfo = {
+        trip_id: effectiveTripId(trip),
+        date: trip.date,
+        day_order: trip.dayOrder,
+        start_epoch: trip.startEpoch,
+        end_epoch: trip.endEpoch,
+        duration_sec: (frontRes.timeline ?? rearRes.timeline ?? []).reduce(
+          (n, s) => n + s.duration,
+          0,
+        ),
+        timeline: { front: frontRes.timeline ?? [], rear: rearRes.timeline ?? [] },
+        segment_count: trip.segments.length,
+        emer_count: trip.segments.filter((s) => s.isEmergency).length,
+        has_front: frontOk,
+        has_rear: rearOk,
+        peak_gforce: peakG,
+        gforce_events: gEvents,
+        front_path: null,
+        rear_path: null,
+        owner_id: opts.ownerId ?? null,
+        owner_username: opts.ownerUsername ?? null,
+        device_id: opts.deviceId ?? null,
+        device: opts.device ?? null,
+      };
+      // Display names round to minutes; distinct trips must never overwrite one another.
+      let tripDir = path.join(dayDir, folderName(trip));
+      if (await dirExists(tripDir)) {
+        tripDir += `-${idHash}`;
+        if (await dirExists(tripDir))
+          throw Error(`旅程目錄已存在，為避免覆寫請先由管理員檢查：${tripDir}`);
+      }
+      info.front_path = frontOk ? path.join(tripDir, "前鏡頭.mp4") : null;
+      info.rear_path = rearOk ? path.join(tripDir, "後鏡頭.mp4") : null;
+      await fs.writeFile(path.join(stagingDir, "info.json"), JSON.stringify(info, null, 2));
+      await fs.rename(stagingDir, tripDir);
+      committed = true;
+
+      yield { stage: "merge", message: `  旅程完成:${tripLabel}`, tripInfo: info };
+    } finally {
+      if (!committed) await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
     }
-
-    const info: TripInfo = {
-      trip_id: effectiveTripId(trip),
-      date: trip.date,
-      day_order: trip.dayOrder,
-      start_epoch: trip.startEpoch,
-      end_epoch: trip.endEpoch,
-      duration_sec: (frontRes.timeline ?? rearRes.timeline ?? []).reduce(
-        (n, s) => n + s.duration,
-        0,
-      ),
-      timeline: { front: frontRes.timeline ?? [], rear: rearRes.timeline ?? [] },
-      segment_count: trip.segments.length,
-      emer_count: trip.segments.filter((s) => s.isEmergency).length,
-      has_front: frontOk,
-      has_rear: rearOk,
-      peak_gforce: peakG,
-      gforce_events: gEvents,
-      front_path: frontOk ? frontOut : null,
-      rear_path: rearOk ? rearOut : null,
-      owner_id: opts.ownerId ?? null,
-      owner_username: opts.ownerUsername ?? null,
-      device_id: opts.deviceId ?? null,
-      device: opts.device ?? null,
-    };
-    await fs.writeFile(path.join(tripDir, "info.json"), JSON.stringify(info, null, 2));
-
-    yield { stage: "merge", message: `  旅程完成:${tripLabel}`, tripInfo: info };
   }
 
   yield { stage: "done", message: `全部完成!共處理 ${toProcess.length} 趟旅程` };
@@ -689,6 +701,44 @@ async function fileExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** 合併中的暫存旅程夾前綴（與正式「HH.MM-HH.MM (N分)」夾名不可能相撞）。 */
+export const PARTIAL_PREFIX = ".partial-";
+
+/**
+ * 清除中斷合併留下的 `.partial-*` 暫存夾。只能在沒有任何整理工作執行時呼叫（服務啟動時）。
+ * 只往下找日期層級（legacy `<date>/` 與 `by-user/<u>/by-device/<d>/<date>/`），不跟隨符號連結。
+ */
+export async function sweepPartialTripDirs(
+  tripsDir: string,
+): Promise<{ removed: number; bytes: number }> {
+  const result = { removed: 0, bytes: 0 };
+  const visit = async (dir: string, depth: number): Promise<void> => {
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const full = path.join(dir, e.name);
+      if (e.name.startsWith(PARTIAL_PREFIX)) {
+        for (const f of await fs.readdir(full).catch(() => [] as string[]))
+          result.bytes += await fs.stat(path.join(full, f)).then(
+            (s) => s.size,
+            () => 0,
+          );
+        await fs.rm(full, { recursive: true, force: true });
+        result.removed++;
+      } else if (depth < 5 && !/^\d{2}\.\d{2}-/.test(e.name)) {
+        await visit(full, depth + 1);
+      }
+    }
+  };
+  await visit(tripsDir, 0);
+  return result;
 }
 
 async function dirExists(p: string): Promise<boolean> {

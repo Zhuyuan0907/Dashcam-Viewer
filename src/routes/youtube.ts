@@ -179,7 +179,7 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
         redirect_uri: config.redirect_uri,
         response_type: "code",
         scope:
-          "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly",
+          "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.force-ssl",
         access_type: "offline",
         prompt: "consent",
         state,
@@ -292,6 +292,7 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
         not_before: Math.max(Date.now(), not_before),
         title_template: text(body.title_template, 2000),
         description_template: text(body.description_template, 10000),
+        pair: body.pair !== false,
       });
     }),
   );
@@ -316,7 +317,45 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
       const counts = ctx.db
         .prepare("SELECT status,COUNT(*) AS n FROM youtube_uploads WHERE user_id=? GROUP BY status")
         .all(req.user.id);
-      return { uploads: rows.map(dto), total, counts, page, limit };
+      const pairs = service.pairFor(req.user.id, [...new Set(rows.map((r) => r.trip_id))]);
+      return {
+        uploads: rows.map((row) => {
+          const pair = pairs.get(row.trip_id);
+          return {
+            ...dto(row),
+            playlist_url: pair?.playlist_id
+              ? `https://www.youtube.com/playlist?list=${pair.playlist_id}`
+              : null,
+            pair_status: pair ? (pair.done_at ? "done" : pair.failed ? "failed" : "pending") : null,
+            pair_message: pair?.message ?? null,
+          };
+        }),
+        total,
+        counts,
+        page,
+        limit,
+      };
+    }),
+  );
+  // 精靈選旅程時標示「已上傳／上傳中」：每趟每個鏡頭最新一筆（不含已取消）的狀態。
+  app.get<{ Querystring: { ids?: string } }>(
+    "/api/youtube/trip-status",
+    protect,
+    guard((req) => {
+      const ids = (typeof req.query.ids === "string" ? req.query.ids.split("\n") : [])
+        .filter((id: string) => id && id.length < 1000)
+        .slice(0, 50);
+      const out: Record<string, Record<string, string>> = {};
+      if (!ids.length) return { trips: out };
+      const rows = ctx.db
+        .prepare(
+          `SELECT trip_id,camera,status FROM youtube_uploads WHERE id IN (
+             SELECT MAX(id) FROM youtube_uploads WHERE user_id=? AND status!='cancelled'
+             AND trip_id IN (${ids.map(() => "?").join(",")}) GROUP BY trip_id,camera)`,
+        )
+        .all(req.user.id, ...ids) as Array<{ trip_id: string; camera: string; status: string }>;
+      for (const r of rows) (out[r.trip_id] ??= {})[r.camera] = r.status;
+      return { trips: out };
     }),
   );
   app.get(

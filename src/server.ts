@@ -11,6 +11,7 @@ import {
   BACKUP_DIR,
   BACKUP_INTERVAL_HOURS,
   BACKUP_KEEP,
+  TRIPS_DIR,
 } from "./config.js";
 import { getDb, ensureDataDirs, purgeExpiredSessions, backupDb, pruneBackups } from "./db.js";
 import { SftpSessionManager } from "./sftp/sessions.js";
@@ -22,6 +23,7 @@ import { sweepQuarantine } from "./incidents/repo.js";
 import { recoverInterruptedTrims } from "./routes/edit.js";
 import { cleanupOrphanClips } from "./routes/clips.js";
 import { syncTripInfoDeviceMetadata } from "./trips/repo.js";
+import { sweepPartialTripDirs } from "./trips/organizer.js";
 import { buildApp } from "./app.js";
 import type { AppContext } from "./context.js";
 import { stopMediaProcesses } from "./media/ffmpeg.js";
@@ -66,6 +68,10 @@ async function main(): Promise<void> {
     if (trimFixed > 0) app.log.info(`修復 ${trimFixed} 個中斷的裁剪殘留(暫存檔/遺失播放檔)`);
     const clipOrphans = await cleanupOrphanClips(db);
     if (clipOrphans > 0) app.log.info(`清理 ${clipOrphans} 個孤兒匯出片段`);
+    // 背景整理工作不會自動續跑，啟動時的 .partial-* 必為中斷殘留。
+    const partials = await sweepPartialTripDirs(TRIPS_DIR);
+    if (partials.removed > 0)
+      app.log.info(`清理 ${partials.removed} 個中斷合併的暫存旅程夾（${partials.bytes} bytes）`);
     const metadataMarker = db
       .prepare("SELECT value FROM settings WHERE key = ?")
       .get("schema.trip_info_devices_v1") as { value: string } | undefined;

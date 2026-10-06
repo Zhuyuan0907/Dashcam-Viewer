@@ -4,8 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title data-i18n-title="title.ops">維運與善後 — 行車記錄</title>
-  <link rel="stylesheet" href="/static/style.css?v=2.6.0">
+  <link rel="stylesheet" href="/static/style.css?v=2.7.0">
   <link rel="stylesheet" href="/static/ui.css?v=2.2.0">
+  <link rel="stylesheet" href="/static/youtube.css?v=3">
   <style>
     .ops-pill { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; font-family:var(--font-mono); letter-spacing:.03em; }
     .ops-pill.sev-error { background:color-mix(in oklch, var(--crit) 14%, var(--surface)); color:var(--crit); }
@@ -75,6 +76,8 @@
       <nav class="console-nav" aria-label="維運分頁">
         <button class="console-tab" data-pane="incidents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span data-i18n="ops.incidents.head">事件與善後</span><small id="tab-inc-count"></small></button>
         <button class="console-tab" data-pane="health"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>健康檢查與工具</button>
+        <button class="console-tab" data-pane="storage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/></svg>儲存空間<small id="tab-storage-free"></small></button>
+        <button class="console-tab" data-pane="youtube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="4"/><polygon points="10 9 15 12 10 15 10 9"/></svg>YouTube 管理</button>
         <button class="console-tab" data-pane="db"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>資料庫檢視</button>
         <p class="console-nav-foot">資料庫檢視為唯讀，不會修改任何資料；密碼與登入憑證已自動隱藏。</p>
       </nav>
@@ -117,6 +120,89 @@
                 <div><b data-i18n="ops.tools.retention">隔離素材保留天數</b><p>處理失敗的原始檔會暫存這麼多天，之後自動清除。</p></div>
                 <strong id="retention-days">—</strong>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="pane" id="pane-storage">
+          <div class="pane-head">
+            <div><h2>儲存空間</h2><p>看硬碟還剩多少，找出「佔空間但瀏覽頁看不到」的影片並釋放</p></div>
+            <button class="btn btn--ghost btn--sm" type="button" id="storage-scan">重新掃描</button>
+          </div>
+          <div class="pane-body">
+            <div id="storage-summary"></div>
+            <div class="pane-section">
+              <div class="ops-row">
+                <div><b>可回收的空間</b><p>只列出確定不在瀏覽頁出現的檔案。勾選後按刪除，會再確認一次。</p></div>
+                <button class="btn btn--danger btn--sm" type="button" id="storage-delete" disabled>刪除勾選項目</button>
+              </div>
+              <div id="storage-items" style="margin-top:10px"></div>
+            </div>
+            <div class="pane-section">
+              <div class="ops-row">
+                <div><b>最大宗的空間：旅程影片本身</b><p>上傳到 YouTube 並確認處理完成後，可在「YouTube 管理 › 已上傳與清理」刪除本機檔案。</p></div>
+                <button class="btn btn--ghost btn--sm" type="button" onclick="DashcamUI_go('youtube')">前往 YouTube 管理</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="pane" id="pane-youtube">
+          <div class="pane-head">
+            <div><h2>YouTube 管理</h2><p>授權設定、頻道、上傳進度、已上傳影片與釋放本機空間。要上傳新影片請到 <a class="link" href="/youtube">上傳到 YouTube</a>。</p></div>
+          </div>
+          <div class="ytm-bar">
+            <div class="ytm-tabs ops-tabs" role="tablist">
+              <button class="ops-tab" type="button" data-ytm="setup" id="ytm-setup-tab" hidden>① 授權設定</button>
+              <button class="ops-tab" type="button" data-ytm="account">頻道</button>
+              <button class="ops-tab" type="button" data-ytm="queue">上傳進度</button>
+              <button class="ops-tab" type="button" data-ytm="archive">已上傳與清理</button>
+            </div>
+            <p id="ytm-notice" class="yt-notice" role="status" aria-live="polite"></p>
+          </div>
+          <div class="pane-body">
+            <div class="ytm-section" id="ytm-setup" hidden>
+              <div id="ytm-setup-state"></div>
+              <ol class="ytm-guide">
+                <li><div><b>建立 Google Cloud 專案</b><br>開啟 <a class="link" href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud 建立專案</a>，名稱隨意（例如「行車記錄」），按「建立」。之後的步驟都確認左上角選的是這個專案。</div></li>
+                <li><div><b>啟用 YouTube Data API v3</b><br>開啟 <a class="link" href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">YouTube Data API v3</a>，按「啟用」。</div></li>
+                <li><div><b>設定 OAuth 同意畫面</b><br>開啟 <a class="link" href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">Google Auth Platform</a>，按「開始」：
+                  <ul><li>應用程式名稱填「行車記錄」，使用者支援電子郵件選你的 Gmail</li>
+                  <li>目標對象選 <b>外部</b>，聯絡資訊填你的 Gmail，同意政策後建立</li>
+                  <li>到左側「目標對象」→「測試使用者」→ 新增 <b>你要連結的 Gmail</b>（沒加會出現 403 access_denied）</li></ul></div></li>
+                <li><div><b>建立 OAuth 用戶端</b><br>開啟 <a class="link" href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noopener">用戶端</a> → 建立用戶端：
+                  <ul><li>應用程式類型：<b>網頁應用程式</b></li>
+                  <li>已授權的 JavaScript 來源：<button type="button" class="ytm-copy" id="ytm-origin-copy" title="點一下複製"></button></li>
+                  <li>已授權的重新導向 URI：<button type="button" class="ytm-copy" id="ytm-redirect-copy" title="點一下複製"></button>（點一下複製，必須完全一致）</li></ul>
+                  建立後會顯示「用戶端 ID」與「用戶端密鑰」，複製到下一步。</div></li>
+                <li><div><b>貼上並儲存</b>
+                  <div class="ytm-form">
+                    <label class="field">用戶端 ID（Client ID）<input id="ytm-client-id" class="form-input" autocomplete="off" placeholder="xxxx.apps.googleusercontent.com"></label>
+                    <label class="field">用戶端密鑰（Client Secret）<input id="ytm-client-secret" type="password" class="form-input" autocomplete="new-password"></label>
+                    <label class="field">重新導向 URI<input id="ytm-redirect" class="form-input" type="url"></label>
+                    <label class="field">API 專案每日上傳次數上限<input id="ytm-project-limit" type="number" min="1" max="100000" value="100" class="form-input"></label>
+                  </div>
+                  <div class="yt-actions" style="margin-top:12px"><button id="ytm-save-config" type="button" class="btn btn--solid">儲存設定</button><span class="yt-hint">密鑰加密保存，不會再顯示在瀏覽器。</span></div></div></li>
+              </ol>
+              <div class="yt-callout" style="margin-top:14px"><b>連結時看到「Google 尚未驗證這個應用程式」？</b>
+                <p>這是自己建立、還沒送審的專案的正常畫面：點「繼續」（或「進階」→「前往行車記錄」）即可。另外兩個限制請知悉：</p>
+                <p>・專案維持「測試」狀態時，授權約 7 天會失效，需要回來重新授權；到 Google Auth Platform「目標對象」按「發布應用程式」可延長。<br>・未經 Google 稽核的 API 專案，上傳的影片會被 YouTube 鎖成「私人」，選「不公開／公開」也一樣，直到專案通過稽核。</p></div>
+            </div>
+            <div class="ytm-section" id="ytm-account" hidden><div id="ytm-account-body"></div></div>
+            <div class="ytm-section" id="ytm-queue" hidden>
+              <div class="ytm-stat" id="ytm-queue-stat"></div>
+              <div class="yt-two" style="margin-top:12px">
+                <div><div id="ytm-uploads" class="ops-card-list"></div><div class="yt-pager" id="ytm-upload-pager"></div></div>
+                <div class="yt-preview-box" id="ytm-detail"></div>
+              </div>
+            </div>
+            <div class="ytm-section" id="ytm-archive" hidden>
+              <div class="yt-actions" style="margin-bottom:10px">
+                <button id="ytm-cleanup" type="button" class="btn btn--danger btn--sm">刪除勾選旅程的本機檔案</button>
+                <span class="yt-hint">前後鏡頭都上傳並由 YouTube 處理完成的旅程才能勾選。有匯出片段或裁剪備份的旅程會被略過。</span>
+              </div>
+              <div id="ytm-archives"></div>
+              <div class="yt-pager" id="ytm-archive-pager"></div>
             </div>
           </div>
         </section>
@@ -172,6 +258,7 @@
 <script src="/static/app.js?v=2.6.1"></script>
 <script src="/static/panes.js?v=2.2.0"></script>
 <script src="/static/db-glossary.js?v=2.2.0"></script>
+<script src="/static/ops-youtube.js?v=1"></script>
 <script>
 let filter = 'open';
 let curInc = null;
@@ -183,7 +270,14 @@ let retryES = null;
   const user = await checkAuth({ adminOnly: true });
   renderHeader(user);
   loadIncidents();
-  DashcamUI.initConsole(document.getElementById('ops-console'));
+  OpsYoutube.init(user);
+  const consoleCtl = DashcamUI.initConsole(document.getElementById('ops-console'), {
+    onChange: (id) => {
+      if (id === 'youtube') OpsYoutube.activate().catch((e) => showToast(e.message, 'error'));
+      if (id === 'storage') loadStorage();
+    },
+  });
+  window.DashcamUI_go = (id) => { consoleCtl.show(id, true); };
   loadTables();
   loadRetention();
 })();
@@ -450,6 +544,51 @@ function pageRows(dir){ const next=dbOffset+dir*dbLimit; if(next<0||next>=dbTota
 async function loadRetention(){
   try { const s = await apiFetch('/api/admin/settings'); document.getElementById('retention-days').textContent = s.quarantine_retention_days ?? '—'; } catch {}
 }
+/* ── 儲存空間 ───────────────────────────────────────────── */
+const storageSel = new Set();
+const KIND_NAMES = { superseded: '已被合併取代的來源旅程', orphan_dir: '中斷合併的半成品', unregistered: '未登錄的旅程（可重建）' };
+async function loadStorage(){
+  const sum = document.getElementById('storage-summary'), list = document.getElementById('storage-items');
+  list.innerHTML = '<div class="ops-empty">掃描中…（影片多時需要幾秒）</div>';
+  try {
+    const r = await apiFetch('/api/admin/storage/reclaimable');
+    const used = r.disk.total - r.disk.free, pct = Math.round(used / r.disk.total * 100);
+    const reclaim = r.items.filter(i => i.deletable).reduce((n, i) => n + i.bytes, 0);
+    document.getElementById('tab-storage-free').textContent = `${pct}%`;
+    sum.innerHTML = `<div class="yt-callout ${pct >= 90 ? 'bad' : pct >= 80 ? 'warn' : ''}">
+      <b>硬碟已用 ${pct}%：剩 ${fmtBytes(r.disk.free)}（共 ${fmtBytes(r.disk.total)}）</b>
+      <progress max="100" value="${pct}"></progress>
+      <p>旅程影片 ${r.trip_count} 趟共 ${fmtBytes(r.footage_bytes)}；下方可直接回收 <b>${fmtBytes(reclaim)}</b>。${pct >= 90 ? '空間不足時新的上傳會無法整理，建議先回收下方項目，再把舊旅程上傳 YouTube 後清理。' : ''}</p></div>`;
+    storageSel.clear();
+    list.innerHTML = r.items.length ? r.items.map(i => `
+      <label class="ytm-row">
+        <input type="checkbox" data-reclaim="${escapeHtml(i.id)}" ${i.deletable ? '' : 'disabled'}>
+        <span class="ytm-row-main"><b>${escapeHtml(i.label)}</b><small>${KIND_NAMES[i.kind] || i.kind} · ${escapeHtml(i.detail)}</small></span>
+        <span class="ytm-row-actions"><b>${fmtBytes(i.bytes)}</b></span>
+      </label>`).join('') : '<div class="ops-empty">沒有找到可回收的檔案，一切乾淨 👍</div>';
+    list.querySelectorAll('[data-reclaim]').forEach(cb => cb.onchange = () => {
+      cb.checked ? storageSel.add(cb.dataset.reclaim) : storageSel.delete(cb.dataset.reclaim);
+      const btn = document.getElementById('storage-delete');
+      btn.disabled = !storageSel.size;
+      btn.textContent = storageSel.size ? `刪除勾選的 ${storageSel.size} 項` : '刪除勾選項目';
+    });
+    document.getElementById('storage-delete').disabled = true;
+  } catch (e) { list.innerHTML = `<div class="ops-empty">${escapeHtml(e.message)}</div>`; }
+}
+document.getElementById('storage-scan').onclick = loadStorage;
+document.getElementById('storage-delete').onclick = async (ev) => {
+  const btn = ev.currentTarget;
+  if (!storageSel.size || !confirm(`確定永久刪除勾選的 ${storageSel.size} 項？\n「已被合併取代的來源旅程」的內容都已包含在合併後的旅程裡；刪除後無法復原。`)) return;
+  btn.disabled = true;
+  try {
+    const r = await apiFetch('/api/admin/storage/reclaim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [...storageSel], confirm_delete: true }) });
+    const freed = r.results.filter(x => x.deleted).reduce((n, x) => n + x.bytes, 0);
+    const bad = r.results.filter(x => !x.deleted);
+    showToast(`已釋放 ${fmtBytes(freed)}${bad.length ? `；${bad.length} 項未刪除：${bad.map(x => x.detail).join('、')}` : ''}`, bad.length ? 'error' : 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+  await loadStorage();
+};
+
 async function doRebuild(){
   const btn=document.getElementById('rebuild-btn'); btn.disabled=true; btn.textContent=t('ops.tools.rebuilding');
   try { const r = await apiFetch('/api/rebuild-db', { method:'POST' }); showToast(t('ops.tools.rebuilt',{n:r.imported}),'success'); }

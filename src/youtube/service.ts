@@ -46,6 +46,24 @@ interface Account {
   paused: number;
   blocked_until: number;
 }
+export interface Pair {
+  user_id: number;
+  channel_id: string;
+  trip_id: string;
+  date: string;
+  trip_no: number;
+  privacy: string;
+  playlist_id: string | null;
+  front_item: number;
+  rear_item: number;
+  front_desc: number;
+  rear_desc: number;
+  attempts: number;
+  message: string;
+  not_before: number;
+  done_at: number | null;
+  failed: number;
+}
 interface Cleanup {
   trip_id: string;
   user_id: number;
@@ -74,6 +92,12 @@ CREATE INDEX IF NOT EXISTS idx_youtube_events ON youtube_events(upload_id,id);
 CREATE TABLE IF NOT EXISTS youtube_usage(id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_youtube_usage_time ON youtube_usage(created_at);
 CREATE INDEX IF NOT EXISTS idx_youtube_usage_channel ON youtube_usage(channel_id,created_at);
+CREATE TABLE IF NOT EXISTS youtube_pairs(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ channel_id TEXT NOT NULL, trip_id TEXT NOT NULL, date TEXT NOT NULL, trip_no INTEGER NOT NULL, privacy TEXT NOT NULL,
+ playlist_id TEXT, front_item INTEGER NOT NULL DEFAULT 0, rear_item INTEGER NOT NULL DEFAULT 0,
+ front_desc INTEGER NOT NULL DEFAULT 0, rear_desc INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
+ message TEXT NOT NULL DEFAULT '', not_before INTEGER NOT NULL DEFAULT 0, done_at INTEGER, failed INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(user_id,channel_id,trip_id));
 CREATE TABLE IF NOT EXISTS youtube_cleanup(trip_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, original_dir TEXT NOT NULL, tombstone TEXT NOT NULL);
 `;
 export function version(row: TripRow): string {
@@ -218,6 +242,7 @@ export class YoutubeService {
       this.ctx.db.prepare("DELETE FROM youtube_accounts WHERE user_id=?").run(user);
       this.ctx.db.prepare("DELETE FROM youtube_states WHERE user_id=?").run(user);
       this.ctx.db.prepare("DELETE FROM youtube_uploads WHERE user_id=?").run(user);
+      this.ctx.db.prepare("DELETE FROM youtube_pairs WHERE user_id=?").run(user);
     })();
     return revoked;
   }
@@ -272,6 +297,8 @@ export class YoutubeService {
       privacy: string;
       made_for_kids: boolean;
       not_before: number;
+      /** 雙鏡頭時自動建立「一趟一個播放清單」並在說明互相連結。 */
+      pair?: boolean;
     },
   ) {
     const account = this.account(user);
@@ -345,6 +372,16 @@ export class YoutubeService {
           this.event(Number(result.lastInsertRowid), "queued", "已加入上傳佇列；前後鏡頭各計一部");
         }
       }
+      if (options.pair && options.camera === "both")
+        for (const row of new Set(prepared.map((p) => p.row)))
+          if (row.has_front && row.has_rear)
+            this.ctx.db
+              .prepare(
+                `INSERT INTO youtube_pairs(user_id,channel_id,trip_id,date,trip_no,privacy) VALUES(?,?,?,?,?,?)
+                ON CONFLICT(user_id,channel_id,trip_id) DO UPDATE SET failed=0,attempts=0,not_before=0
+                WHERE done_at IS NULL`,
+              )
+              .run(user, account.channel_id, row.trip_id, row.date, row.day_order, options.privacy);
     })();
     return { added, skipped: prepared.length - added };
   }
@@ -433,6 +470,7 @@ export class YoutubeService {
     try {
       const config = this.config();
       if (!config) return;
+      await this.pairNext();
       const row = this.ctx.db
         .prepare(
           `SELECT u.* FROM youtube_uploads u JOIN youtube_accounts a ON a.user_id=u.user_id AND a.channel_id=u.channel_id
@@ -620,6 +658,106 @@ export class YoutubeService {
         jobs.unregisterOwnerProcess(row.user_id);
       }
     }
+  }
+  /** 該趟兩個鏡頭都已在 YouTube 處理完成時，建立播放清單並在說明互相連結；每一步可重入。 */
+  async pairNext(): Promise<void> {
+    const now = this.clock();
+    const pair = this.ctx.db
+      .prepare(
+        `SELECT p.* FROM youtube_pairs p JOIN youtube_accounts a ON a.user_id=p.user_id AND a.channel_id=p.channel_id
+        WHERE p.done_at IS NULL AND p.failed=0 AND p.not_before<=? AND a.paused=0 AND a.blocked_until<=?
+        ORDER BY p.not_before LIMIT 1`,
+      )
+      .get(now, now) as Pair | undefined;
+    if (!pair) return;
+    const latest = (camera: "front" | "rear") =>
+      this.ctx.db
+        .prepare(
+          "SELECT * FROM youtube_uploads WHERE user_id=? AND channel_id=? AND trip_id=? AND camera=? AND status!='cancelled' ORDER BY id DESC LIMIT 1",
+        )
+        .get(pair.user_id, pair.channel_id, pair.trip_id, camera) as UploadRow | undefined;
+    const front = latest("front"),
+      rear = latest("rear");
+    const set = (fields: string, ...values: unknown[]) =>
+      this.ctx.db
+        .prepare(
+          `UPDATE youtube_pairs SET ${fields} WHERE user_id=? AND channel_id=? AND trip_id=?`,
+        )
+        .run(...values, pair.user_id, pair.channel_id, pair.trip_id);
+    if (!front || !rear) {
+      set("failed=1,message=?", "此趟缺少前或後鏡頭的上傳工作，略過配對");
+      return;
+    }
+    if (
+      front.status !== "succeeded" ||
+      rear.status !== "succeeded" ||
+      !front.video_id ||
+      !rear.video_id
+    ) {
+      set("not_before=?", now + 60_000);
+      return;
+    }
+    try {
+      const token = await this.token(pair.user_id);
+      let playlistId = pair.playlist_id;
+      if (!playlistId) {
+        playlistId = await this.api.createPlaylist(token, {
+          title: `${pair.date} 第 ${pair.trip_no} 趟 · 前後鏡頭`,
+          description: `行車記錄：前鏡頭與後鏡頭為同一時間軸，可在清單中切換視角。`,
+          privacy: pair.privacy,
+        });
+        set("playlist_id=?", playlistId);
+      }
+      if (!pair.front_item) {
+        await this.api.addToPlaylist(token, playlistId, front.video_id, 0);
+        set("front_item=1");
+      }
+      if (!pair.rear_item) {
+        await this.api.addToPlaylist(token, playlistId, rear.video_id, 1);
+        set("rear_item=1");
+      }
+      for (const [camera, own, other, label] of [
+        ["front", front, rear, "後鏡頭"],
+        ["rear", rear, front, "前鏡頭"],
+      ] as const) {
+        if (pair[`${camera}_desc`]) continue;
+        const suffix = `\n\n▶ 同一趟的${label}：https://youtu.be/${other.video_id}\n▶ 前後鏡頭播放清單：https://www.youtube.com/playlist?list=${playlistId}`;
+        let base = own.description;
+        while (Buffer.byteLength(base + suffix, "utf8") > 5000)
+          base = Array.from(base).slice(0, -50).join("");
+        await this.api.updateDescription(token, own.video_id!, own.title, base + suffix);
+        set(`${camera}_desc=1`);
+        this.event(own.id, "pair", `已加入前後鏡頭播放清單並連結${label}`);
+      }
+      set("done_at=?,message=?", this.clock(), "已建立前後鏡頭播放清單");
+    } catch (error) {
+      const attempts = pair.attempts + 1;
+      const message = error instanceof YoutubeError ? error.message : "播放清單配對失敗，稍後重試";
+      const quota =
+        error instanceof YoutubeError &&
+        ["quotaExceeded", "dailyLimitExceeded"].includes(error.reason);
+      const permanent =
+        error instanceof YoutubeError &&
+        ["insufficientPermissions", "forbidden"].includes(error.reason);
+      set(
+        "attempts=?,message=?,not_before=?,failed=?",
+        attempts,
+        message,
+        quota ? nextPacificMidnight(now) : now + Math.min(6 * 3_600_000, 60_000 * 2 ** attempts),
+        permanent || attempts >= 8 ? 1 : 0,
+      );
+    }
+  }
+  pairFor(user: number, tripIds: string[]): Map<string, Pair> {
+    const out = new Map<string, Pair>();
+    if (!tripIds.length) return out;
+    const rows = this.ctx.db
+      .prepare(
+        `SELECT * FROM youtube_pairs WHERE user_id=? AND trip_id IN (${tripIds.map(() => "?").join(",")})`,
+      )
+      .all(user, ...tripIds) as Pair[];
+    for (const r of rows) out.set(r.trip_id, r);
+    return out;
   }
   async verify(row: UploadRow): Promise<boolean> {
     if (!row.video_id || this.account(row.user_id)?.channel_id !== row.channel_id)

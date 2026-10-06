@@ -15,7 +15,7 @@ import os from "node:os";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { processBatch, type ProgressEvent } from "../src/trips/organizer.js";
+import { processBatch, sweepPartialTripDirs, type ProgressEvent } from "../src/trips/organizer.js";
 
 /** 偵測系統是否有 ffmpeg;沒有就跳過整個檔(本機測試需要)。 */
 function hasFfmpeg(): Promise<boolean> {
@@ -72,10 +72,37 @@ test(
     const frontSize = (await fs.stat(info.front_path!)).size;
     const rearSize = (await fs.stat(info.rear_path!)).size;
     assert.ok(frontSize > 0 && rearSize > 0, "合併輸出不可為 0 bytes");
+    const dayEntries = await fs.readdir(path.join(trips, info.date));
+    assert.deepEqual(
+      dayEntries.filter((n) => n.startsWith(".partial-")),
+      [],
+      "成功後不可留下暫存夾",
+    );
+    assert.equal(path.dirname(info.front_path!), path.join(trips, info.date, dayEntries[0]!));
+    const saved = JSON.parse(
+      await fs.readFile(path.join(path.dirname(info.front_path!), "info.json"), "utf-8"),
+    );
+    assert.equal(saved.front_path, info.front_path, "info.json 應記錄正式路徑而非暫存路徑");
 
     await fs.rm(root, { recursive: true, force: true });
   },
 );
+
+test("sweepPartialTripDirs 只清中斷合併的暫存夾，保留正式旅程", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "partial-sweep-"));
+  const day = path.join(root, "by-user", "3", "by-device", "2", "2026-10-05");
+  const legacyDay = path.join(root, "2026-06-04");
+  const keep = path.join(day, "16.17-16.53 (36分)");
+  for (const dir of [keep, path.join(day, ".partial-abc"), path.join(legacyDay, ".partial-def")])
+    await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(day, ".partial-abc", "前鏡頭.mp4"), Buffer.alloc(1000));
+  await fs.writeFile(path.join(keep, "前鏡頭.mp4"), Buffer.alloc(10));
+  const result = await sweepPartialTripDirs(root);
+  assert.deepEqual(result, { removed: 2, bytes: 1000 });
+  assert.deepEqual(await fs.readdir(day), ["16.17-16.53 (36分)"]);
+  assert.equal((await fs.stat(path.join(keep, "前鏡頭.mp4"))).size, 10);
+  await fs.rm(root, { recursive: true, force: true });
+});
 
 test(
   "無效片段:合併失敗時不寫入空旅程、不留 0-byte 殘檔",

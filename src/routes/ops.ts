@@ -17,6 +17,7 @@ import { upsertTrip, tripDirOf, renumberDay } from "../trips/repo.js";
 import { parseDeviceSnapshot, type DashcamDeviceSnapshot } from "../devices/repo.js";
 import { pathExists } from "../util/fsx.js";
 import { clampInt } from "../util/num.js";
+import { storageReport, reclaimItems } from "../storage/reclaim.js";
 import {
   listIncidents,
   getIncident,
@@ -264,6 +265,28 @@ export function registerOps(app: FastifyInstance, ctx: AppContext): void {
   );
 
   // ── 旅程健康檢查:找出影片缺失或 0-byte 的旅程 ──
+  // ── 儲存空間回收:列出被取代的來源旅程 / 中斷殘留,管理員逐項確認後刪除 ──
+  app.get("/api/admin/storage/reclaimable", { preHandler: requireAdmin }, async (_req, reply) => {
+    reply.header("Cache-Control", "no-store");
+    return storageReport(ctx.db, ctx.jobs);
+  });
+  app.post<{ Body: { ids?: unknown; confirm_delete?: unknown } }>(
+    "/api/admin/storage/reclaim",
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const ids = req.body?.ids;
+      if (
+        req.body?.confirm_delete !== true ||
+        !Array.isArray(ids) ||
+        !ids.length ||
+        ids.length > 200 ||
+        !ids.every((id) => typeof id === "string" && id.length < 100)
+      )
+        return reply.code(400).send({ detail: "必須明確確認要刪除的項目" });
+      return { results: await reclaimItems(ctx.db, ids as string[], ctx.jobs) };
+    },
+  );
+
   app.get("/api/admin/health/trips", { preHandler: requireAdmin }, async () => {
     const rows = db
       .prepare(

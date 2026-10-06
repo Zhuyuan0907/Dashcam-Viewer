@@ -1,374 +1,764 @@
+/* YouTube 上傳精靈 + 維運頁 YouTube 管理共用樣式。字級下限 13px，主要內容 14–15px。 */
 .yt-page {
-  gap: 10px;
+  gap: 14px;
 }
 .yt-page .page-head {
   margin-bottom: 0;
+  align-items: center;
 }
-.yt-tabs,
-.yt-subtabs {
-  display: flex;
+
+.yt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--accent-line);
+}
+.yt-chip[href]:hover {
+  text-decoration: underline;
+}
+.yt-chip.is-bad {
+  background: color-mix(in oklch, var(--crit) 12%, var(--surface));
+  color: var(--crit);
+  border-color: color-mix(in oklch, var(--crit) 35%, var(--surface));
+}
+
+/* ── 步驟條 ─────────────────────────────────────────────── */
+.yt-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
   flex: none;
+  counter-reset: none;
 }
-.yt-tabs button,
-.yt-subtabs button {
-  appearance: none;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+.yt-steps li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-radius: 12px;
   background: var(--surface-2);
-  color: var(--ink-2);
-  cursor: pointer;
-  padding: 9px 13px;
-  font: inherit;
-  font-size: 13px;
+  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 0;
+  border: 1px solid transparent;
+}
+.yt-steps li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.yt-tabs button[aria-selected="true"],
-.yt-subtabs button[aria-selected="true"] {
+.yt-steps i {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 13px;
+  background: var(--surface);
+  border: 1.5px solid var(--line-2);
+}
+.yt-steps li.is-done {
+  color: var(--ink-2);
+}
+.yt-steps li.is-done i {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+  font-size: 0;
+}
+.yt-steps li.is-done i::after {
+  content: "✓";
+  font-size: 14px;
+}
+.yt-steps li.is-current {
+  background: var(--surface);
+  color: var(--accent-2);
+  border-color: var(--accent-line);
+  box-shadow: var(--shadow-sm);
+}
+.yt-steps li.is-current i {
   background: var(--accent);
-  color: var(--accent-ink, white);
   border-color: var(--accent);
+  color: var(--accent-ink);
+  font-size: 13px;
 }
-.yt-tabs b {
-  font-size: 11px;
-  margin-left: 4px;
+.yt-steps li.is-current i::after {
+  content: none;
 }
-.yt-panel {
-  display: flex;
+
+/* ── 卡片 ─────────────────────────────────────────────── */
+.yt-card {
   flex: 1;
   min-height: 0;
+  display: flex;
   flex-direction: column;
-  gap: 0;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
-.yt-panel[hidden],
-.yt-page [hidden] {
-  display: none !important;
-}
-.yt-toolbar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 12px 16px;
-  flex: none;
-  font-size: 13px;
-}
-.yt-toolbar label {
-  white-space: nowrap;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.yt-toolbar .form-input {
-  padding: 7px;
-  max-width: 180px;
-}
-.yt-subtabs {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--line);
-}
-.yt-content {
-  padding: 16px 22px;
-  display: flex;
+.yt-step {
   flex: 1;
   min-height: 0;
+  display: flex;
   flex-direction: column;
-  gap: 12px;
-  overflow: auto;
 }
-.yt-content .field {
-  font-size: 13px;
-  gap: 5px;
+.yt-step[hidden] {
+  display: none;
 }
-.yt-content .form-input {
-  width: 100%;
+.yt-step-head {
+  padding: 20px 24px 12px;
+  flex: none;
 }
-.yt-content textarea {
-  resize: vertical;
-  min-height: 82px;
-  max-height: 25vh;
-}
-.yt-content h2 {
+.yt-step-head h2 {
   font-size: 20px;
+  margin: 0 0 4px;
+  outline: none;
 }
-.yt-content p {
-  font-size: 13px;
+.yt-step-head p {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+  line-height: 1.6;
+  max-width: 70ch;
+}
+.yt-step-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 24px 20px;
+  font-size: 14.5px;
+}
+.yt-card-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.yt-card-foot[hidden] {
+  display: none;
+}
+.yt-foot-status {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.yt-callout {
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin: 4px 0 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.yt-callout > b {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+.yt-callout p {
+  margin: 0 0 12px;
+  color: var(--ink-2);
+  line-height: 1.6;
+  font-size: 14px;
+}
+.yt-callout p:last-child {
+  margin-bottom: 0;
+}
+.yt-callout.warn {
+  background: color-mix(in oklch, var(--warn) 12%, var(--surface));
+  border-color: color-mix(in oklch, var(--warn) 40%, var(--surface));
+}
+.yt-callout.ok {
+  background: color-mix(in oklch, var(--ok) 11%, var(--surface));
+  border-color: color-mix(in oklch, var(--ok) 40%, var(--surface));
+}
+.yt-callout.bad {
+  background: color-mix(in oklch, var(--crit) 10%, var(--surface));
+  border-color: color-mix(in oklch, var(--crit) 35%, var(--surface));
+}
+
+.yt-check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 14.5px;
+  line-height: 1.6;
+  margin: 6px 0 16px;
+  cursor: pointer;
+}
+.yt-check input {
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  flex: none;
+}
+.yt-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.yt-hint {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.6;
+  margin: 6px 0;
+}
+.yt-notice {
+  font-size: 14px;
+  margin: 0;
+  color: var(--ink-2);
+}
+.yt-notice:empty {
+  display: none;
+}
+.yt-notice[data-type="error"] {
+  color: var(--crit);
+  font-weight: 600;
+}
+.yt-notice[data-type="ok"] {
+  color: var(--ok);
+  font-weight: 600;
+}
+.yt-step-body .yt-notice {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.yt-empty {
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--ink-2);
+  font-size: 14.5px;
+}
+
+/* ── 選旅程 ─────────────────────────────────────────────── */
+.yt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 24px 12px;
+  flex: none;
+}
+.yt-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.yt-inline .form-input {
+  padding: 6px 10px;
+  min-height: 0;
+}
+.yt-spacer {
+  flex: 1;
+}
+.yt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.yt-trip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--surface);
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+.yt-trip:hover {
+  border-color: var(--accent-line);
+}
+.yt-trip.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.yt-trip input {
+  width: 18px;
+  height: 18px;
+}
+.yt-trip-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.yt-trip-main b {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.yt-trip-main small {
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.yt-trip-side {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.yt-badge {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.yt-badge.s-succeeded {
+  background: color-mix(in oklch, var(--ok) 16%, var(--surface));
+  color: var(--ok);
+}
+.yt-badge.s-failed {
+  background: color-mix(in oklch, var(--crit) 12%, var(--surface));
+  color: var(--crit);
+}
+.yt-badge.s-uploading,
+.yt-badge.s-processing,
+.yt-badge.s-queued {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+.yt-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--ink-2);
+  padding: 0 24px 12px;
+  flex: none;
+}
+.yt-pager:empty {
+  display: none;
+}
+
+/* ── 標題說明 ─────────────────────────────────────────────── */
+.yt-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.yt-two .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.yt-two textarea {
+  resize: vertical;
+  min-height: 110px;
+  font-size: 14px;
 }
 .yt-parameters {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 6px;
 }
-.yt-parameters button {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  color: var(--accent);
-  padding: 4px 6px;
-  border-radius: 5px;
-  cursor: pointer;
-}
-.yt-hint {
-  font-size: 12px;
-  color: var(--ink-3);
-  line-height: 1.6;
-}
-.yt-list {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 4px 16px;
-}
-.yt-row {
-  display: flex;
-  gap: 12px;
+.yt-param {
+  appearance: none;
+  display: inline-flex;
   align-items: center;
-  min-height: 62px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
-}
-.yt-row input {
-  flex: none;
-  accent-color: var(--accent);
-  width: 17px;
-  height: 17px;
-}
-.yt-row-main {
-  flex: 1;
-  min-width: 0;
-}
-.yt-row-main strong {
-  display: block;
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-.yt-row-main small {
-  display: block;
-  color: var(--ink-3);
-  font-size: 11px;
-  margin-top: 5px;
-  overflow-wrap: anywhere;
-}
-.yt-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: center;
-  justify-content: flex-end;
-}
-.yt-row .btn {
-  font-size: 11px;
-  padding: 5px 8px;
-}
-.yt-foot {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--line);
-  font-size: 12px;
-  color: var(--ink-3);
-  flex: none;
-}
-.yt-foot > span {
-  margin-right: auto;
-}
-.yt-pager {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  white-space: nowrap;
-}
-.yt-pager button {
-  padding: 5px 9px;
-}
-.yt-queue-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  flex: 1;
-  min-height: 0;
-}
-.yt-detail {
-  min-height: 0;
-  min-width: 0;
-  overflow: auto;
-  border-left: 1px solid var(--line);
-  padding: 16px;
-  font-size: 12px;
-}
-.yt-detail h2 {
-  font-size: 15px;
-  overflow-wrap: anywhere;
-  margin-bottom: 8px;
-}
-.yt-job[aria-current="true"] {
-  background: var(--surface-2);
-}
-.yt-job {
-  cursor: pointer;
-}
-.yt-progress {
-  width: 100%;
-  height: 6px;
-  accent-color: var(--accent);
-  display: block;
-  margin: 8px 0;
-}
-.yt-status {
-  background: var(--surface-2);
-  color: var(--accent);
-  padding: 3px 8px;
+  gap: 6px;
+  padding: 5px 10px;
   border-radius: 8px;
-  font-size: 11px;
-  white-space: nowrap;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
 }
-.yt-events {
-  list-style: none;
-  padding: 0;
-  margin: 14px 0;
+.yt-param:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
-.yt-events li {
-  border-left: 2px solid var(--line);
-  padding: 0 0 12px 12px;
-  overflow-wrap: anywhere;
-}
-.yt-events time {
+.yt-param code {
+  font-family: var(--font-mono);
+  font-size: 12px;
   color: var(--ink-3);
-  display: block;
-  font-size: 10px;
-  margin-bottom: 3px;
 }
-.yt-empty {
-  margin: 30px auto;
-  text-align: center;
-  color: var(--ink-3);
-  line-height: 1.7;
-  font-size: 13px;
+.yt-preview-box {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+}
+.yt-preview-box > b {
+  font-size: 13.5px;
+  color: var(--ink-2);
 }
 .yt-preview {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.yt-preview strong {
+  font-size: 15.5px;
+}
+.yt-preview span {
+  color: var(--ink-2);
+}
+
+/* ── 上傳方式 ─────────────────────────────────────────────── */
+.yt-options {
+  border: 0;
+  padding: 0;
+  margin: 0 0 18px;
+  display: grid;
+  gap: 8px;
+}
+.yt-options legend {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  padding: 0;
+}
+.yt-option {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--surface);
+}
+.yt-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.yt-option input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: none;
+}
+.yt-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.yt-option b {
+  font-size: 15px;
+}
+.yt-option small {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+.yt-advanced {
+  border: 1px dashed var(--line-2);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.yt-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--accent-2);
+}
+.yt-advanced .field-grid {
+  margin-top: 12px;
+}
+.yt-advanced .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ── 確認 / 完成 ─────────────────────────────────────────────── */
+.yt-summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 10px 22px;
+  margin: 4px 0 18px;
+  padding: 16px 18px;
+  border-radius: 12px;
   background: var(--surface-2);
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.6;
-  overflow: auto;
-  min-height: 90px;
-  max-height: 35vh;
+  font-size: 14.5px;
 }
-.yt-consent {
-  font-size: 12px;
-  line-height: 1.6;
-  display: block;
+.yt-summary dt {
+  color: var(--ink-2);
+  font-weight: 600;
 }
-#yt-notice:empty {
+.yt-summary dd {
+  margin: 0;
+}
+.yt-next-steps {
+  margin: 0 0 18px;
+  padding-left: 22px;
+  display: grid;
+  gap: 8px;
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+
+/* ── 維運頁 YouTube 管理 ─────────────────────────────────────────────── */
+.ytm-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ytm-section[hidden] {
   display: none;
 }
-#yt-notice {
-  flex: none;
-  font-size: 12px;
-  color: var(--accent);
-  max-height: 60px;
-  overflow: auto;
+.ytm-guide {
+  margin: 8px 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+  counter-reset: g;
 }
-#yt-account-summary {
-  font-size: 12px;
+.ytm-guide > li {
+  counter-increment: g;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.65;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.ytm-guide > li::before {
+  content: counter(g);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+.ytm-guide b {
+  font-size: 14.5px;
+}
+.ytm-guide ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.ytm-guide code,
+.ytm-copy {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.ytm-copy {
+  cursor: pointer;
+  border: 1px solid var(--line-2);
+}
+.ytm-copy:hover {
+  border-color: var(--accent);
+}
+.ytm-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.ytm-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.ytm-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.ytm-row:last-child {
+  border-bottom: 0;
+}
+.ytm-row.is-active {
+  background: var(--accent-soft);
+}
+.ytm-row[role="button"] {
+  cursor: pointer;
+}
+.ytm-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ytm-row-main b {
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+.ytm-row-main small {
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.ytm-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ytm-row progress {
+  height: 6px;
+}
+.ytm-events {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13.5px;
+}
+.ytm-events time {
+  display: block;
+  font-size: 12.5px;
   color: var(--ink-3);
 }
-@media (max-width: 760px) {
-  .yt-tabs {
-    gap: 3px;
+.ytm-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.ytm-stat {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.ytm-stat b {
+  color: var(--ink);
+}
+
+@media (max-width: 860px) {
+  .yt-steps {
+    grid-template-columns: repeat(5, auto);
+    overflow-x: auto;
   }
-  .yt-tabs button {
-    padding: 8px 5px;
-    font-size: 11px;
-    flex: 1;
-  }
-  .yt-tabs b {
+  .yt-steps li:not(.is-current) span {
     display: none;
   }
-  .yt-subtabs {
-    padding: 8px;
-    gap: 4px;
+  .yt-two {
+    grid-template-columns: 1fr;
   }
-  .yt-subtabs button {
-    flex: 1;
-    padding: 8px 4px;
-    font-size: 11px;
-  }
-  .yt-content {
-    padding: 12px;
-  }
-  .yt-toolbar {
-    padding: 8px 10px;
-    gap: 6px;
-  }
-  .yt-toolbar .btn {
-    padding: 6px 8px;
-    font-size: 11px;
-  }
-  .yt-foot {
-    padding: 8px 10px;
-    gap: 6px;
-    font-size: 11px;
-  }
-  .yt-foot .btn {
-    font-size: 11px;
-    padding: 7px 9px;
-  }
-  .yt-list {
-    padding: 0 10px;
-  }
-  .yt-row {
-    gap: 8px;
-    min-height: 56px;
-    padding: 8px 0;
-  }
-  .yt-row-main strong {
-    font-size: 12px;
-  }
-  .yt-row-actions {
-    max-width: 120px;
-  }
-  .yt-queue-layout {
-    display: flex;
-    flex-direction: column;
-  }
-  .yt-detail:not(.has-job) {
-    display: none;
-  }
-  .yt-queue-layout:has(.has-job) > .yt-list {
-    display: none;
-  }
-  .yt-detail {
-    flex: 1;
-    border-left: 0;
-    padding: 12px;
-  }
-  .yt-content .field-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
-  }
-  .yt-content .form-input {
-    padding: 8px;
+  .ytm-form {
+    grid-template-columns: 1fr;
   }
 }
-@media (max-height: 720px) and (min-width: 761px) {
-  .yt-page {
-    gap: 6px;
+@media (max-width: 600px) {
+  .yt-step-head {
+    padding: 16px 16px 10px;
   }
-  .yt-row {
-    min-height: 50px;
-    padding: 6px 0;
+  .yt-step-head h2 {
+    font-size: 18px;
   }
-  .yt-content {
-    gap: 8px;
+  .yt-step-body,
+  .yt-toolbar,
+  .yt-pager {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .yt-card-foot {
     padding: 12px 16px;
   }
+  .yt-foot-status {
+    font-size: 13px;
+  }
+  .yt-trip {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .yt-trip-side {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .yt-summary {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .yt-summary dd {
+    margin-bottom: 8px;
+  }
+  .ytm-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ytm-row-actions {
+    justify-content: flex-start;
+  }
+}
+.yt-chip[hidden] {
+  display: none;
+}
+.ops-tab[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+.ytm-bar .yt-notice {
+  margin-left: auto;
+}
+.ytm-section progress {
+  width: 100%;
+}
+/* 選項卡片橫排，讓第 4 步在一般筆電一屏看完 */
+.yt-options {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.yt-options legend {
+  grid-column: 1 / -1;
+}
+.yt-inline {
+  white-space: nowrap;
 }

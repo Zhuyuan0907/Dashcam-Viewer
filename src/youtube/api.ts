@@ -17,6 +17,7 @@ function safeMessage(reason: string): string {
     forbidden: "YouTube 拒絕操作，請確認頻道權限與帳號狀態",
     sessionExpired: "續傳工作階段已過期；請到 YouTube Studio 確認是否已上傳，再決定重新上傳",
     transient: "網路或 YouTube 暫時無法連線，稍後自動重試",
+    insufficientPermissions: "授權範圍不足，請到維運頁重新授權 YouTube 以啟用播放清單配對",
   };
   return (
     messages[reason] ?? `YouTube 操作失敗（${/^[\w-]{1,80}$/.test(reason) ? reason : "apiError"}）`
@@ -105,6 +106,51 @@ export class YoutubeAPI {
       ),
     );
     return data.items?.[0] ?? null;
+  }
+  private async json(token: string, url: string, method: string, body: unknown): Promise<any> {
+    return this.checked(
+      await this.request(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json; charset=UTF-8",
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+  }
+  async createPlaylist(
+    token: string,
+    data: { title: string; description: string; privacy: string },
+  ): Promise<string> {
+    const result = await this.json(
+      token,
+      "https://www.googleapis.com/youtube/v3/playlists?part=snippet,status",
+      "POST",
+      {
+        snippet: { title: data.title, description: data.description },
+        status: { privacyStatus: data.privacy },
+      },
+    );
+    if (typeof result.id !== "string") throw new YoutubeError("apiError");
+    return result.id;
+  }
+  async addToPlaylist(token: string, playlistId: string, videoId: string, position: number) {
+    await this.json(
+      token,
+      "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet",
+      "POST",
+      {
+        snippet: { playlistId, position, resourceId: { kind: "youtube#video", videoId } },
+      },
+    );
+  }
+  /** videos.update 會覆寫整個 snippet，因此標題與分類必須一併送出。 */
+  async updateDescription(token: string, videoId: string, title: string, description: string) {
+    await this.json(token, "https://www.googleapis.com/youtube/v3/videos?part=snippet", "PUT", {
+      id: videoId,
+      snippet: { title, description, categoryId: "2" },
+    });
   }
   async revoke(token: string): Promise<void> {
     await this.checked(

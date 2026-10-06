@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.7.0 — 2026-10-07
+
+- Turn the YouTube page into a five-step upload wizard (connect channel, choose trips, title and description with live preview, upload mode, confirm). An unconfigured site now explains why the channel cannot be linked and takes the owner straight to the setup steps instead of showing a disabled button.
+- Move YouTube management to Ops: a step-by-step Google Cloud OAuth guide with copyable redirect URI, channel pause/limit/disconnect, upload progress with per-step history, and the archive with local cleanup.
+- Pair front and rear camera uploads: once both are processed, create one playlist per trip and cross-link the two videos in their descriptions. Each step is resumable and retried with backoff. The OAuth scope adds `youtube.force-ssl` for playlists and description updates.
+- Add an Ops storage pane that shows disk usage and lists space held by superseded source trips and interrupted merges, with verified, confirmed deletion.
+- Merge each trip into a hidden `.partial-*` folder and rename it only on success; leftovers from an interrupted service are removed at startup instead of becoming orphan trip folders.
+- Make inline links and secondary/danger buttons visibly clickable across all pages, and show disabled buttons clearly.
+
 ## 2.6.0 — 2026-10-06
 
 - Add a fixed-layout YouTube workspace with cross-page trip selection, paired front/rear uploads, editable metadata templates, preview, privacy and audience controls, and scheduled start times.

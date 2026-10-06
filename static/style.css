@@ -77,6 +77,17 @@ body {
 h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; line-height: 1.08; letter-spacing: -.022em; margin: 0; text-wrap: balance; }
 p { margin: 0; text-wrap: pretty; }
 a { color: inherit; text-decoration: none; }
+/* 內文超連結:文字段落裡沒有 class 的 <a>,以及明確標成 .link 的連結,一律顯示主色+底線,
+   讓人一眼看出可以點。卡片/導覽等區塊式連結都有自己的 class,不受影響。 */
+:where(p, li, label, small, td, dd, span, h2, h3, .card-title, .hint) > a:not([class]),
+a.link {
+  color: var(--accent); font-weight: 600;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--accent) 55%, transparent);
+}
+:where(p, li, label, small, td, dd, span, h2, h3, .card-title, .hint) > a:not([class]):hover,
+a.link:hover { color: var(--accent-2); text-decoration-thickness: 2px; text-decoration-color: currentColor; }
+a[target="_blank"].link::after { content: " ↗"; font-size: .85em; }
 img { max-width: 100%; display: block; }
 button { font-family: inherit; }
 ::selection { background: var(--accent); color: var(--accent-ink); }
@@ -167,9 +178,13 @@ button { font-family: inherit; }
 }
 .btn--solid:active { transform: scale(.99); opacity: 1; }
 
-/* 次要:無框、無底,hover 才浮出淡底 */
-.btn--ghost, .btn--soft { background: transparent; color: var(--ink-2); box-shadow: none; }
-.btn--ghost:hover, .btn--soft:hover { background: var(--surface-2); color: var(--ink); box-shadow: none; filter: none; transform: none; text-decoration: none; }
+/* 次要:細框+淺底,一眼可辨是按鈕(舊版無框無底,看起來像普通文字,使用者不知道能按) */
+.btn--ghost, .btn--soft {
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-xs);
+  border: 1px solid var(--line-2); padding: 7px 14px; border-radius: 10px;
+}
+.btn--ghost.btn--sm, .btn--soft.btn--sm { padding: 5px 12px; }
+.btn--ghost:hover, .btn--soft:hover { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-2); box-shadow: none; filter: none; transform: none; text-decoration: none; }
 .btn--ghost:active, .btn--soft:active { transform: scale(.985); }
 
 .btn--sm { font-size: 13px; padding: 6px 4px; }
@@ -177,9 +192,12 @@ button { font-family: inherit; }
 .btn--solid.btn--sm { padding: 7px 14px; }
 .btn--solid.btn--lg { padding: 13px 26px; }
 
+/* 停用狀態:明確變淡並改游標,避免「按了沒反應」 */
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; transform: none; text-decoration: none; filter: grayscale(.4); }
 /* 危險動作:無框紅字 */
-.btn--danger { background: transparent; color: var(--crit); box-shadow: none; }
-.btn--danger:hover { background: transparent; color: var(--crit); filter: brightness(1.08); transform: translateX(2px); text-decoration: underline; text-underline-offset: 4px; box-shadow: none; }
+.btn--danger { background: var(--surface); color: var(--crit); box-shadow: var(--shadow-xs); border: 1px solid color-mix(in oklch, var(--crit) 45%, var(--surface)); padding: 7px 14px; border-radius: 10px; }
+.btn--danger.btn--sm { padding: 5px 12px; }
+.btn--danger:hover { background: color-mix(in oklch, var(--crit) 9%, var(--surface)); color: var(--crit); filter: none; transform: none; text-decoration: none; box-shadow: none; }
 .btn--danger.btn--solid { background: var(--crit); color: #fff; }
 .btn--danger.btn--solid:hover { background: var(--crit); color: #fff; filter: brightness(1.05); transform: none; text-decoration: none; }
 /* 純文字鈕 */
