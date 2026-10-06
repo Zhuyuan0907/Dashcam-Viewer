@@ -83,6 +83,8 @@
     }
   }
   function pageSize() {
+    if (innerWidth <= 760) return innerHeight < 700 ? 2 : 4;
+    if (innerHeight < 500) return 1;
     return innerHeight < 700 ? 4 : 6;
   }
   function updateSelection() {

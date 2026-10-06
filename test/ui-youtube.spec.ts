@@ -86,6 +86,7 @@ test("cross-page selections persist and a confirmed paired batch includes templa
     duration_sec: 6,
     has_front: 1,
     has_rear: 1,
+    device: { model: "Polaroid MS279WG" },
   }));
   await page.route("**/api/trips?*", (route) => {
     const url = new URL(route.request().url());
@@ -126,6 +127,20 @@ test("cross-page selections persist and a confirmed paired batch includes templa
     submitted = route.request().postDataJSON();
     await route.fulfill({ json: { added: 4, skipped: 0 } });
   });
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 390, height: 667 },
+    { width: 844, height: 390 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/youtube");
+    await expect(page.locator("#yt-trip-pager")).toContainText("下一頁");
+    expect(
+      await page.locator("#yt-trips").evaluate((el) => el.scrollHeight - el.clientHeight),
+    ).toBeLessThanOrEqual(1);
+    await noOverflow(page);
+  }
+  await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/youtube");
   await expect(page.locator("#yt-trips .yt-row")).toHaveCount(6);
   await page.locator('[data-trip="trip-0"]').check();
