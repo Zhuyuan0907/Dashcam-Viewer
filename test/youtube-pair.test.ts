@@ -20,6 +20,7 @@ function mock() {
   const calls: Array<{ method: string; url: string; body: any }> = [];
   let videos = 0,
     failItemOnce = true;
+  const deleted = new Set<string>();
   const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
     new Response(JSON.stringify(data), {
       status,
@@ -33,6 +34,19 @@ function mock() {
     if (url.includes("oauth2.googleapis.com/token"))
       return json({ access_token: "a", refresh_token: "r", expires_in: 3600 });
     if (url.includes("/channels?")) return json({ items: [{ id: "ch", snippet: { title: "頻道" } }] });
+    if (url.includes("/videos?part=status,processingDetails,snippet,statistics")) {
+      const ids = (new URL(url).searchParams.get("id") ?? "").split(",");
+      return json({
+        items: ids
+          .filter((id) => !deleted.has(id))
+          .map((id) => ({
+            id,
+            snippet: { channelId: "ch", title: `YT ${id}` },
+            status: { uploadStatus: "processed", privacyStatus: "unlisted" },
+            statistics: { viewCount: "12", likeCount: "3", commentCount: "1" },
+          })),
+      });
+    }
     if (url.includes("/videos?part=status")) {
       const id = new URL(url).searchParams.get("id");
       return json({
@@ -65,7 +79,7 @@ function mock() {
     if (method === "PUT" && url.includes("/videos?part=snippet")) return json({ id: body.id });
     throw new Error(`Unexpected ${method} ${url}`);
   };
-  return { api: new YoutubeAPI(http as typeof fetch), calls };
+  return { api: new YoutubeAPI(http as typeof fetch), calls, deleted };
 }
 
 test("雙鏡頭完成後建立播放清單並互相連結，失敗後續做不重複", async () => {
@@ -150,6 +164,44 @@ test("雙鏡頭完成後建立播放清單並互相連結，失敗後續做不�
   ).json() as { uploads: Array<{ playlist_url: string; pair_status: string }> };
   assert.equal(list.uploads[0]!.playlist_url, "https://www.youtube.com/playlist?list=PL1");
   assert.equal(list.uploads[0]!.pair_status, "done");
+
+  // 與 YouTube 同步：讀回即時狀態；在 YouTube 刪除的影片標記並可從精靈重新加入。
+  m.deleted.add("vid2");
+  const sync = await service.sync(1);
+  assert.deepEqual([sync.synced, sync.missing], [1, 1]);
+  const synced = (
+    await f.app.inject({ method: "GET", url: "/api/youtube/uploads?filter=archive", headers: { cookie: f.cookie } })
+  ).json() as { uploads: Array<{ camera: string; status: string; youtube: any }> };
+  const frontRow = synced.uploads.find((u) => u.camera === "front")!;
+  const rearRow = synced.uploads.find((u) => u.camera === "rear")!;
+  assert.equal(frontRow.youtube.views, 12);
+  assert.equal(frontRow.youtube.privacy, "unlisted");
+  assert.equal(frontRow.youtube.title, "YT vid1");
+  assert.equal(rearRow.youtube.missing, true);
+  assert.equal(rearRow.status, "failed");
+  const status = (
+    await f.app.inject({
+      method: "GET",
+      url: `/api/youtube/trip-status?ids=pair-trip`,
+      headers: { cookie: f.cookie },
+    })
+  ).json() as { trips: Record<string, Record<string, string>> };
+  assert.deepEqual(status.trips["pair-trip"], { front: "succeeded", rear: "missing" });
+  const again = await service.enqueue(1, ["pair-trip"], {
+    camera: "both",
+    title_template: DEFAULT_TITLE,
+    description_template: DEFAULT_DESCRIPTION,
+    privacy: "private",
+    made_for_kids: false,
+    not_before: now,
+  });
+  assert.deepEqual(again, { added: 1, skipped: 1 }, "只有被刪除的後鏡頭重新排入，前鏡頭略過");
+  const requeued = service.get(
+    (f.ctx.db.prepare("SELECT id FROM youtube_uploads WHERE camera='rear'").get() as { id: number }).id,
+  )!;
+  assert.equal(requeued.status, "queued");
+  assert.equal(requeued.video_id, null);
+  assert.equal(requeued.yt_missing, 0);
   await service.stop();
   await f.app.close();
 });

@@ -21,7 +21,11 @@
     processing: "YouTube 處理中",
     succeeded: "已上傳",
     failed: "上傳失敗",
+    missing: "YouTube 已刪除",
   };
+  // 這些狀態代表該鏡頭已在 YouTube 或正在上傳，不需要再傳一次。
+  const DONE = new Set(["queued", "uploading", "processing", "succeeded"]);
+  let blocked = new Set();
   const selected = new Map();
   let step = 0,
     info = null,
@@ -145,6 +149,7 @@
       `/api/trips?limit=${limit}&offset=${(tripPage - 1) * limit}${date ? `&date=${date}` : ""}`,
     );
     trips = result.trips;
+    blocked = new Set();
     const status = trips.length
       ? (
           await apiFetch(
@@ -162,11 +167,17 @@
                   `<span class="yt-badge s-${esc(s)}">${cam === "front" ? "前" : "後"}・${statusNames[s] || esc(s)}</span>`,
               )
               .join("");
+            const needed = [t.has_front && "front", t.has_rear && "rear"].filter(Boolean);
+            const done = needed.length > 0 && needed.every((cam) => DONE.has(st[cam]));
+            if (done) {
+              blocked.add(t.trip_id);
+              selected.delete(t.trip_id);
+            }
             const cams = [t.has_front && "前鏡頭", t.has_rear && "後鏡頭"]
               .filter(Boolean)
               .join("＋");
-            return `<label class="yt-trip${selected.has(t.trip_id) ? " is-on" : ""}">
-            <input type="checkbox" data-trip="${esc(t.trip_id)}" ${selected.has(t.trip_id) ? "checked" : ""}>
+            return `<label class="yt-trip${selected.has(t.trip_id) ? " is-on" : ""}${done ? " is-done" : ""}" ${done ? 'title="這趟的鏡頭都已上傳或正在上傳，不需要重複上傳"' : ""}>
+            <input type="checkbox" data-trip="${esc(t.trip_id)}" ${selected.has(t.trip_id) ? "checked" : ""} ${done ? "disabled" : ""} aria-label="${done ? "已上傳，無法選取" : "選取這趟"}">
             <span class="yt-trip-main"><b>${esc(t.date)}　${fmtTime(t.start_epoch)}–${fmtTime(t.end_epoch)}　第 ${t.day_order} 趟</b>
             <small>${cams} · ${fmtDuration(t.duration_sec)} · ${esc(t.device?.nickname || t.device?.model || "行車記錄器")}</small></span>
             <span class="yt-trip-side">${badges}</span></label>`;
@@ -346,7 +357,9 @@
     void loadTrips().catch((e) => notice(e.message, "error"));
   };
   $("yt-select-page").onclick = () => {
-    trips.forEach((t) => selected.set(t.trip_id, t));
+    trips.forEach((t) => {
+      if (!blocked.has(t.trip_id)) selected.set(t.trip_id, t);
+    });
     void loadTrips();
   };
   $("yt-clear-selection").onclick = () => {

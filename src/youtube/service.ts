@@ -36,6 +36,14 @@ export interface UploadRow {
   updated_at: number;
   deleted_at: number | null;
   verified_at: number | null;
+  yt_title?: string | null;
+  yt_privacy?: string | null;
+  yt_upload_status?: string | null;
+  yt_views?: number | null;
+  yt_comments?: number | null;
+  yt_likes?: number | null;
+  yt_missing?: number;
+  yt_synced_at?: number | null;
 }
 interface Account {
   user_id: number;
@@ -152,6 +160,23 @@ export class YoutubeService {
     this.api = api;
     this.vault = vault;
     ctx.db.exec(SCHEMA);
+    // YouTube 端即時狀態快照（同步時更新）；舊資料庫冪等補欄位。
+    const columns = new Set(
+      (ctx.db.prepare("PRAGMA table_info(youtube_uploads)").all() as { name: string }[]).map(
+        (c) => c.name,
+      ),
+    );
+    for (const [name, type] of [
+      ["yt_title", "TEXT"],
+      ["yt_privacy", "TEXT"],
+      ["yt_upload_status", "TEXT"],
+      ["yt_views", "INTEGER"],
+      ["yt_comments", "INTEGER"],
+      ["yt_likes", "INTEGER"],
+      ["yt_missing", "INTEGER NOT NULL DEFAULT 0"],
+      ["yt_synced_at", "INTEGER"],
+    ] as const)
+      if (!columns.has(name)) ctx.db.exec(`ALTER TABLE youtube_uploads ADD COLUMN ${name} ${type}`);
     const interrupted = ctx.db
       .prepare("SELECT id FROM youtube_uploads WHERE status='uploading'")
       .all() as { id: number }[];
@@ -370,6 +395,46 @@ export class YoutubeService {
         if (result.changes) {
           added++;
           this.event(Number(result.lastInsertRowid), "queued", "已加入上傳佇列；前後鏡頭各計一部");
+        } else {
+          // 同版本已有工作：失敗的（含在 YouTube 被刪除的）重新排入，其餘視為重複略過。
+          const existing = this.ctx.db
+            .prepare(
+              "SELECT * FROM youtube_uploads WHERE user_id=? AND channel_id=? AND trip_id=? AND camera=? AND source_version=? AND status='failed' ORDER BY id DESC LIMIT 1",
+            )
+            .get(
+              user,
+              account.channel_id,
+              p.row.trip_id,
+              p.camera,
+              sourceVersion(p.row, p.size, p.mtime),
+            ) as UploadRow | undefined;
+          if (existing) {
+            this.ctx.db
+              .prepare(
+                `UPDATE youtube_uploads SET title=?,description=?,privacy=?,made_for_kids=?,not_before=?,
+                 video_id=CASE WHEN yt_missing=1 THEN NULL ELSE video_id END,
+                 verified_at=CASE WHEN yt_missing=1 THEN NULL ELSE verified_at END,
+                 upload_secret=CASE WHEN yt_missing=1 THEN NULL ELSE upload_secret END,
+                 uploaded_bytes=CASE WHEN yt_missing=1 THEN 0 ELSE uploaded_bytes END,
+                 yt_missing=0 WHERE id=?`,
+              )
+              .run(
+                p.title,
+                p.description,
+                options.privacy,
+                options.made_for_kids ? 1 : 0,
+                options.not_before,
+                existing.id,
+              );
+            const restarted = this.get(existing.id)!;
+            this.update(
+              existing.id,
+              restarted.video_id ? "processing" : "queued",
+              "使用者從上傳精靈重新加入",
+              options.not_before,
+            );
+            added++;
+          }
         }
       }
       if (options.pair && options.camera === "both")
@@ -747,6 +812,65 @@ export class YoutubeService {
         permanent || attempts >= 8 ? 1 : 0,
       );
     }
+  }
+  /**
+   * 從 YouTube 拉回使用者已上傳影片的目前狀態（標題、可見性、處理狀態、觀看數；在 YouTube
+   * 被刪除的標記為 yt_missing）。只讀取，不修改 YouTube 上的任何東西。
+   */
+  async sync(user: number): Promise<{ synced: number; missing: number; synced_at: number }> {
+    const account = this.account(user);
+    if (!account) throw new Error("尚未連結 YouTube");
+    const rows = this.ctx.db
+      .prepare(
+        "SELECT id,video_id FROM youtube_uploads WHERE user_id=? AND channel_id=? AND video_id IS NOT NULL AND status!='cancelled'",
+      )
+      .all(user, account.channel_id) as { id: number; video_id: string }[];
+    const token = await this.token(user);
+    const now = this.clock();
+    const update = this.ctx.db.prepare(
+      `UPDATE youtube_uploads SET yt_title=?,yt_privacy=?,yt_upload_status=?,yt_views=?,yt_comments=?,yt_likes=?,
+       yt_missing=?,yt_synced_at=? WHERE id=?`,
+    );
+    let synced = 0,
+      missing = 0;
+    for (let i = 0; i < rows.length; i += 50) {
+      const chunk = rows.slice(i, i + 50);
+      const items = await this.api.videos(token, [...new Set(chunk.map((r) => r.video_id))]);
+      const byId = new Map(
+        items.filter((v) => v?.snippet?.channelId === account.channel_id).map((v) => [v.id, v]),
+      );
+      const num = (v: unknown) => (v === undefined || v === null ? null : Number(v));
+      this.ctx.db.transaction(() => {
+        for (const row of chunk) {
+          const v = byId.get(row.video_id);
+          if (!v) {
+            missing++;
+            update.run(null, null, null, null, null, null, 1, now, row.id);
+            const current = this.get(row.id);
+            if (current && ["succeeded", "processing"].includes(current.status))
+              this.update(
+                row.id,
+                "failed",
+                "YouTube 上找不到這部影片（可能已被刪除或設為不可用）；需要的話可在上傳精靈重新選取上傳",
+              );
+            continue;
+          }
+          synced++;
+          update.run(
+            String(v.snippet?.title ?? ""),
+            v.status?.privacyStatus ?? null,
+            v.status?.uploadStatus ?? null,
+            num(v.statistics?.viewCount),
+            num(v.statistics?.commentCount),
+            num(v.statistics?.likeCount),
+            0,
+            now,
+            row.id,
+          );
+        }
+      })();
+    }
+    return { synced, missing, synced_at: now };
   }
   pairFor(user: number, tripIds: string[]): Map<string, Pair> {
     const out = new Map<string, Pair>();

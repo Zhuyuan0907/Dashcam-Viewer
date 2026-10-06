@@ -107,6 +107,16 @@ export class YoutubeAPI {
     );
     return data.items?.[0] ?? null;
   }
+  /** 一次查詢最多 50 部影片的目前狀態（videos.list 每次 1 單位額度）；不存在的 ID 不會出現在結果。 */
+  async videos(token: string, ids: string[]): Promise<any[]> {
+    const data = await this.checked(
+      await this.request(
+        `https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails,snippet,statistics,contentDetails&maxResults=50&id=${ids.map(encodeURIComponent).join(",")}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      ),
+    );
+    return Array.isArray(data.items) ? data.items : [];
+  }
   private async json(token: string, url: string, method: string, body: unknown): Promise<any> {
     return this.checked(
       await this.request(url, {

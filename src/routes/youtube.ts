@@ -41,6 +41,18 @@ function dto(row: UploadRow) {
     can_restart: !!row.upload_secret || !!row.video_id,
     video_url: row.video_id ? `https://www.youtube.com/watch?v=${row.video_id}` : null,
     studio_url: row.video_id ? `https://studio.youtube.com/video/${row.video_id}/edit` : null,
+    youtube: row.yt_synced_at
+      ? {
+          title: row.yt_title ?? null,
+          privacy: row.yt_privacy ?? null,
+          upload_status: row.yt_upload_status ?? null,
+          views: row.yt_views ?? null,
+          comments: row.yt_comments ?? null,
+          likes: row.yt_likes ?? null,
+          missing: !!row.yt_missing,
+          synced_at: row.yt_synced_at,
+        }
+      : null,
   };
 }
 export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
@@ -349,12 +361,17 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
       if (!ids.length) return { trips: out };
       const rows = ctx.db
         .prepare(
-          `SELECT trip_id,camera,status FROM youtube_uploads WHERE id IN (
+          `SELECT trip_id,camera,status,yt_missing FROM youtube_uploads WHERE id IN (
              SELECT MAX(id) FROM youtube_uploads WHERE user_id=? AND status!='cancelled'
              AND trip_id IN (${ids.map(() => "?").join(",")}) GROUP BY trip_id,camera)`,
         )
-        .all(req.user.id, ...ids) as Array<{ trip_id: string; camera: string; status: string }>;
-      for (const r of rows) (out[r.trip_id] ??= {})[r.camera] = r.status;
+        .all(req.user.id, ...ids) as Array<{
+        trip_id: string;
+        camera: string;
+        status: string;
+        yt_missing: number;
+      }>;
+      for (const r of rows) (out[r.trip_id] ??= {})[r.camera] = r.yt_missing ? "missing" : r.status;
       return { trips: out };
     }),
   );
@@ -403,6 +420,12 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
       if (!row.video_id) throw new Error("尚未完成傳輸");
       return { ready: await service.verify(row) };
     }),
+  );
+  // 與 YouTube 同步：讀回已上傳影片目前的標題、可見性、觀看數，及是否已在 YouTube 刪除。
+  app.post(
+    "/api/youtube/sync",
+    write,
+    guard(async (req) => service.sync(req.user.id)),
   );
   app.post(
     "/api/youtube/cleanup",

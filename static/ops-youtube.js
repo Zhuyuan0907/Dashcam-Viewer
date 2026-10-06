@@ -54,7 +54,7 @@ window.OpsYoutube = (() => {
   async function refresh() {
     await loadAccount();
     if (section === "queue") await loadUploads();
-    if (section === "archive") await loadArchive();
+    if (section === "archive") await loadArchive(true);
   }
 
   /* ── 授權設定 ─────────────────────────────────────────────── */
@@ -178,20 +178,61 @@ window.OpsYoutube = (() => {
   }
 
   /* ── 已上傳 / 清理 ─────────────────────────────────────────────── */
-  async function loadArchive() {
+  const privacyNames = { private: "私人", unlisted: "不公開", public: "公開" };
+  const SYNC_STALE_MS = 5 * 60 * 1000;
+  let lastSync = 0, syncing = false;
+  async function syncNow(button) {
+    if (syncing || !account) return;
+    syncing = true;
+    if (button) button.disabled = true;
+    $("ytm-sync-time").textContent = "同步中…";
+    try {
+      const r = await request("/api/youtube/sync", {});
+      lastSync = r.synced_at;
+      notice(
+        `已從 YouTube 同步 ${r.synced} 部${r.missing ? `；${r.missing} 部在 YouTube 上找不到（可能已刪除），可在上傳精靈重新上傳` : ""}。`,
+        r.missing ? "error" : "ok",
+      );
+    } catch (e) {
+      notice(e.message || "同步失敗", "error");
+    } finally {
+      syncing = false;
+      if (button) button.disabled = false;
+    }
+  }
+  function ytLine(u) {
+    const y = u.youtube;
+    if (!y) return '<span class="ytm-yt muted">尚未與 YouTube 同步</span>';
+    if (y.missing) return '<span class="ytm-yt bad">⚠ YouTube 上找不到這部影片（可能已刪除）</span>';
+    const parts = [
+      `<span class="yt-badge">${privacyNames[y.privacy] || esc(y.privacy || "—")}</span>`,
+      y.views !== null ? `<span>👁 ${Number(y.views).toLocaleString("zh-TW")} 次觀看</span>` : "",
+      y.likes !== null ? `<span>👍 ${Number(y.likes).toLocaleString("zh-TW")}</span>` : "",
+      y.comments !== null ? `<span>💬 ${Number(y.comments).toLocaleString("zh-TW")}</span>` : "",
+      y.title && y.title !== u.title ? `<span>YouTube 標題：${esc(y.title)}</span>` : "",
+    ];
+    return `<span class="ytm-yt">${parts.filter(Boolean).join("")}</span>`;
+  }
+  async function loadArchive(autoSync = false) {
+    if (autoSync && account && Date.now() - lastSync > SYNC_STALE_MS) await syncNow($("ytm-sync"));
+    if (account) $("ytm-studio-all").href = `https://studio.youtube.com/channel/${encodeURIComponent(account.channel_id)}/videos/upload`;
     const limit = 8, r = await apiFetch(`/api/youtube/uploads?filter=archive&page=${archivePage}&limit=${limit}`);
+    const syncedAt = Math.max(0, ...r.uploads.map((u) => u.youtube?.synced_at || 0));
+    if (syncedAt) lastSync = Math.max(lastSync, syncedAt);
+    $("ytm-sync-time").textContent = lastSync ? `上次同步 ${new Date(lastSync).toLocaleString("zh-TW")}` : "尚未同步";
     $("ytm-archives").innerHTML = r.uploads.length
       ? r.uploads.map((u) => `
-        <div class="ytm-row">
+        <div class="ytm-row${u.youtube?.missing ? " is-missing" : ""}">
           ${u.deleted_at ? '<span class="yt-badge">本機已清理</span>'
-            : `<input type="checkbox" data-cleanup="${esc(u.trip_id)}" ${cleanup.has(u.trip_id) ? "checked" : ""} ${u.status !== "succeeded" ? "disabled title=\"YouTube 處理完成後才能清理\"" : ""} aria-label="勾選此旅程以清理本機">`}
+            : `<input type="checkbox" data-cleanup="${esc(u.trip_id)}" ${cleanup.has(u.trip_id) ? "checked" : ""} ${u.status !== "succeeded" || u.youtube?.missing ? "disabled title=\"YouTube 處理完成後才能清理\"" : ""} aria-label="勾選此旅程以清理本機">`}
           <span class="ytm-row-main"><b>${esc(u.title)}</b>
-            <small>${u.camera === "front" ? "前鏡頭" : "後鏡頭"} · ${names[u.status] || esc(u.status)}${u.pair_status ? ` · ${pairNames[u.pair_status]}` : ""}${u.pair_status === "failed" && u.pair_message ? `（${esc(u.pair_message)}）` : ""}</small></span>
+            <small>${u.camera === "front" ? "前鏡頭" : "後鏡頭"} · ${names[u.status] || esc(u.status)}${u.pair_status ? ` · ${pairNames[u.pair_status]}` : ""}${u.pair_status === "failed" && u.pair_message ? `（${esc(u.pair_message)}）` : ""}</small>
+            ${ytLine(u)}</span>
           <span class="ytm-row-actions">
-            <a class="btn btn--ghost btn--sm" href="${esc(u.video_url)}" target="_blank" rel="noopener">觀看</a>
+            ${u.youtube?.missing ? "" : `<a class="btn btn--ghost btn--sm" href="${esc(u.video_url)}" target="_blank" rel="noopener">觀看</a>
+            <a class="btn btn--ghost btn--sm" href="${esc(u.studio_url)}" target="_blank" rel="noopener" title="在 YouTube Studio 修改標題、可見性或刪除">在 Studio 編輯</a>`}
             ${u.playlist_url ? `<a class="btn btn--ghost btn--sm" href="${esc(u.playlist_url)}" target="_blank" rel="noopener">前後鏡頭清單</a>` : ""}
             ${u.deleted_at ? "" : `<a class="btn btn--ghost btn--sm" href="/api/youtube/uploads/${u.id}/download">下載原檔</a>`}
-            <button class="btn btn--ghost btn--sm" data-verify="${u.id}">重新確認</button>
           </span>
         </div>`).join("")
       : '<p class="yt-empty">還沒有上傳完成的影片。</p>';
@@ -201,11 +242,6 @@ window.OpsYoutube = (() => {
       $("ytm-archives").querySelectorAll("[data-cleanup]").forEach((x) => (x.checked = cleanup.has(x.dataset.cleanup)));
       $("ytm-cleanup").textContent = cleanup.size ? `刪除 ${cleanup.size} 趟的本機檔案` : "刪除勾選旅程的本機檔案";
     }));
-    $("ytm-archives").querySelectorAll("[data-verify]").forEach((b) => (b.onclick = () => act(b, async () => {
-      const r2 = await request(`/api/youtube/uploads/${b.dataset.verify}/verify`, {});
-      notice(r2.ready ? "YouTube 已處理完成。" : "YouTube 仍在處理，請先保留本機影片。", r2.ready ? "ok" : "");
-      await loadArchive();
-    })));
     pager("ytm-archive-pager", archivePage, r.total, limit, async (p) => { archivePage = p; await loadArchive(); });
   }
   async function doCleanup(e) {
@@ -227,6 +263,7 @@ window.OpsYoutube = (() => {
     document.querySelectorAll("[data-ytm]").forEach((b) => (b.onclick = () => void show(b.dataset.ytm).catch((e) => notice(e.message, "error"))));
     $("ytm-save-config").onclick = saveConfig;
     $("ytm-cleanup").onclick = doCleanup;
+    $("ytm-sync").onclick = (e) => void syncNow(e.currentTarget).then(() => loadArchive());
     document.querySelectorAll(".ytm-copy").forEach((el) => (el.onclick = () => DashcamUI.copyText(el.textContent, el)));
     if (user.is_owner) void loadConfig().catch((e) => notice(e.message, "error"));
   }

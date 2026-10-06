@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.8.0 — 2026-10-07
+
+- Sync uploaded videos with YouTube from Ops: read back each video's current title, privacy, views, likes and comments, and flag videos that were deleted on YouTube. Syncing runs when the archive opens (at most every five minutes) or on demand, and never changes anything on YouTube; each video links to YouTube Studio for edits and deletion.
+- A video deleted on YouTube becomes re-uploadable: choosing its trip again in the wizard re-queues only the missing camera.
+- Grey out trips in the upload wizard whose cameras are all uploaded or in progress; "select page" skips them.
+- Show the Ops storage summary in the same card style as the admin storage panel.
+
 ## 2.7.0 — 2026-10-07
 
 - Turn the YouTube page into a five-step upload wizard (connect channel, choose trips, title and description with live preview, upload mode, confirm). An unconfigured site now explains why the channel cannot be linked and takes the owner straight to the setup steps instead of showing a disabled button.

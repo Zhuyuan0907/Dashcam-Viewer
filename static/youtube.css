@@ -762,3 +762,64 @@
 .yt-inline {
   white-space: nowrap;
 }
+/* 已全部上傳的旅程：反灰、不可選 */
+.yt-trip.is-done {
+  cursor: not-allowed;
+  background: var(--surface-2);
+  border-style: dashed;
+}
+.yt-trip.is-done:hover {
+  border-color: var(--line);
+}
+.yt-trip.is-done .yt-trip-main {
+  opacity: 0.55;
+}
+.yt-badge.s-missing {
+  background: color-mix(in oklch, var(--warn) 18%, var(--surface));
+  color: color-mix(in oklch, var(--warn) 70%, var(--ink));
+}
+/* 維運 › 已上傳：YouTube 即時狀態 */
+.ytm-sync {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: var(--surface-2);
+}
+.ytm-sync > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ytm-sync > div:first-child b {
+  font-size: 14.5px;
+}
+.ytm-sync > div:first-child span {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.ytm-sync p {
+  margin: 6px 0 10px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+.ytm-yt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ytm-yt.muted {
+  color: var(--ink-3);
+}
+.ytm-yt.bad {
+  color: var(--crit);
+  font-weight: 600;
+}
+.ytm-row.is-missing {
+  background: color-mix(in oklch, var(--crit) 6%, var(--surface));
+}

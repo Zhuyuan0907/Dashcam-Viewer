@@ -100,10 +100,16 @@ test("connected account walks through the five steps and submits a paired batch"
     await expect(page.locator("#yt-step-1")).toBeVisible();
     await expect(page.locator('#yt-steps li[data-step="0"]')).toHaveClass(/is-done/);
     await expect(page.locator("#yt-trips")).toContainText("前・已上傳");
+    await expect(page.locator('[data-trip="trip-1"]')).toBeDisabled();
+    await expect(page.locator(".yt-trip.is-done")).toHaveCount(1);
     await noOverflow(page);
     await shot(page, `wizard-select-${viewport.width}`);
   }
   await expect(page.locator("#yt-next")).toBeDisabled();
+  await page.locator("#yt-select-page").click();
+  await expect(page.locator('[data-trip="trip-1"]')).not.toBeChecked();
+  await expect(page.locator('[data-trip="trip-2"]')).toBeChecked();
+  await page.locator("#yt-clear-selection").click();
   await page.locator('[data-trip="trip-0"]').check();
   await page.locator("#yt-trip-pager").getByRole("button", { name: "下一頁" }).click();
   await page.locator(`[data-trip="trip-8"]`).check();
@@ -164,10 +170,28 @@ test("ops YouTube pane shows queue detail and archive with playlist links", asyn
     playlist_url: "https://www.youtube.com/playlist?list=PL1",
     pair_status: "done",
     can_restart: false,
+    youtube: { title: "Studio 改過的標題", privacy: "unlisted", views: 1234, likes: 5, comments: 2, missing: false, synced_at: Date.now() },
   };
+  const deletedUpload = {
+    ...upload,
+    id: 43,
+    camera: "rear",
+    title: "測試後鏡頭",
+    status: "failed",
+    youtube: { missing: true, synced_at: Date.now() },
+  };
+  let syncCalls = 0;
+  await page.route("**/api/youtube/sync", (route) => {
+    syncCalls++;
+    return route.fulfill({ json: { synced: 1, missing: 1, synced_at: Date.now() } });
+  });
   await page.route("**/api/youtube/account", (route) => route.fulfill({ json: connected }));
   await page.route("**/api/youtube/uploads?*", (route) =>
-    route.fulfill({ json: { uploads: [upload], total: 1, counts: [{ status: "succeeded", n: 1 }] } }),
+    route.fulfill({
+      json: route.request().url().includes("filter=archive")
+        ? { uploads: [upload, deletedUpload], total: 2, counts: [{ status: "succeeded", n: 1 }] }
+        : { uploads: [upload], total: 1, counts: [{ status: "succeeded", n: 1 }] },
+    }),
   );
   await page.route("**/api/youtube/uploads/42?*", (route) =>
     route.fulfill({
@@ -187,7 +211,15 @@ test("ops YouTube pane shows queue detail and archive with playlist links", asyn
     await shot(page, `ops-youtube-queue-${viewport.width}`);
     await page.locator('[data-ytm="archive"]').click();
     await expect(page.locator("#ytm-archives")).toContainText("已配對播放清單");
-    await expect(page.locator("#ytm-archives a", { hasText: "前後鏡頭清單" })).toHaveAttribute(
+    await expect(page.locator("#ytm-archives")).toContainText("1,234 次觀看");
+    await expect(page.locator("#ytm-archives")).toContainText("YouTube 標題：Studio 改過的標題");
+    await expect(page.locator("#ytm-archives")).toContainText("YouTube 上找不到這部影片");
+    await expect(page.locator("#ytm-archives a", { hasText: "在 Studio 編輯" })).toHaveAttribute(
+      "href",
+      upload.studio_url,
+    );
+    expect(syncCalls).toBeGreaterThan(0);
+    await expect(page.locator("#ytm-archives a", { hasText: "前後鏡頭清單" }).first()).toHaveAttribute(
       "href",
       upload.playlist_url,
     );
@@ -213,7 +245,8 @@ test("ops storage pane reports disk usage and reclaimable items", async ({ page 
   );
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/ops#storage");
-  await expect(page.locator("#storage-summary")).toContainText("硬碟已用 92%");
+  await expect(page.locator("#storage-summary .st-nums")).toContainText("92%");
+  await expect(page.locator("#storage-summary .st-tiles")).toContainText("可直接回收");
   await expect(page.locator("#storage-delete")).toBeDisabled();
   await page.locator('[data-reclaim="superseded:1"]').check();
   await expect(page.locator("#storage-delete")).toBeEnabled();
