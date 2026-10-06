@@ -110,8 +110,12 @@ test("connected account walks through the five steps and submits a paired batch"
   await expect(page.locator('[data-trip="trip-1"]')).not.toBeChecked();
   await expect(page.locator('[data-trip="trip-2"]')).toBeChecked();
   await page.locator("#yt-clear-selection").click();
+  await expect(page.locator("#yt-foot-status")).toHaveText("尚未選擇旅程");
+  await expect(page.locator('[data-trip="trip-2"]')).not.toBeChecked();
   await page.locator('[data-trip="trip-0"]').check();
+  await expect(page.locator("#yt-foot-status")).toContainText("已選 1 趟");
   await page.locator("#yt-trip-pager").getByRole("button", { name: "下一頁" }).click();
+  await expect(page.locator("#yt-trip-pager")).toContainText("第 2 /");
   await page.locator(`[data-trip="trip-8"]`).check();
   await page.locator("#yt-trip-pager").getByRole("button", { name: "上一頁" }).click();
   await expect(page.locator('[data-trip="trip-0"]')).toBeChecked();

@@ -142,21 +142,25 @@
     }
   }
 
+  let tripLoad = 0; // 只套用最新一次載入，避免快速翻頁／全選時較舊的回應覆蓋畫面
   async function loadTrips() {
+    const seq = ++tripLoad;
     const limit = pageSize();
     const date = $("yt-date").value;
     const result = await apiFetch(
       `/api/trips?limit=${limit}&offset=${(tripPage - 1) * limit}${date ? `&date=${date}` : ""}`,
     );
-    trips = result.trips;
-    blocked = new Set();
-    const status = trips.length
+    if (seq !== tripLoad) return;
+    const status = result.trips.length
       ? (
           await apiFetch(
-            `/api/youtube/trip-status?ids=${encodeURIComponent(trips.map((t) => t.trip_id).join("\n"))}`,
+            `/api/youtube/trip-status?ids=${encodeURIComponent(result.trips.map((t) => t.trip_id).join("\n"))}`,
           )
         ).trips
       : {};
+    if (seq !== tripLoad) return;
+    trips = result.trips;
+    blocked = new Set();
     $("yt-trips").innerHTML = trips.length
       ? trips
           .map((t) => {
