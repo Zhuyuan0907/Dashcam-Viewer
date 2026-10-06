@@ -39,7 +39,7 @@ sudo systemctl start dashcam
 ```
 
 目的資料夾必須不存在、且位於 `DASHCAM_DATA_DIR` 外。備份包含資料庫、WAL、影片、
-上傳續傳狀態、隔離素材、工作歷史、分享金鑰、SFTP host key 與 strings.yml。
+上傳續傳狀態、隔離素材、工作歷史、分享金鑰、YouTube OAuth 金鑰（youtube.key）、SFTP host key 與 strings.yml。
 每個檔案有 SHA-256 清單，另驗證 SQLite；失敗不會覆寫舊備份，未完成的目錄須人工檢查。
 雜湊只能偵測損壞，不是防偽簽章。備份需另行加密並存放於不同磁碟或異地。
 

@@ -14,15 +14,17 @@ import type { AppContext } from "../src/context.js";
 
 let seq = 0;
 
-export async function makeAdminApp(dataDir: string) {
+export async function makeAdminApp(dataDir: string, configure?: (ctx: AppContext) => void) {
   const db = createDb(path.join(dataDir, `api${seq++}.db`));
   db.prepare(
     "INSERT INTO users (id, username, password_hash, role, email, created_at) VALUES (1,'admin','h','admin','',0)",
   ).run();
   const token = newSessionToken();
-  db.prepare(
-    "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?,1,?,?)",
-  ).run(token, Math.floor(Date.now() / 1000) + 3600, Math.floor(Date.now() / 1000));
+  db.prepare("INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?,1,?,?)").run(
+    token,
+    Math.floor(Date.now() / 1000) + 3600,
+    Math.floor(Date.now() / 1000),
+  );
 
   const ctx: AppContext = {
     db,
@@ -31,6 +33,7 @@ export async function makeAdminApp(dataDir: string) {
     settings: new SettingsStore(db),
     jobs: new JobRegistry(),
   };
+  configure?.(ctx);
   const app = await buildApp(ctx);
   return { app, ctx, cookie: `session_token=${token}` };
 }

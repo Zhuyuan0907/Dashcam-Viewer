@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.0 — 2026-10-06
+
+- Add a fixed-layout YouTube workspace with cross-page trip selection, paired front/rear uploads, editable metadata templates, preview, privacy and audience controls, and scheduled start times.
+- Link each user’s own channel through OAuth with PKCE, single-use session-bound state, and encrypted offline credentials. Site owners configure the OAuth application without publishing secrets.
+- Persist resumable uploads, daily channel/project budgets, quota delays, pause/cancel/retry actions, processing checks and paginated operation history.
+- Add original local downloads and official Studio/Takeout export links. Local cleanup requires explicit confirmation, successful processing of all existing cameras, matching versions and a recoverable filesystem journal. Preserve footage during tests.
+- Document that YouTube is a transcoded secondary copy without guaranteed permanent retention or original-quality downloads.
+
 ## 2.5.0 — 2026-10-02
 
 - Rework the trip player controls after YouTube: a thin full-width progress bar along the bottom of the video that thickens on hover with a red scrubber, buffered range and a time preview; one row of plain white icons with hover tooltips (play, frame step, volume with an expanding slider, elapsed / total time with the dashcam's actual clock, camera switch, snapshot, settings and fullscreen).

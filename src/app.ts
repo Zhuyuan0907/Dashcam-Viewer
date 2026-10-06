@@ -20,6 +20,7 @@ import { registerTrips } from "./routes/trips.js";
 import { registerEdit } from "./routes/edit.js";
 import { registerClips } from "./routes/clips.js";
 import { registerConfig } from "./routes/config.js";
+import { registerYoutube } from "./routes/youtube.js";
 import { registerOps } from "./routes/ops.js";
 import { registerShares } from "./routes/shares.js";
 import { BackgroundTasks } from "./background.js";
@@ -40,7 +41,18 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
     clampInt(process.env.DASHCAM_JOBS_PER_USER, 1, 1, 16),
   );
   const app = Fastify({
-    logger: opts.logger ?? false,
+    logger: opts.logger
+      ? {
+          serializers: {
+            req: (req: any) => ({
+              method: req.method,
+              url: req.url?.split("?")[0],
+              remoteAddress: req.ip,
+            }),
+          },
+          redact: ["req.headers.authorization", "req.headers.cookie"],
+        }
+      : false,
     bodyLimit: 1 * 1024 * 1024, // JSON body 上限 1MB(檔案走 multipart 串流,不受此限)
     // 只有在確實部署於會覆寫 X-Forwarded-For 的可信反向代理後方時才信任 XFF(env 控制,預設 false)。
     // 預設直連部署下 req.ip 取自實際 socket 位址,防止偽造 XFF 繞過登入速率限制。
@@ -114,6 +126,7 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
   registerClips(app, ctx);
   registerConfig(app, ctx);
   registerOps(app, ctx);
+  registerYoutube(app, ctx);
 
   return app;
 }

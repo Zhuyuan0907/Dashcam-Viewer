@@ -8,9 +8,12 @@ import { SSERegistry } from "./uploads/sse.js";
 import { lookupSession, type SessionUser } from "./auth.js";
 import { SettingsStore } from "./settings/store.js";
 import { JobRegistry } from "./jobs.js";
-import type { BackgroundTasks } from './background.js';
+import type { BackgroundTasks } from "./background.js";
+
+import type { YoutubeService } from "./youtube/service.js";
 
 export interface AppContext {
+  youtube?: YoutubeService;
   tasks?: BackgroundTasks;
   db: DB;
   sessions: SftpSessionManager;

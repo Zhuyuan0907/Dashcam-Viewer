@@ -28,6 +28,10 @@ import {
 
 /** DB 檢視時要遮蔽的敏感欄位(表 → 欄位集合)。 */
 const SENSITIVE: Record<string, Set<string>> = {
+  youtube_config: new Set(["secret"]),
+  youtube_accounts: new Set(["secret"]),
+  youtube_states: new Set(["state_hash", "session_hash", "verifier_secret"]),
+  youtube_uploads: new Set(["upload_secret"]),
   users: new Set(["password_hash"]),
   sessions: new Set(["token"]),
   sftp_sessions: new Set(["password"]),

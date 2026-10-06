@@ -166,6 +166,8 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
   app.get("/upload", page("upload.html"));
   app.get("/clips", page("clips.html"));
   app.get("/jobs", page("jobs.html"));
+  app.get("/youtube", page("youtube.html"));
+  app.get("/youtube/privacy", page("youtube-privacy.html"));
   app.get("/admin", adminPage("admin.html"));
   app.get("/ops", adminPage("ops.html"));
   app.get("/account", page("account.html"));

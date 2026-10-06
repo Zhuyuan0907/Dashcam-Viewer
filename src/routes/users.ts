@@ -116,6 +116,7 @@ export function registerUsers(app: FastifyInstance, ctx: AppContext): void {
         return reply.code(409).send({ detail: "此帳號仍有傳輸或影片處理工作，請先完成或取消後再刪除" });
       }
       try {
+        await ctx.youtube?.disconnect(userId);
         db.prepare("DELETE FROM users WHERE id = ?").run(userId);
         return { status: "ok", revoked_upload_sessions: revoked.removed };
       } finally {

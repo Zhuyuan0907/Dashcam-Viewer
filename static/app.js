@@ -274,6 +274,7 @@ async function checkAuth({ redirect = true, adminOnly = false } = {}) {
 function renderHeader(user) {
   const nav=document.querySelector('.hdr-nav');
   if(user&&nav&&!nav.querySelector('[href="/jobs"]')){const a=document.createElement('a');a.href='/jobs';a.className='hdr-link';a.textContent='背景作業';nav.appendChild(a);}
+  if(user&&nav&&!nav.querySelector('[href="/youtube"]')){const a=document.createElement('a');a.href='/youtube';a.dataset.href='/youtube';a.className='hdr-link';a.textContent='YouTube';nav.appendChild(a);}
   if (!user) return;
 
   // Show admin-only nav links
@@ -339,6 +340,7 @@ function initNavActive() {
  * 改用注入的 .hdr-burger 開啟 .m-drawer。抽屜內容(使用者、連結、登出)由
  * buildMobileNav(user) 依登入者/角色填入,故與 renderHeader 的權限/i18n 一致。 */
 const MNAV = [
+  { href: '/youtube', key: 'nav.youtube', fb: 'YouTube 副本' },
   { href: '/jobs', key: 'nav.jobs', fb: '背景作業' },
   { href: '/',       key: 'nav.home',   fb: '首頁' },
   { href: '/browse', key: 'nav.browse', fb: '瀏覽旅程' },
