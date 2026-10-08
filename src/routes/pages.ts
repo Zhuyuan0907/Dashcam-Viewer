@@ -133,8 +133,9 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
     const strings = settings.readStrings();
     const brandTitle = settings.get("site_title");
     let html = injectStrings(rawHtml(name), strings, brandTitle, "{page} — {brand}");
+    // Keep the public contact readable without JavaScript behind Cloudflare's email protection.
     const contact = PUBLIC_CONTACT_EMAIL
-      ? `<a href="mailto:${escAttr(PUBLIC_CONTACT_EMAIL)}">${escHtml(PUBLIC_CONTACT_EMAIL)}</a>`
+      ? `<!--email_off--><a href="mailto:${escAttr(PUBLIC_CONTACT_EMAIL)}">${escHtml(PUBLIC_CONTACT_EMAIL)}</a><!--/email_off-->`
       : "請聯絡為你建立帳號的站台管理員，提出隱私、資料存取或刪除請求。";
     html = html
       .replaceAll("{{SITE_TITLE}}", () => escHtml(brandTitle))

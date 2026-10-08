@@ -46,6 +46,8 @@ test("the app purpose and policy content are readable with JavaScript disabled",
     await page.locator(".public-header a[href='/privacy']").click();
     await expect(page.locator("#collection")).toContainText("refresh token");
     await expect(page.locator("#deletion")).toContainText("第三方存取設定");
+    await expect(page.locator('a[href^="mailto:"]').first()).toBeVisible();
+    await expect(page.locator('a[href^="mailto:"]').first()).toContainText("@");
     await page.locator(".public-header a[href='/terms']").click();
     await expect(page.locator("h1")).toContainText("Terms of Service");
   } finally {

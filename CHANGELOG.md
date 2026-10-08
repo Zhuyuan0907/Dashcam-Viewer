@@ -4,6 +4,7 @@
 
 - Show a public app introduction to visitors while retaining the trip dashboard for signed-in users. Link the privacy policy and terms from the introduction and login page.
 - Expand the privacy policy with account, footage, OAuth and YouTube API data collection, usage, recipients, retention, security and deletion disclosures; add separate service terms and a deployment-configured public contact address. Keep the previous YouTube privacy URL working.
+- Keep the public contact address readable without JavaScript when served through Cloudflare email protection.
 - Update the compatible brace-expansion dependency to 5.0.12 to address the release audit's high-severity recursion vulnerability.
 
 ## 2.8.0 — 2026-10-07

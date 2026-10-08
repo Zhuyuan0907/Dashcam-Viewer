@@ -47,6 +47,12 @@ test("policy pages and the previous privacy URL provide public disclosures with 
     assert.equal(privacy.statusCode, 200);
     assert.match(privacy.body, /測試站 &lt;安全&gt; \$&amp;/);
     assert.match(privacy.body, /mailto:privacy@example\.test/);
+    assert.ok(
+      privacy.body.includes(
+        '<!--email_off--><a href="mailto:privacy@example.test">privacy@example.test</a><!--/email_off-->',
+      ),
+      "public contact must opt out of Cloudflare email rewriting for visitors without JavaScript",
+    );
     for (const id of [
       "collection",
       "use",

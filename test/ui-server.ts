@@ -11,6 +11,7 @@ await fs.rm(dataDir, { recursive: true, force: true });
 await fs.mkdir(dataDir, { recursive: true });
 process.env.DASHCAM_DATA_DIR = dataDir;
 process.env.DASHCAM_MIN_FREE_DISK_BYTES = "0";
+process.env.DASHCAM_PUBLIC_CONTACT_EMAIL ??= "privacy@example.test";
 
 const [{ buildApp }, { createDb }, { SftpSessionManager }, { SSERegistry }, { SettingsStore },
   { JobRegistry }, { createDevice, snapshotDevice }, { upsertTrip }, { hashShareToken }] = await Promise.all([
