@@ -100,6 +100,7 @@
                 <p>
                   可以開始選擇要上傳的旅程。要更換頻道、暫停或解除連結，請到
                   <a class="link" href="/ops#youtube">維運 › YouTube</a>。
+                  <a class="link" href="/youtube?reauthorize=1">重新授權</a>會保留現有上傳紀錄。
                 </p>
               </div>
               <p class="yt-notice" id="yt-oauth-notice" role="status" hidden></p>
@@ -260,7 +261,7 @@
               <ol class="yt-next-steps">
                 <li>
                   系統會在背景依序上傳，每 24 小時最多
-                  <b id="yt-done-limit">10</b> 部，超過會自動排到隔天。
+                  <b id="yt-done-limit">10</b> 次建立上傳的嘗試，失敗也計入；超過會等待上限恢復。
                 </li>
                 <li>YouTube 處理完成後，前後鏡頭會自動放進同一個播放清單。</li>
                 <li>
@@ -287,6 +288,6 @@
     </main>
     <div id="toast-container"></div>
     <script src="/static/app.js?v=2.6.1"></script>
-    <script src="/static/youtube.js?v=5"></script>
+    <script src="/static/youtube.js?v=6"></script>
   </body>
 </html>

@@ -4,8 +4,8 @@ window.OpsYoutube = (() => {
   const $ = (id) => document.getElementById(id);
   const esc = escapeHtml;
   const names = {
-    queued: "等待上傳", uploading: "上傳中", processing: "YouTube 處理中",
-    succeeded: "已完成", failed: "需處理", cancelled: "已取消",
+    queued: "等待上傳", uploading: "上傳中", processing: "已傳輸，待確認",
+    succeeded: "已確認完成", failed: "需處理", cancelled: "已取消",
   };
   const pairNames = { pending: "播放清單待建立", done: "已配對播放清單", failed: "配對失敗" };
   let user = null, account = null, section = "account", queuePage = 1, archivePage = 1, logPage = 1;
@@ -98,14 +98,14 @@ window.OpsYoutube = (() => {
       box.innerHTML = `
         <div class="yt-callout ${account.paused ? "warn" : "ok"}"><b>${esc(account.channel_title)}</b>
           <p>${account.paused ? "上傳佇列已暫停（授權失效時也會自動暫停）。" : "上傳佇列運作中，關掉瀏覽器也會繼續。"}
-          過去 24 小時已使用 ${account.used} / ${account.daily_limit} 次上傳。</p></div>
+          過去 24 小時已使用 ${account.used} / ${account.daily_limit} 次建立上傳的嘗試（失敗也計入）。</p></div>
         <div class="ytm-form">
-          <label class="field">頻道每 24 小時最多上傳幾部<input id="ytm-limit" type="number" min="1" max="1000" class="form-input" value="${account.daily_limit}"></label>
+          <label class="field">本站每 24 小時最多嘗試建立幾次上傳<input id="ytm-limit" type="number" min="1" max="1000" class="form-input" value="${account.daily_limit}"></label>
         </div>
         <div class="yt-actions" style="margin-top:14px">
           <button class="btn btn--solid btn--sm" type="button" id="ytm-save-limit">儲存上限</button>
           <button class="btn btn--ghost btn--sm" type="button" id="ytm-pause">${account.paused ? "繼續上傳佇列" : "暫停上傳佇列"}</button>
-          <a class="btn btn--ghost btn--sm" href="/youtube" id="ytm-reconnect">重新授權／換頻道</a>
+          <a class="btn btn--ghost btn--sm" href="/youtube?reauthorize=1" id="ytm-reconnect">重新授權／換頻道</a>
           <button class="btn btn--danger btn--sm" type="button" id="ytm-disconnect">解除連結</button>
         </div>
         <p class="yt-hint">「重新授權」會帶你回到上傳精靈第 1 步；若授權失效（例如 Google 專案仍在測試模式，7 天後失效）也請重新授權。</p>`;
@@ -134,10 +134,12 @@ window.OpsYoutube = (() => {
     const c = Object.fromEntries(r.counts.map((x) => [x.status, x.n]));
     $("ytm-queue-stat").innerHTML = ["queued", "uploading", "processing", "succeeded", "failed"]
       .map((s) => `<span>${names[s]} <b>${c[s] || 0}</b></span>`).join("");
+    if (r.transferred !== undefined)
+      $("ytm-queue-stat").insertAdjacentHTML("afterbegin", `<span>已傳輸 <b>${r.transferred}</b></span>`);
     $("ytm-uploads").innerHTML = r.uploads.length
       ? r.uploads.map((u) => `
         <div class="ytm-row${u.id === activeJob ? " is-active" : ""}" role="button" tabindex="0" data-job="${u.id}">
-          <span class="yt-badge s-${esc(u.status)}">${names[u.status] || esc(u.status)}</span>
+          <span class="yt-badge s-${esc(u.status)}">${u.transfer_complete && u.status === "failed" ? "已傳輸，需確認" : names[u.status] || esc(u.status)}</span>
           <span class="ytm-row-main"><b>${esc(u.title)}</b>
             <small>${u.camera === "front" ? "前鏡頭" : "後鏡頭"} · ${u.progress}% · ${esc(u.message)}${u.status === "queued" && u.not_before > Date.now() ? ` · 預計 ${new Date(u.not_before).toLocaleString("zh-TW")}` : ""}</small>
             <progress max="100" value="${u.progress}"></progress></span>
@@ -160,15 +162,23 @@ window.OpsYoutube = (() => {
       <progress max="100" value="${u.progress}"></progress>
       <p class="yt-hint">${u.progress}% · ${fmtBytes(u.uploaded_bytes)} / ${fmtBytes(u.source_size)}</p>
       <div class="yt-actions">
+        ${["queued", "failed", "processing"].includes(u.status) ? `<button class="btn btn--ghost btn--sm" data-a="test">${u.video_url ? "只確認這一部" : "只試傳這一部"}</button>` : ""}
         ${["failed", "cancelled"].includes(u.status) ? '<button class="btn btn--solid btn--sm" data-a="retry">重試／續傳</button>' : ""}
         ${u.can_restart && u.status === "failed" ? '<button class="btn btn--ghost btn--sm" data-a="restart">從頭重新上傳</button>' : ""}
         ${["queued", "uploading", "failed"].includes(u.status) ? '<button class="btn btn--danger btn--sm" data-a="cancel">取消</button>' : ""}
         ${u.video_url ? `<a class="btn btn--ghost btn--sm" href="${esc(u.video_url)}" target="_blank" rel="noopener">在 YouTube 觀看</a>` : ""}
       </div>
+      <p class="yt-hint">單部操作須先暫停整個佇列；其餘影片不會開始。</p>
       <ul class="ytm-events">${d.events.map((ev) => `<li><time>${new Date(ev.created_at).toLocaleString("zh-TW")}</time>${esc(ev.message)}</li>`).join("")}</ul>
       <div class="yt-pager" id="ytm-log-pager"></div>`;
     el.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => act(b, async () => {
       const a = b.dataset.a;
+      if (a === "test") {
+        await request(`/api/youtube/uploads/${u.id}/test`, {});
+        notice("這一部已執行；其餘佇列維持暫停。", "ok");
+        await loadUploads();
+        return;
+      }
       if (a === "restart" && !confirm("續傳工作階段可能已過期。請先到 YouTube Studio 確認沒有相同影片，以免重複。確定從頭上傳？")) return;
       if (a === "cancel") await request(`/api/youtube/uploads/${u.id}/cancel`, {});
       else await request(`/api/youtube/uploads/${u.id}/retry`, a === "restart" ? { restart_confirmed: true } : {});

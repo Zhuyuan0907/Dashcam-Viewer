@@ -2,6 +2,8 @@ export class YoutubeError extends Error {
   constructor(
     public readonly reason: string,
     public readonly status = 0,
+    public readonly originalReason = reason,
+    public readonly retryAfterMs = 0,
   ) {
     super(safeMessage(reason));
   }
@@ -17,6 +19,7 @@ function safeMessage(reason: string): string {
     forbidden: "YouTube 拒絕操作，請確認頻道權限與帳號狀態",
     sessionExpired: "續傳工作階段已過期；請到 YouTube Studio 確認是否已上傳，再決定重新上傳",
     transient: "網路或 YouTube 暫時無法連線，稍後自動重試",
+    localLimit: "已達本站上傳嘗試上限，等待額度恢復",
     insufficientPermissions: "授權範圍不足，請到維運頁重新授權 YouTube 以啟用播放清單配對",
   };
   return (
@@ -52,18 +55,30 @@ export class YoutubeAPI {
   }
   async checked(response: Response): Promise<any> {
     const data: any = await response.json().catch(() => ({}));
-    if (!response.ok)
-      throw new YoutubeError(
+    if (!response.ok) {
+      const original =
         data.error?.errors?.[0]?.reason ??
-          (typeof data.error === "string"
-            ? data.error
-            : response.status === 401
-              ? "unauthorized"
-              : response.status === 429 || response.status >= 500
-                ? "transient"
-                : "apiError"),
+        (typeof data.error === "string" ? data.error : "apiError");
+      const reason =
+        response.status === 401 || original === "authError"
+          ? "unauthorized"
+          : response.status === 429 || response.status >= 500
+            ? "transient"
+            : original;
+      const retryAfter = response.headers.get("retry-after");
+      const delay =
+        retryAfter && /^\d+$/.test(retryAfter)
+          ? Number(retryAfter) * 1000
+          : retryAfter
+            ? Math.max(0, Date.parse(retryAfter) - Date.now())
+            : 0;
+      throw new YoutubeError(
+        reason,
         response.status,
+        original,
+        Number.isFinite(delay) ? Math.min(delay, 86_400_000) : 0,
       );
+    }
     return data;
   }
   async tokens(config: OAuthConfig, params: Record<string, string>): Promise<Tokens> {
@@ -111,7 +126,7 @@ export class YoutubeAPI {
   async videos(token: string, ids: string[]): Promise<any[]> {
     const data = await this.checked(
       await this.request(
-        `https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails,snippet,statistics,contentDetails&maxResults=50&id=${ids.map(encodeURIComponent).join(",")}`,
+        `https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails,snippet,statistics,contentDetails&id=${ids.map(encodeURIComponent).join(",")}`,
         { headers: { Authorization: `Bearer ${token}` } },
       ),
     );

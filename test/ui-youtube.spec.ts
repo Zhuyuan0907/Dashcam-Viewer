@@ -29,7 +29,13 @@ const connected = {
   configured: true,
   defaults: { title_template: "行車記錄 {date} {camera}", description_template: "旅程 {trip_id}" },
   parameters: ["date", "camera", "trip_id"],
-  account: { channel_title: "UI 頻道", channel_id: "ui-channel", paused: false, daily_limit: 10, used: 0 },
+  account: {
+    channel_title: "UI 頻道",
+    channel_id: "ui-channel",
+    paused: false,
+    daily_limit: 10,
+    used: 0,
+  },
 };
 
 test("unconfigured site guides the owner to the OAuth setup steps in ops", async ({ page }) => {
@@ -59,7 +65,9 @@ test("unconfigured site guides the owner to the OAuth setup steps in ops", async
   expect(errors).toEqual([]);
 });
 
-test("connected account walks through the five steps and submits a paired batch", async ({ page }) => {
+test("connected account walks through the five steps and submits a paired batch", async ({
+  page,
+}) => {
   await setup(page);
   const trips = Array.from({ length: 30 }, (_, index) => ({
     trip_id: `trip-${index}`,
@@ -76,7 +84,9 @@ test("connected account walks through the five steps and submits a paired batch"
     const url = new URL(route.request().url());
     const limit = Number(url.searchParams.get("limit"));
     const offset = Number(url.searchParams.get("offset"));
-    return route.fulfill({ json: { trips: trips.slice(offset, offset + limit), total: trips.length } });
+    return route.fulfill({
+      json: { trips: trips.slice(offset, offset + limit), total: trips.length },
+    });
   });
   await page.route("**/api/youtube/trip-status?*", (route) =>
     route.fulfill({ json: { trips: { "trip-1": { front: "succeeded", rear: "uploading" } } } }),
@@ -174,7 +184,15 @@ test("ops YouTube pane shows queue detail and archive with playlist links", asyn
     playlist_url: "https://www.youtube.com/playlist?list=PL1",
     pair_status: "done",
     can_restart: false,
-    youtube: { title: "Studio 改過的標題", privacy: "unlisted", views: 1234, likes: 5, comments: 2, missing: false, synced_at: Date.now() },
+    youtube: {
+      title: "Studio 改過的標題",
+      privacy: "unlisted",
+      views: 1234,
+      likes: 5,
+      comments: 2,
+      missing: false,
+      synced_at: Date.now(),
+    },
   };
   const deletedUpload = {
     ...upload,
@@ -199,7 +217,12 @@ test("ops YouTube pane shows queue detail and archive with playlist links", asyn
   );
   await page.route("**/api/youtube/uploads/42?*", (route) =>
     route.fulfill({
-      json: { upload, events: [{ id: 1, created_at: Date.now(), message: "完成" }], total: 1, limit: 8 },
+      json: {
+        upload,
+        events: [{ id: 1, created_at: Date.now(), message: "完成" }],
+        total: 1,
+        limit: 8,
+      },
     }),
   );
   for (const viewport of [
@@ -223,10 +246,9 @@ test("ops YouTube pane shows queue detail and archive with playlist links", asyn
       upload.studio_url,
     );
     expect(syncCalls).toBeGreaterThan(0);
-    await expect(page.locator("#ytm-archives a", { hasText: "前後鏡頭清單" }).first()).toHaveAttribute(
-      "href",
-      upload.playlist_url,
-    );
+    await expect(
+      page.locator("#ytm-archives a", { hasText: "前後鏡頭清單" }).first(),
+    ).toHaveAttribute("href", upload.playlist_url);
     await noOverflow(page);
     await shot(page, `ops-youtube-archive-${viewport.width}`);
   }
@@ -241,8 +263,22 @@ test("ops storage pane reports disk usage and reclaimable items", async ({ page 
         footage_bytes: 789e9,
         trip_count: 208,
         items: [
-          { id: "superseded:1", kind: "superseded", label: "2026-09-11 11.43-14.20 (157分)", detail: "已合併", bytes: 24e9, deletable: true },
-          { id: "orphan_dir:2", kind: "orphan_dir", label: "2026-10-05 16.17-16.53 (36分)", detail: "半成品", bytes: 2.6e9, deletable: true },
+          {
+            id: "superseded:1",
+            kind: "superseded",
+            label: "2026-09-11 11.43-14.20 (157分)",
+            detail: "已合併",
+            bytes: 24e9,
+            deletable: true,
+          },
+          {
+            id: "orphan_dir:2",
+            kind: "orphan_dir",
+            label: "2026-10-05 16.17-16.53 (36分)",
+            detail: "半成品",
+            bytes: 2.6e9,
+            deletable: true,
+          },
         ],
       },
     }),
@@ -256,4 +292,140 @@ test("ops storage pane reports disk usage and reclaimable items", async ({ page 
   await expect(page.locator("#storage-delete")).toBeEnabled();
   await noOverflow(page);
   await shot(page, "ops-storage");
+});
+
+test("reconnect opens consent for an existing paused account without discarding upload history", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.route("**/api/youtube/account", (route) =>
+    route.fulfill({
+      json: {
+        ...connected,
+        account: { ...connected.account, paused: true, used: 10 },
+      },
+    }),
+  );
+  await page.goto("/ops#youtube");
+  await expect(page.locator("#ytm-account-body")).toContainText("失敗也計入");
+  await page.locator("#ytm-reconnect").click();
+  await expect(page).toHaveURL(/\/youtube\?reauthorize=1$/);
+  await expect(page.locator("#yt-step-0")).toBeVisible();
+  await expect(page.locator("#yt-connect-box")).toBeVisible();
+  await expect(page.locator("#yt-connected")).toContainText("保留現有上傳紀錄");
+  await expect(page.locator("#yt-next")).toBeDisabled();
+  await expect(page.locator("#yt-connect")).toBeDisabled();
+  await page.locator("#yt-policy").check();
+  await expect(page.locator("#yt-connect")).toBeEnabled();
+  let authStarts = 0;
+  await page.route("**/api/youtube/connect", (route) => {
+    expect(route.request().postDataJSON()).toEqual({ accept_policy: true });
+    authStarts++;
+    return route.fulfill({ json: { url: `${baseURL}/youtube?oauth=connected` } });
+  });
+  await page.locator("#yt-connect").click();
+  await expect(page.locator("#yt-oauth-notice")).toContainText("仍保持暫停");
+  expect(authStarts).toBe(1);
+  await noOverflow(page);
+});
+
+test("queue separates transferred videos from completed processing", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/youtube/account", (route) => route.fulfill({ json: connected }));
+  await page.route("**/api/youtube/uploads?*", (route) =>
+    route.fulfill({
+      json: {
+        uploads: [
+          {
+            id: 7,
+            title: "已傳輸影片",
+            camera: "front",
+            status: "processing",
+            progress: 100,
+            uploaded_bytes: 1000,
+            source_size: 1000,
+            transfer_complete: true,
+            message: "等待確認",
+            not_before: 0,
+          },
+        ],
+        total: 1,
+        transferred: 1,
+        counts: [{ status: "processing", n: 1 }],
+      },
+    }),
+  );
+  await page.goto("/ops#youtube");
+  await page.locator('[data-ytm="queue"]').click();
+  await expect(page.locator("#ytm-queue-stat")).toContainText("已傳輸 1");
+  await expect(page.locator("#ytm-queue-stat")).toContainText("已確認完成 0");
+  await expect(page.locator("#ytm-uploads")).toContainText("已傳輸，待確認");
+});
+
+test("single-video action keeps the remaining queue paused", async ({ page }) => {
+  await setup(page);
+  let singleCalls = 0;
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "GET") mutations.push(new URL(request.url()).pathname);
+  });
+  const upload = {
+    id: 8,
+    title: "單部試傳",
+    camera: "rear",
+    status: "failed",
+    progress: 0,
+    uploaded_bytes: 0,
+    source_size: 1000,
+    message: "授權失效",
+    not_before: 0,
+    video_url: null as string | null,
+    can_restart: false,
+  };
+  await page.route("**/api/youtube/account", (route) =>
+    route.fulfill({
+      json: {
+        ...connected,
+        account: { ...connected.account, paused: true },
+      },
+    }),
+  );
+  await page.route("**/api/youtube/uploads?*", (route) =>
+    route.fulfill({
+      json: {
+        uploads: [upload],
+        total: 1,
+        transferred: upload.video_url ? 1 : 0,
+        counts: [{ status: upload.status, n: 1 }],
+      },
+    }),
+  );
+  await page.route("**/api/youtube/uploads/8?*", (route) =>
+    route.fulfill({
+      json: {
+        upload,
+        events: [],
+        total: 0,
+        limit: 8,
+      },
+    }),
+  );
+  await page.route("**/api/youtube/uploads/8/test", (route) => {
+    singleCalls++;
+    upload.status = "succeeded";
+    upload.video_url = "https://www.youtube.com/watch?v=test-video";
+    upload.uploaded_bytes = 1000;
+    upload.progress = 100;
+    return route.fulfill({ json: { upload } });
+  });
+  await page.goto("/ops#youtube");
+  await page.locator('[data-ytm="queue"]').click();
+  await page.locator('[data-job="8"]').click();
+  await expect(page.locator("#ytm-detail")).toContainText("須先暫停");
+  await page.getByRole("button", { name: "只試傳這一部", exact: true }).click();
+  await expect(page.locator("#ytm-notice")).toContainText("其餘佇列維持暫停");
+  await expect(page.locator("#ytm-queue-stat")).toContainText("已確認完成 1");
+  expect(singleCalls).toBe(1);
+  expect(mutations).toEqual(["/api/youtube/uploads/8/test"]);
+  await noOverflow(page);
 });

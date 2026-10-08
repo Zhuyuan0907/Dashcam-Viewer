@@ -38,6 +38,7 @@ function dto(row: UploadRow) {
     updated_at: row.updated_at,
     deleted_at: row.deleted_at,
     verified_at: row.verified_at,
+    transfer_complete: !!row.video_id && row.uploaded_bytes >= row.source_size,
     can_restart: !!row.upload_secret || !!row.video_id,
     video_url: row.video_id ? `https://www.youtube.com/watch?v=${row.video_id}` : null,
     studio_url: row.video_id ? `https://studio.youtube.com/video/${row.video_id}/edit` : null,
@@ -329,6 +330,13 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
       const counts = ctx.db
         .prepare("SELECT status,COUNT(*) AS n FROM youtube_uploads WHERE user_id=? GROUP BY status")
         .all(req.user.id);
+      const transferred = (
+        ctx.db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM youtube_uploads WHERE user_id=? AND video_id IS NOT NULL AND uploaded_bytes>=source_size AND status!='cancelled' AND yt_missing=0",
+          )
+          .get(req.user.id) as { n: number }
+      ).n;
       const pairs = service.pairFor(req.user.id, [...new Set(rows.map((r) => r.trip_id))]);
       return {
         uploads: rows.map((row) => {
@@ -344,6 +352,7 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
         }),
         total,
         counts,
+        transferred,
         page,
         limit,
       };
@@ -393,6 +402,14 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
         )
         .all(row.id, limit, (page - 1) * limit);
       return { upload: dto(row), events, total, page, limit };
+    }),
+  );
+  app.post(
+    "/api/youtube/uploads/:id/test",
+    write,
+    guard(async (req) => {
+      const row = owned(req);
+      return { upload: dto(await service.runOne(req.user.id, row.id)) };
     }),
   );
   app.post(

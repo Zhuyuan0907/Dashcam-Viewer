@@ -26,6 +26,7 @@
   // 這些狀態代表該鏡頭已在 YouTube 或正在上傳，不需要再傳一次。
   const DONE = new Set(["queued", "uploading", "processing", "succeeded"]);
   let blocked = new Set();
+  let reauthorize = new URLSearchParams(location.search).get("reauthorize") === "1";
   const selected = new Map();
   let step = 0,
     info = null,
@@ -73,7 +74,7 @@
     return n;
   }
   function canAdvance() {
-    if (step === 0) return !!info?.account;
+    if (step === 0) return !!info?.account && !reauthorize;
     if (step === 1) return selected.size > 0;
     if (step === 2) return !!$("yt-title").value.trim();
     if (step === 4) return $("yt-confirm-upload").checked;
@@ -109,9 +110,10 @@
     const configured = !!info?.configured,
       account = info?.account;
     $("yt-need-setup").hidden = configured || !!account;
-    $("yt-connect-box").hidden = !configured || !!account;
+    $("yt-connect-box").hidden = !configured || (!!account && !reauthorize);
     $("yt-connected").hidden = !account;
     if (account) $("yt-channel-name").textContent = account.channel_title;
+    $("yt-connect").textContent = account ? "重新授權 Google 帳號" : "使用 Google 帳號連結";
     if (!configured) {
       $("yt-need-setup-text").textContent = user?.is_owner
         ? "這是第一次使用 YouTube 功能時需要的一次性設定（約 10 分鐘），跟著維運頁的步驟做完就能回來連結頻道。"
@@ -286,7 +288,10 @@
         { private: "私人", unlisted: "不公開（有連結者可看）", public: "公開" }[privacy],
       ],
       ["開始時間", start],
-      ["預估", `每 24 小時最多 ${limit} 部，約需 ${Math.max(1, Math.ceil(count / limit))} 天傳完`],
+      [
+        "嘗試上限",
+        `每 24 小時最多建立 ${limit} 次上傳，失敗也計入；實際完成時間依授權與 YouTube 處理狀況而定`,
+      ],
       ["上傳到", info.account?.channel_title || "—"],
     ];
     $("yt-summary").innerHTML = rows
@@ -381,19 +386,25 @@
     void loadQueueChip();
     const oauth = new URLSearchParams(location.search).get("oauth");
     if (oauth) {
+      reauthorize = !!info.account && oauth !== "connected";
+      renderAccount();
+    }
+    if (oauth) {
       const el = $("yt-oauth-notice");
       el.hidden = false;
       el.dataset.type = oauth === "connected" ? "ok" : "error";
       el.textContent =
         {
-          connected: "✓ YouTube 頻道已連結，可以按「下一步」選擇旅程。",
+          connected: info.account?.paused
+            ? "✓ 授權已更新，上傳佇列仍保持暫停；請到維運頁確認後繼續。"
+            : "✓ YouTube 頻道已連結，可以按「下一步」選擇旅程。",
           cancelled: "你取消了 Google 授權，頻道尚未連結。",
         }[oauth] ||
         "Google 授權沒有完成。常見原因：Google Cloud 的「測試使用者」沒有加入你的 Gmail、回呼網址不一致，或此帳號還沒建立 YouTube 頻道。請到維運頁檢查設定。";
       history.replaceState(null, "", "/youtube");
     }
     // 已連結就直接從「選擇旅程」開始，省一步。
-    if (info.account && oauth !== "connected") await go(1);
+    if (info.account && !reauthorize && !oauth) await go(1);
     else render();
   })().catch((e) => notice(e.message || "載入失敗，請重新整理", "error"));
 })();

@@ -31,6 +31,7 @@ export interface UploadRow {
   video_id: string | null;
   message: string;
   attempts: number;
+  retry_count: number;
   not_before: number;
   created_at: number;
   updated_at: number;
@@ -139,6 +140,9 @@ export function nextPacificMidnight(now: number): number {
 }
 const channelBudgetKey = (channel: string) =>
   crypto.createHash("sha256").update(channel).digest("hex");
+const MAX_TRANSIENT_RETRIES = 3;
+const authError = (error: unknown): error is YoutubeError =>
+  error instanceof YoutubeError && ["invalid_grant", "unauthorized"].includes(error.reason);
 export class YoutubeService {
   readonly api: YoutubeAPI;
   readonly vault: YoutubeVault;
@@ -151,6 +155,7 @@ export class YoutubeService {
   } | null = null;
   private stopped = false;
   private ticking = false;
+  private tokenRefreshes = new Map<number, Promise<string>>();
   constructor(
     private readonly ctx: AppContext,
     api = new YoutubeAPI(),
@@ -175,6 +180,7 @@ export class YoutubeService {
       ["yt_likes", "INTEGER"],
       ["yt_missing", "INTEGER NOT NULL DEFAULT 0"],
       ["yt_synced_at", "INTEGER"],
+      ["retry_count", "INTEGER NOT NULL DEFAULT 0"],
     ] as const)
       if (!columns.has(name)) ctx.db.exec(`ALTER TABLE youtube_uploads ADD COLUMN ${name} ${type}`);
     const interrupted = ctx.db
@@ -214,7 +220,19 @@ export class YoutubeService {
   }
   async connect(user: number, tokens: Tokens): Promise<void> {
     if (!tokens.refresh_token) throw new Error("Google 未提供離線授權，請重新同意授權");
-    const channel = await this.api.channel(tokens.access_token);
+    let channel;
+    try {
+      channel = await this.api.channel(tokens.access_token);
+    } catch (error) {
+      if (!authError(error) || error.reason !== "unauthorized") throw error;
+      const config = this.config();
+      if (!config) throw error;
+      tokens = await this.api.tokens(config, {
+        grant_type: "refresh_token",
+        refresh_token: tokens.refresh_token,
+      });
+      channel = await this.api.channel(tokens.access_token);
+    }
     const old = this.account(user);
     if (
       old &&
@@ -233,21 +251,58 @@ export class YoutubeService {
       )
       .run(user, channel.id, channel.title, this.vault.seal(tokens, `youtube:account:${user}`));
   }
-  async token(user: number): Promise<string> {
+  async token(user: number, rejectedToken?: string): Promise<string> {
     const account = this.account(user),
       config = this.config();
     if (!account || !config) throw new YoutubeError("unauthorized");
-    let tokens = this.vault.open<Tokens>(account.secret, `youtube:account:${user}`);
-    if (tokens.expires_at < this.clock() + 60_000) {
-      tokens = await this.api.tokens(config, {
-        grant_type: "refresh_token",
-        refresh_token: tokens.refresh_token,
-      });
-      this.ctx.db
-        .prepare("UPDATE youtube_accounts SET secret=? WHERE user_id=?")
-        .run(this.vault.seal(tokens, `youtube:account:${user}`), user);
+    const tokens = this.vault.open<Tokens>(account.secret, `youtube:account:${user}`);
+    if (tokens.expires_at < this.clock() + 60_000 || rejectedToken === tokens.access_token) {
+      const pending = this.tokenRefreshes.get(user);
+      if (pending) return pending;
+      const refresh = (async () => {
+        const refreshed = await this.api.tokens(config, {
+          grant_type: "refresh_token",
+          refresh_token: tokens.refresh_token,
+        });
+        const result = this.ctx.db
+          .prepare("UPDATE youtube_accounts SET secret=? WHERE user_id=? AND secret=?")
+          .run(this.vault.seal(refreshed, `youtube:account:${user}`), user, account.secret);
+        if (!result.changes) throw new YoutubeError("unauthorized");
+        return refreshed.access_token;
+      })();
+      this.tokenRefreshes.set(user, refresh);
+      try {
+        return await refresh;
+      } finally {
+        this.tokenRefreshes.delete(user);
+      }
     }
     return tokens.access_token;
+  }
+  /** At most one forced refresh per operation/upload; never replay an ambiguous insert failure. */
+  private async authorized<T>(
+    user: number,
+    request: (token: string) => Promise<T>,
+    recovery = { refreshed: false },
+  ): Promise<T> {
+    let token: string | undefined;
+    try {
+      token = await this.token(user);
+      return await request(token);
+    } catch (error) {
+      if (!authError(error)) throw error;
+      if (token && error.reason === "unauthorized" && !recovery.refreshed) {
+        recovery.refreshed = true;
+        try {
+          return await request(await this.token(user, token));
+        } catch (retryError) {
+          if (authError(retryError)) this.pause(user, true);
+          throw retryError;
+        }
+      }
+      this.pause(user, true);
+      throw error;
+    }
   }
   async disconnect(user: number): Promise<boolean> {
     this.pause(user, true);
@@ -454,6 +509,7 @@ export class YoutubeService {
     const row = this.get(id);
     if (!row || !["failed", "cancelled"].includes(row.status))
       throw new Error("此工作目前無法重試");
+    this.ctx.db.prepare("UPDATE youtube_uploads SET retry_count=0 WHERE id=?").run(id);
     if (row.video_id && !restart) {
       this.update(id, "processing", "重新確認已上傳影片的處理狀態", this.clock());
       return;
@@ -561,9 +617,37 @@ export class YoutubeService {
       this.ticking = false;
     }
   }
+  /** Explicit single-job maintenance test. The account stays paused throughout; no other job runs. */
+  async runOne(user: number, id: number): Promise<UploadRow> {
+    const account = this.account(user),
+      row = this.get(id);
+    if (!account?.paused || this.running || this.ticking || this.stopped)
+      throw new Error("單部試傳須先暫停佇列，並等待進行中的工作結束");
+    if (
+      !row ||
+      row.user_id !== user ||
+      row.channel_id !== account.channel_id ||
+      !["queued", "failed", "processing"].includes(row.status)
+    )
+      throw new Error("此工作目前無法單部試傳");
+    if (row.status === "failed") this.retry(id, false);
+    const controller = new AbortController();
+    const promise = (async () => {
+      await this.run(this.get(id)!, controller);
+      const current = this.get(id)!;
+      if (!row.video_id && current.status === "processing" && !controller.signal.aborted)
+        await this.run(current, controller);
+    })().finally(() => {
+      this.running = null;
+    });
+    this.running = { id, user, controller, promise };
+    await promise;
+    return this.get(id)!;
+  }
   private async run(row: UploadRow, controller: AbortController): Promise<void> {
     const { db, jobs } = this.ctx;
     let locked = false;
+    const recovery = { refreshed: false };
     try {
       if (row.status === "processing") {
         await this.verify(row);
@@ -588,28 +672,37 @@ export class YoutubeService {
         sourceVersion(current, source.size, source.mtime) !== row.source_version
       )
         throw new Error("本機影片版本已變更，請重新選擇影片");
-      let token = await this.token(row.user_id);
       if (controller.signal.aborted) throw new Error("interrupted");
       let uploadURL: string;
       if (row.upload_secret)
         uploadURL = this.vault.open<string>(row.upload_secret, `youtube:upload:${row.id}`);
       else {
-        db.prepare("INSERT INTO youtube_usage(channel_id,created_at) VALUES(?,?)").run(
-          channelBudgetKey(row.channel_id),
-          this.clock(),
-        );
-        db.prepare("UPDATE youtube_uploads SET attempts=attempts+1 WHERE id=?").run(row.id);
-        this.event(row.id, "authorize", "已取得 Google 授權，建立 YouTube 續傳工作階段");
-        uploadURL = await this.api.initiate(
-          token,
-          {
-            title: row.title,
-            description: row.description,
-            privacy: row.privacy,
-            made_for_kids: !!row.made_for_kids,
+        uploadURL = await this.authorized(
+          row.user_id,
+          async (token) => {
+            const account = this.account(row.user_id)!,
+              config = this.config()!;
+            if (this.allowance(account, config.project_daily_limit).until > this.clock())
+              throw new YoutubeError("localLimit");
+            db.prepare("INSERT INTO youtube_usage(channel_id,created_at) VALUES(?,?)").run(
+              channelBudgetKey(row.channel_id),
+              this.clock(),
+            );
+            db.prepare("UPDATE youtube_uploads SET attempts=attempts+1 WHERE id=?").run(row.id);
+            this.event(row.id, "authorize", "已取得 Google 授權，建立 YouTube 續傳工作階段");
+            return this.api.initiate(
+              token,
+              {
+                title: row.title,
+                description: row.description,
+                privacy: row.privacy,
+                made_for_kids: !!row.made_for_kids,
+              },
+              row.source_size,
+              controller.signal,
+            );
           },
-          row.source_size,
-          controller.signal,
+          recovery,
         );
         db.prepare("UPDATE youtube_uploads SET upload_secret=? WHERE id=?").run(
           this.vault.seal(uploadURL, `youtube:upload:${row.id}`),
@@ -617,32 +710,33 @@ export class YoutubeService {
         );
       }
       this.event(row.id, "resume", "查詢 YouTube 已確認接收的位元組，避免重複上傳");
-      let progress = await this.api.put(
-        uploadURL,
-        token,
-        row.source_size,
-        null,
-        null,
-        controller.signal,
+      let progress = await this.authorized(
+        row.user_id,
+        (token) => this.api.put(uploadURL, token, row.source_size, null, null, controller.signal),
+        recovery,
       );
       const file = await fs.open(row.source_path, "r");
       try {
         const chunk = Buffer.alloc(8 * 1024 * 1024);
         while (!progress.id) {
           if (controller.signal.aborted) throw new Error("interrupted");
-          token = await this.token(row.user_id);
           const count = Math.min(chunk.length, row.source_size - progress.offset);
           if (count <= 0) throw new YoutubeError("transient");
           const read = await file.read(chunk, 0, count, progress.offset);
           if (read.bytesRead !== count) throw new Error("來源影片長度已變更，停止上傳");
           const previous = progress.offset;
-          progress = await this.api.put(
-            uploadURL,
-            token,
-            row.source_size,
-            previous,
-            chunk.subarray(0, count),
-            controller.signal,
+          progress = await this.authorized(
+            row.user_id,
+            (token) =>
+              this.api.put(
+                uploadURL,
+                token,
+                row.source_size,
+                previous,
+                chunk.subarray(0, count),
+                controller.signal,
+              ),
+            recovery,
           );
           if (!progress.id && progress.offset <= previous) throw new YoutubeError("transient");
           db.prepare("UPDATE youtube_uploads SET uploaded_bytes=?,updated_at=? WHERE id=?").run(
@@ -661,7 +755,7 @@ export class YoutubeService {
         await file.close();
       }
       db.prepare(
-        "UPDATE youtube_uploads SET video_id=?,uploaded_bytes=source_size,upload_secret=NULL WHERE id=?",
+        "UPDATE youtube_uploads SET video_id=?,uploaded_bytes=source_size,upload_secret=NULL,retry_count=0 WHERE id=?",
       ).run(progress.id, row.id);
       this.update(
         row.id,
@@ -670,10 +764,29 @@ export class YoutubeService {
         this.clock() + 30_000,
       );
     } catch (error) {
-      if (controller.signal.aborted)
+      const current = this.get(row.id)!;
+      if (authError(error)) {
+        this.pause(row.user_id, true);
         this.update(
           row.id,
-          "queued",
+          current.video_id ? "processing" : "queued",
+          current.video_id
+            ? "影片已傳輸完成；Google 授權失效，佇列已暫停，重新授權後再確認"
+            : error.message,
+        );
+      } else if (error instanceof YoutubeError && error.reason === "localLimit") {
+        const account = this.account(row.user_id)!,
+          config = this.config()!;
+        this.update(
+          row.id,
+          current.video_id ? "processing" : "queued",
+          error.message,
+          this.allowance(account, config.project_daily_limit).until,
+        );
+      } else if (controller.signal.aborted)
+        this.update(
+          row.id,
+          current.video_id ? "processing" : "queued",
           "已暫停傳輸，保留進度；下次先確認 YouTube 的接收位置",
           this.clock() + 5000,
         );
@@ -691,22 +804,20 @@ export class YoutubeService {
             row.channel_id,
           );
         else db.prepare("UPDATE youtube_uploads SET not_before=? WHERE status='queued'").run(until);
-        this.update(row.id, row.video_id ? "processing" : "queued", error.message, until);
+        this.update(row.id, current.video_id ? "processing" : "queued", error.message, until);
       } else if (error instanceof YoutubeError && error.reason === "transient") {
-        db.prepare("UPDATE youtube_uploads SET attempts=attempts+1 WHERE id=?").run(row.id);
-        const attempts = this.get(row.id)!.attempts;
+        db.prepare("UPDATE youtube_uploads SET retry_count=retry_count+1 WHERE id=?").run(row.id);
+        const retries = this.get(row.id)!.retry_count;
         this.update(
           row.id,
-          row.status === "processing" ? "processing" : "queued",
-          error.message,
-          this.clock() + Math.min(3_600_000, 30_000 * 2 ** Math.min(attempts, 7)),
+          retries > MAX_TRANSIENT_RETRIES ? "failed" : current.video_id ? "processing" : "queued",
+          retries > MAX_TRANSIENT_RETRIES
+            ? "自動重試已達上限；保留影片與續傳進度，請檢查後手動重試"
+            : error.message,
+          this.clock() +
+            Math.max(error.retryAfterMs, Math.min(3_600_000, 30_000 * 2 ** Math.min(retries, 7))),
         );
       } else {
-        if (
-          error instanceof YoutubeError &&
-          ["invalid_grant", "unauthorized"].includes(error.reason)
-        )
-          this.pause(row.user_id, true);
         this.update(
           row.id,
           "failed",
@@ -763,22 +874,35 @@ export class YoutubeService {
       return;
     }
     try {
-      const token = await this.token(pair.user_id);
+      const recovery = { refreshed: false };
       let playlistId = pair.playlist_id;
       if (!playlistId) {
-        playlistId = await this.api.createPlaylist(token, {
-          title: `${pair.date} 第 ${pair.trip_no} 趟 · 前後鏡頭`,
-          description: `行車記錄：前鏡頭與後鏡頭為同一時間軸，可在清單中切換視角。`,
-          privacy: pair.privacy,
-        });
+        playlistId = await this.authorized(
+          pair.user_id,
+          (token) =>
+            this.api.createPlaylist(token, {
+              title: `${pair.date} 第 ${pair.trip_no} 趟 · 前後鏡頭`,
+              description: `行車記錄：前鏡頭與後鏡頭為同一時間軸，可在清單中切換視角。`,
+              privacy: pair.privacy,
+            }),
+          recovery,
+        );
         set("playlist_id=?", playlistId);
       }
       if (!pair.front_item) {
-        await this.api.addToPlaylist(token, playlistId, front.video_id, 0);
+        await this.authorized(
+          pair.user_id,
+          (token) => this.api.addToPlaylist(token, playlistId!, front.video_id!, 0),
+          recovery,
+        );
         set("front_item=1");
       }
       if (!pair.rear_item) {
-        await this.api.addToPlaylist(token, playlistId, rear.video_id, 1);
+        await this.authorized(
+          pair.user_id,
+          (token) => this.api.addToPlaylist(token, playlistId!, rear.video_id!, 1),
+          recovery,
+        );
         set("rear_item=1");
       }
       for (const [camera, own, other, label] of [
@@ -790,7 +914,11 @@ export class YoutubeService {
         let base = own.description;
         while (Buffer.byteLength(base + suffix, "utf8") > 5000)
           base = Array.from(base).slice(0, -50).join("");
-        await this.api.updateDescription(token, own.video_id!, own.title, base + suffix);
+        await this.authorized(
+          pair.user_id,
+          (token) => this.api.updateDescription(token, own.video_id!, own.title, base + suffix),
+          recovery,
+        );
         set(`${camera}_desc=1`);
         this.event(own.id, "pair", `已加入前後鏡頭播放清單並連結${label}`);
       }
@@ -825,7 +953,6 @@ export class YoutubeService {
         "SELECT id,video_id FROM youtube_uploads WHERE user_id=? AND channel_id=? AND video_id IS NOT NULL AND status!='cancelled'",
       )
       .all(user, account.channel_id) as { id: number; video_id: string }[];
-    const token = await this.token(user);
     const now = this.clock();
     const update = this.ctx.db.prepare(
       `UPDATE youtube_uploads SET yt_title=?,yt_privacy=?,yt_upload_status=?,yt_views=?,yt_comments=?,yt_likes=?,
@@ -835,18 +962,22 @@ export class YoutubeService {
       missing = 0;
     for (let i = 0; i < rows.length; i += 50) {
       const chunk = rows.slice(i, i + 50);
-      const items = await this.api.videos(token, [...new Set(chunk.map((r) => r.video_id))]);
+      const items = await this.authorized(user, (token) =>
+        this.api.videos(token, [...new Set(chunk.map((r) => r.video_id))]),
+      );
       const byId = new Map(
         items.filter((v) => v?.snippet?.channelId === account.channel_id).map((v) => [v.id, v]),
       );
       const num = (v: unknown) => (v === undefined || v === null ? null : Number(v));
       this.ctx.db.transaction(() => {
         for (const row of chunk) {
+          const current = this.get(row.id);
+          if (!current || current.video_id !== row.video_id || current.status === "cancelled")
+            continue;
           const v = byId.get(row.video_id);
           if (!v) {
             missing++;
             update.run(null, null, null, null, null, null, 1, now, row.id);
-            const current = this.get(row.id);
             if (current && ["succeeded", "processing"].includes(current.status))
               this.update(
                 row.id,
@@ -867,6 +998,7 @@ export class YoutubeService {
             now,
             row.id,
           );
+          this.applyVideo(current, v);
         }
       })();
     }
@@ -886,11 +1018,19 @@ export class YoutubeService {
   async verify(row: UploadRow): Promise<boolean> {
     if (!row.video_id || this.account(row.user_id)?.channel_id !== row.channel_id)
       throw new Error("請連結此影片所屬的 YouTube 頻道");
-    const video = await this.api.video(await this.token(row.user_id), row.video_id);
+    const video = await this.authorized(row.user_id, (token) =>
+      this.api.video(token, row.video_id!),
+    );
+    const current = this.get(row.id);
+    if (!current || current.video_id !== row.video_id || current.status === "cancelled")
+      return false;
     if (!video || video.snippet?.channelId !== row.channel_id) {
       this.update(row.id, "failed", "YouTube 影片不存在或不屬於目前頻道");
       return false;
     }
+    return this.applyVideo(current, video);
+  }
+  private applyVideo(row: UploadRow, video: any): boolean {
     const status = video.processingDetails?.processingStatus;
     if (
       ["failed", "terminated"].includes(status) ||
@@ -901,16 +1041,24 @@ export class YoutubeService {
     }
     if (status === "succeeded" && video.status?.uploadStatus === "processed") {
       this.ctx.db
-        .prepare("UPDATE youtube_uploads SET verified_at=? WHERE id=?")
+        .prepare("UPDATE youtube_uploads SET verified_at=?,retry_count=0 WHERE id=?")
         .run(this.clock(), row.id);
-      this.update(
-        row.id,
-        "succeeded",
-        `YouTube 已完成處理（可見性：${video.status.privacyStatus}），可查看或選擇清理本機檔案`,
-      );
+      if (row.status !== "succeeded")
+        this.update(
+          row.id,
+          "succeeded",
+          `YouTube 已完成處理（可見性：${video.status.privacyStatus}），可查看或選擇清理本機檔案`,
+        );
       return true;
     }
-    this.update(row.id, "processing", "YouTube 仍在處理，稍後自動確認", this.clock() + 300_000);
+    // A processed snapshot without owner-only processingDetails is not enough for cleanup.
+    if (row.status !== "succeeded")
+      this.update(
+        row.id,
+        "processing",
+        "影片已傳輸完成，等待確認 YouTube 處理結果",
+        this.clock() + 300_000,
+      );
     return false;
   }
   async cleanup(user: number, tripId: string): Promise<void> {

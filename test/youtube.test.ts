@@ -10,7 +10,7 @@ process.env.DASHCAM_DATA_DIR = root;
 const { makeAdminApp } = await import("./_appctx.js");
 const { YoutubeService } = await import("../src/youtube/service.js");
 const { YoutubeVault } = await import("../src/youtube/vault.js");
-const { YoutubeAPI, assertUploadURL } = await import("../src/youtube/api.js");
+const { YoutubeAPI, YoutubeError, assertUploadURL } = await import("../src/youtube/api.js");
 const { upsertTrip } = await import("../src/trips/repo.js");
 const { metadata, variables, DEFAULT_TITLE, DEFAULT_DESCRIPTION } = await import(
   "../src/youtube/templates.js"
@@ -22,6 +22,11 @@ function mockGoogle() {
   let offset = 0,
     total = 0,
     fail = "",
+    failStatus = 403,
+    authStage = "",
+    authRemaining = 0,
+    refreshDenied = false,
+    includeProcessingDetails = true,
     dropFinal = false,
     finalUploaded = false;
   const http = async (input: any, init: RequestInit = {}) => {
@@ -32,12 +37,24 @@ function mockGoogle() {
         status,
         headers: { "Content-Type": "application/json", ...headers },
       });
+    if (
+      authRemaining > 0 &&
+      ((authStage === "insert" && url.includes("uploadType") && init.method === "POST") ||
+        (authStage === "put" && init.method === "PUT") ||
+        (authStage === "channel" && url.includes("/channels?")) ||
+        (authStage === "verify" && url.includes("/videos?part=status")))
+    ) {
+      authRemaining--;
+      return json({ error: { errors: [{ reason: "authError" }] } }, 401);
+    }
     if (url.includes("oauth2.googleapis.com/token"))
-      return json({
-        access_token: "access-secret",
-        refresh_token: "refresh-secret",
-        expires_in: 3600,
-      });
+      return refreshDenied
+        ? json({ error: "invalid_grant" }, 400)
+        : json({
+            access_token: "refreshed-secret",
+            refresh_token: "refresh-secret",
+            expires_in: 3600,
+          });
     if (url.includes("oauth2.googleapis.com/revoke")) return json({});
     if (url.includes("/channels?"))
       return json({ items: [{ id: "channel-test", snippet: { title: "測試頻道" } }] });
@@ -48,12 +65,17 @@ function mockGoogle() {
             id: "video-test",
             snippet: { channelId: "channel-test" },
             status: { uploadStatus: "processed", privacyStatus: "private" },
-            processingDetails: { processingStatus: "succeeded" },
+            ...(includeProcessingDetails
+              ? { processingDetails: { processingStatus: "succeeded" } }
+              : {}),
           },
         ],
       });
     if (init.method === "POST") {
-      if (fail) return json({ error: { errors: [{ reason: fail }] } }, 403);
+      if (fail)
+        return json({ error: { errors: [{ reason: fail }] } }, failStatus, {
+          "retry-after": "120",
+        });
       offset = 0;
       finalUploaded = false;
       total = Number((init.headers as Record<string, string>)["X-Upload-Content-Length"]);
@@ -85,8 +107,19 @@ function mockGoogle() {
   return {
     api: new YoutubeAPI(http as typeof fetch),
     calls,
-    fail: (value: string) => {
+    fail: (value: string, status = 403) => {
       fail = value;
+      failStatus = status;
+    },
+    auth: (stage: string, count: number) => {
+      authStage = stage;
+      authRemaining = count;
+    },
+    denyRefresh: () => {
+      refreshDenied = true;
+    },
+    processingDetails: (value: boolean) => {
+      includeProcessingDetails = value;
     },
     loseFinal: () => {
       dropFinal = true;
@@ -558,6 +591,276 @@ test("project quota resets at Pacific midnight, including daylight-saving bounda
     assert.ok(row.not_before > f.options.not_before);
     assert.ok(row.not_before <= f.options.not_before + 26 * 3600_000);
     assert.equal(f.mock.calls.filter((c) => c.url.includes("uploadType")).length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test("HTTP authentication and backend errors are classified without masking quota errors", async () => {
+  const api = new YoutubeAPI();
+  for (const [status, original, reason] of [
+    [401, "authError", "unauthorized"],
+    [503, "backendError", "transient"],
+    [429, "rateLimitExceeded", "transient"],
+    [403, "quotaExceeded", "quotaExceeded"],
+    [403, "insufficientPermissions", "insufficientPermissions"],
+  ] as const) {
+    await assert.rejects(
+      api.checked(
+        new Response(JSON.stringify({ error: { errors: [{ reason: original }] } }), {
+          status,
+          headers: { "retry-after": "120" },
+        }),
+      ),
+      (error: any) => {
+        assert.ok(error instanceof YoutubeError);
+        assert.equal(error.reason, reason);
+        assert.equal(error.originalReason, original);
+        assert.equal(error.retryAfterMs, 120_000);
+        return true;
+      },
+    );
+  }
+});
+
+test("an unexpired rejected token is refreshed once and each insert attempt consumes budget", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], { ...f.options, camera: "rear" });
+    f.mock.auth("insert", 1);
+    await f.service.tick();
+    const row = f.ctx.db.prepare("SELECT * FROM youtube_uploads").get() as any;
+    assert.equal(row.status, "processing");
+    assert.equal(row.attempts, 2);
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("/token")).length, 1);
+    assert.equal(f.service.account(1)!.paused, 0);
+    assert.equal((f.ctx.db.prepare("SELECT COUNT(*) AS n FROM youtube_usage").get() as any).n, 2);
+    const inserts = f.mock.calls.filter((c) => c.url.includes("uploadType"));
+    assert.equal(inserts.length, 2);
+    assert.equal((inserts[1]!.init.headers as any).Authorization, "Bearer refreshed-secret");
+  } finally {
+    await f.close();
+  }
+});
+
+test("persistent authError pauses the whole account and preserves queued cameras", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], f.options);
+    f.mock.auth("insert", 100);
+    await f.service.tick();
+    const rows = f.ctx.db.prepare("SELECT * FROM youtube_uploads ORDER BY id").all() as any[];
+    assert.equal(rows[0].status, "queued");
+    assert.equal(rows[0].attempts, 2);
+    assert.equal(rows[1].attempts, 0);
+    assert.equal(f.service.account(1)!.paused, 1);
+    const count = f.mock.calls.length;
+    f.advance(2 * 86_400_000);
+    await f.service.tick();
+    assert.equal(f.mock.calls.length, count);
+    await fs.access(f.front);
+    await fs.access(f.rear);
+  } finally {
+    await f.close();
+  }
+});
+
+test("expired refresh grants stop before creating any upload session", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], f.options);
+    f.advance(3600_000);
+    f.mock.denyRefresh();
+    await f.service.tick();
+    assert.equal(f.service.account(1)!.paused, 1);
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("uploadType")).length, 0);
+    assert.equal((f.ctx.db.prepare("SELECT COUNT(*) AS n FROM youtube_usage").get() as any).n, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("verification authentication failures preserve the video ID; sync reconciles without uploading", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], { ...f.options, camera: "rear" });
+    await f.service.tick();
+    const row = f.ctx.db.prepare("SELECT * FROM youtube_uploads").get() as any;
+    f.mock.auth("verify", 100);
+    f.advance(30_001);
+    await f.service.tick();
+    assert.equal(f.service.get(row.id)!.status, "processing");
+    assert.equal(f.service.get(row.id)!.video_id, "video-test");
+    assert.equal(f.service.account(1)!.paused, 1);
+    assert.match(f.service.get(row.id)!.message, /已傳輸完成/);
+    // Reproduce legacy rows already marked failed by the previous release.
+    f.service.update(row.id, "failed", "YouTube 操作失敗（authError）");
+    f.mock.auth("verify", 0);
+    await f.service.sync(1);
+    assert.equal(f.service.get(row.id)!.status, "succeeded");
+    assert.ok(f.service.get(row.id)!.verified_at);
+    assert.equal(f.service.account(1)!.paused, 1);
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("uploadType")).length, 1);
+    const response = (
+      await f.app.inject({ url: "/api/youtube/uploads", headers: { cookie: f.cookie } })
+    ).json();
+    assert.equal(response.transferred, 1);
+    assert.equal(response.uploads[0].transfer_complete, true);
+    assert.ok(!f.mock.calls.some((c) => new URL(c.url).searchParams.has("maxResults")));
+  } finally {
+    await f.close();
+  }
+});
+
+test("resumable PUT auth recovery reuses the original session", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], { ...f.options, camera: "front" });
+    f.mock.auth("put", 1);
+    await f.service.tick();
+    assert.equal(
+      (f.ctx.db.prepare("SELECT status FROM youtube_uploads").get() as any).status,
+      "processing",
+    );
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("uploadType")).length, 1);
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("/token")).length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test("transient errors honor Retry-After, stop after three retries and preserve originals", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], { ...f.options, camera: "rear" });
+    f.mock.fail("backendError", 503);
+    await f.service.tick();
+    const row = f.ctx.db.prepare("SELECT * FROM youtube_uploads").get() as any;
+    assert.equal(row.status, "queued");
+    assert.ok(row.not_before >= f.options.not_before + 120_000);
+    for (let i = 0; i < 3; i++) {
+      f.advance(3_600_000);
+      await f.service.tick();
+    }
+    const failed = f.service.get(row.id)!;
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.retry_count, 4);
+    assert.equal(failed.attempts, 4);
+    const count = f.mock.calls.length;
+    f.advance(86_400_000);
+    await f.service.tick();
+    assert.equal(f.mock.calls.length, count);
+    f.service.retry(row.id, false);
+    assert.equal(f.service.get(row.id)!.retry_count, 0);
+    await fs.access(f.rear);
+  } finally {
+    await f.close();
+  }
+});
+
+test("an auth recovery cannot exceed the local attempt budget", async () => {
+  const f = await fixture();
+  try {
+    f.service.setDailyLimit(1, 1);
+    await f.service.enqueue(1, [f.tripId], f.options);
+    f.mock.auth("insert", 100);
+    await f.service.tick();
+    const row = f.ctx.db.prepare("SELECT * FROM youtube_uploads ORDER BY id LIMIT 1").get() as any;
+    assert.equal(row.status, "queued");
+    assert.ok(row.not_before > f.options.not_before);
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("uploadType")).length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test("single-job maintenance test keeps the account paused and never uploads another camera", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], f.options);
+    const rows = f.ctx.db.prepare("SELECT * FROM youtube_uploads ORDER BY id").all() as any[];
+    const headers = { cookie: f.cookie };
+    const rejected = await f.app.inject({
+      method: "POST",
+      url: `/api/youtube/uploads/${rows[0].id}/test`,
+      headers,
+      payload: {},
+    });
+    assert.equal(rejected.statusCode, 400);
+    f.service.pause(1, true);
+    const response = await f.app.inject({
+      method: "POST",
+      url: `/api/youtube/uploads/${rows[0].id}/test`,
+      headers,
+      payload: {},
+    });
+    assert.equal(response.statusCode, 200);
+    assert.ok(!/source_path|upload_secret|refreshed-secret/.test(response.body));
+    const uploaded = response.json().upload;
+    assert.equal(uploaded.status, "succeeded");
+    assert.equal(f.service.get(rows[1].id)!.attempts, 0);
+    assert.equal(f.service.account(1)!.paused, 1);
+    f.advance(86_400_000);
+    const count = f.mock.calls.length;
+    await f.service.tick();
+    assert.equal(f.mock.calls.length, count);
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("uploadType")).length, 1);
+    await assert.rejects(f.service.runOne(2, rows[1].id));
+  } finally {
+    await f.close();
+  }
+});
+
+test("simultaneous refresh requests share one grant exchange", async () => {
+  const f = await fixture();
+  try {
+    const tokens = await Promise.all([
+      f.service.token(1, "access-secret"),
+      f.service.token(1, "access-secret"),
+    ]);
+    assert.deepEqual(tokens, ["refreshed-secret", "refreshed-secret"]);
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("/token")).length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test("processed snapshots without processing details do not grant cleanup eligibility", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], { ...f.options, camera: "rear" });
+    await f.service.tick();
+    const row = f.ctx.db.prepare("SELECT * FROM youtube_uploads").get() as any;
+    f.mock.processingDetails(false);
+    await f.service.sync(1);
+    assert.equal(f.service.get(row.id)!.yt_upload_status, "processed");
+    assert.equal(f.service.get(row.id)!.status, "processing");
+    assert.equal(f.service.get(row.id)!.verified_at, null);
+    f.mock.processingDetails(true);
+    await f.service.sync(1);
+    assert.equal(f.service.get(row.id)!.status, "succeeded");
+    assert.ok(f.service.get(row.id)!.verified_at);
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("uploadType")).length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test("reauthorization recovers one rejected fresh token and preserves the paused queue", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], f.options);
+    f.service.pause(1, true);
+    f.mock.auth("channel", 1);
+    await f.service.connect(1, {
+      access_token: "new-secret",
+      refresh_token: "refresh-secret",
+      expires_at: Date.now() + 3600_000,
+    });
+    assert.equal(f.service.account(1)!.paused, 1);
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("/token")).length, 1);
+    assert.equal((f.ctx.db.prepare("SELECT COUNT(*) AS n FROM youtube_uploads").get() as any).n, 2);
+    assert.equal(f.mock.calls.filter((c) => c.url.includes("uploadType")).length, 0);
   } finally {
     await f.close();
   }
