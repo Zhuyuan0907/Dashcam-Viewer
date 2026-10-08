@@ -47,6 +47,8 @@ export const STATIC_DIR = path.join(BASE_DIR, "static");
 
 export const PORT = envInt("DASHCAM_PORT", 8080);
 export const HOST = env("DASHCAM_HOST", "0.0.0.0");
+/** 公開政策頁的聯絡信箱；由部署者提供，不從使用者帳號推導。 */
+export const PUBLIC_CONTACT_EMAIL = env("DASHCAM_PUBLIC_CONTACT_EMAIL", "").trim();
 
 /**
  * 是否信任反向代理送來的 `X-Forwarded-For`(決定 req.ip 的來源)。

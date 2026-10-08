@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>行車影片管理與 YouTube 備份 — {{SITE_TITLE}} · Dashcam Viewer</title>
+    <meta
+      name="description"
+      content="Dashcam Viewer 行車影片管理與 YouTube 備份服務：用途介紹、資料蒐集使用、保存刪除、隱私權政策及服務條款。"
+    />
+    <link rel="stylesheet" href="/static/style.css?v=2.7.0" />
+    <script src="/static/themes.js"></script>
+    <link rel="stylesheet" href="/static/themes.css?v=2.1.2" />
+    <link rel="stylesheet" href="/static/public.css?v=1.0.0" />
+  </head>
+  <body class="public-page">
+    <header class="public-header">
+      <a class="public-brand" href="/about">{{SITE_TITLE}}</a>
+      <nav aria-label="公開資訊">
+        <a href="/about">服務介紹</a><a href="/privacy">隱私權政策</a><a href="/terms">服務條款</a
+        ><a href="/login">登入</a>
+      </nav>
+    </header>
+
+    <main class="public-main">
+      <section class="public-hero">
+        <p class="public-eyebrow">Dashcam Viewer · 行車記錄器影片管理</p>
+        <h1>整理每段旅程，<br />留住需要的行車影像。</h1>
+        <p class="public-lead">
+          {{SITE_TITLE}} 是自架的行車影片管理與 YouTube
+          備份服務。你可以上傳記錄器影片，依日期與旅程整理，同步觀看前後鏡頭、剪出片段，並將自己選定的影片備份到自己的
+          YouTube 頻道。
+        </p>
+        <div class="public-actions">
+          <a class="btn btn--solid" href="/login">登入管理影片</a
+          ><a class="btn btn--ghost" href="#youtube">了解 YouTube 備份</a>
+        </div>
+        <p class="public-caption">
+          本頁、隱私權政策與服務條款不需登入即可閱讀。影片管理由站台管理員提供的帳號登入使用。
+        </p>
+      </section>
+      <section aria-labelledby="features-heading">
+        <h2 id="features-heading">這個應用程式提供什麼功能？</h2>
+        <div class="public-grid">
+          <article class="public-card">
+            <h3>上傳與旅程整理</h3>
+            <p>透過瀏覽器或站台啟用的 SFTP 上傳影片，自動依拍攝時間整理旅程並合併前後鏡頭素材。</p>
+          </article>
+          <article class="public-card">
+            <h3>播放、剪輯與分享</h3>
+            <p>
+              同步觀看雙鏡頭、選取區間匯出片段，或由你建立限時分享連結，讓持有連結的人查看指定旅程。
+            </p>
+          </article>
+          <article class="public-card">
+            <h3>YouTube 排程備份</h3>
+            <p>
+              連結自己的頻道，選擇旅程、鏡頭、標題與可見性，立即上傳或排程；傳輸在伺服器背景執行。
+            </p>
+          </article>
+        </div>
+      </section>
+      <section class="public-panel" id="youtube" aria-labelledby="youtube-heading">
+        <h2 id="youtube-heading">為什麼需要 Google／YouTube 授權？</h2>
+        <p>
+          本站使用 YouTube API Services。Google
+          授權只在你選擇連結頻道時發起，用來上傳你指定的影片、讀取頻道與影片處理狀態，並在你選擇雙鏡頭上傳時建立播放清單、加入兩部影片及在影片說明附上配對連結。
+        </p>
+        <p>
+          本站保存加密的授權憑證，讓排程在你關閉瀏覽器後仍能執行；也會保存頻道名稱、影片
+          ID、上傳紀錄與狀態快照。你可以暫停、取消或解除連結。本站帳號登入與 Google
+          頻道授權是各自獨立的流程。
+        </p>
+        <p>
+          影片只會在你選擇並確認後傳送到
+          YouTube。本機原檔只有在你另外確認清理、且系統核對上傳完成後才會刪除。YouTube
+          會重新壓縮影片，重要原檔請另行保留。
+        </p>
+        <p>
+          <a href="/privacy">閱讀完整的資料蒐集、使用與刪除說明</a> ·
+          <a href="/terms">閱讀服務條款</a>
+        </p>
+      </section>
+      <section aria-labelledby="contact-heading">
+        <h2 id="contact-heading">聯絡與隱私請求</h2>
+        <p>站台管理、資料存取、刪除或隱私問題的聯絡方式：{{PUBLIC_CONTACT}}</p>
+      </section>
+    </main>
+    <footer class="public-footer">
+      <span>{{SITE_TITLE}} · Dashcam Viewer</span><a href="/about">服務介紹</a
+      ><a href="/privacy">隱私權政策</a><a href="/terms">服務條款</a>
+    </footer>
+  </body>
+</html>

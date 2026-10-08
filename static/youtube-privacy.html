@@ -3,79 +3,277 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>YouTube 功能條款與隱私說明</title>
+    <title>隱私權政策 — {{SITE_TITLE}} · Dashcam Viewer</title>
+    <meta
+      name="description"
+      content="Dashcam Viewer 行車影片管理與 YouTube 備份服務：用途介紹、資料蒐集使用、保存刪除、隱私權政策及服務條款。"
+    />
     <link rel="stylesheet" href="/static/style.css?v=2.7.0" />
     <script src="/static/themes.js"></script>
     <link rel="stylesheet" href="/static/themes.css?v=2.1.2" />
+    <link rel="stylesheet" href="/static/public.css?v=1.0.0" />
   </head>
-  <body>
-    <main class="wrap" style="max-width: 800px; padding: 32px 20px; line-height: 1.8">
-      <h1>YouTube 功能條款與隱私說明</h1>
+  <body class="public-page">
+    <header class="public-header">
+      <a class="public-brand" href="/about">{{SITE_TITLE}}</a>
+      <nav aria-label="公開資訊">
+        <a href="/about">服務介紹</a><a href="/privacy">隱私權政策</a><a href="/terms">服務條款</a
+        ><a href="/login">登入</a>
+      </nav>
+    </header>
+
+    <main class="policy-main">
+      <h1>隱私權政策 / Privacy Policy</h1>
+      <p class="public-date">生效及更新日期：2026-10-08</p>
       <p>
-        更新日期：2026-10-06。此功能使用 YouTube API Services。使用本功能即表示你同意
-        <a href="https://www.youtube.com/t/terms">YouTube 使用條款</a>，Google 依其
-        <a href="https://policies.google.com/privacy">隱私權政策</a> 處理收到的資料。
+        本政策適用於「{{SITE_TITLE}}」（使用 Dashcam Viewer
+        程式提供的行車影片管理服務，以下稱「本站」），涵蓋本站帳號、影片管理、分享，以及
+        Google／YouTube
+        授權與備份功能。本站由提供你帳號的站台營運者管理。隱私、資料存取、更正或刪除請求的公開聯絡方式：{{PUBLIC_CONTACT}}
       </p>
-      <h2>授權與資料用途</h2>
-      <p>
-        登入本站仍使用本站帳號。連結 YouTube 時，Google
-        會取得你的同意並提供上傳、讀取頻道／影片狀態，以及管理播放清單與影片說明的 OAuth
-        授權。管理權限只用於：選擇「前後鏡頭都上傳」時，為每趟建立一個播放清單、加入該趟的兩部影片，並在這兩部影片的說明末尾附上彼此的連結；本站不會修改或刪除其他影片與播放清單。本站不取得你的
-        Google 密碼。本站使用加密保存的 access token、refresh token
-        執行你建立的背景上傳排程，讀取你的頻道名稱與 ID，確認影片處理狀態，並保存上傳影片
-        ID、標題、說明、時間、鏡頭配對、進度和操作紀錄。授權憑證及續傳網址不回傳至瀏覽器。
+      <p lang="en">
+        Dashcam Viewer manages dashcam footage and backs up videos selected by the user to their own
+        YouTube channel. This policy explains the account information, footage, Google OAuth
+        credentials and YouTube API data we collect; their purposes, recipients, storage, retention,
+        security, and deletion. Google authorization is optional. We do not sell Google user data,
+        use it for advertising, or use it to train AI models.
       </p>
-      <p>
-        只有你能透過此功能查看自己的 YouTube
-        上傳紀錄。站台由部署者營運；部署者具伺服器與資料備份的管理權限。資料保存在此站台的資料庫，憑證以獨立金鑰加密。本站另外保留經雜湊的頻道額度計數以遵守上傳上限，不含授權憑證。你的選定影片、標題、說明、可見性和兒童內容設定會傳送至
-        YouTube；本站不另向其他服務傳送這些資料。本站使用登入
-        Cookie，並在瀏覽器保存既有的主題與帳號介面偏好。
-      </p>
-      <h2>控制與刪除</h2>
-      <p>
-        你可以暫停佇列、取消未完成的傳輸或解除帳號連結。解除連結會立即刪除本站目前資料庫的 YouTube
-        授權、雲端影片連結與上傳紀錄，並嘗試向 Google 撤銷授權；若 Google
-        暫時無法連線，畫面會提示你自行撤銷。你也可隨時在
-        <a href="https://security.google.com/settings/security/permissions"
-          >Google 帳號第三方存取設定</a
-        >
-        撤銷授權。本機影片和已上傳至 YouTube 的影片不會因解除連結而刪除；YouTube 影片請在 YouTube
-        Studio 自行管理。
-      </p>
-      <p>
-        資料庫自動快照依站台設定輪替（預設保留 7
-        份），維運與部署回退備份由部署者管理；如需一併移除備份中的授權資料，請聯絡提供本站帳號的站台管理員。你選定並確認清理本機旅程前，系統會確認所有現有鏡頭已成功上傳、YouTube
-        已處理完成及本機版本相同；有額外影片、匯出片段或裁剪原始備份時拒絕清理。清理會永久移除本機旅程檔案，並保留
-        YouTube 副本紀錄。
-      </p>
-      <h2>保存、額度與下載限制</h2>
-      <p>
-        YouTube
-        會轉碼影片，並可能因帳號、版權或平台規則移除影片；它不承諾作為永久或原畫質備份。重要素材請另行保留原檔。<a
-          href="https://support.google.com/youtube/answer/10383400"
-          >頻道的 24 小時上傳上限</a
-        >
-        依地區與頻道紀錄不同，沒有統一保證數值。<a
-          href="https://developers.google.com/youtube/v3/getting-started"
-          >API 專案目前預設每天 100 次上傳呼叫</a
-        >，所有使用者共用；Google Cloud Console 所示額度為準。<a
-          href="https://developers.google.com/youtube/v3/docs/videos/insert"
-          >未經審核的 API 專案</a
-        >
-        可能限制為私人影片。
-      </p>
-      <p>
-        本站提供本機原影片下載。清理本機後，請使用
-        <a href="https://support.google.com/youtube/answer/56100">YouTube Studio</a> 或
-        <a href="https://takeout.google.com/">Google Takeout</a> 匯出。Studio 官方下載通常為
-        720p／360p；Takeout 依 Google 提供的格式匯出，無法保證原畫質。YouTube Data API
-        沒有原影片下載端點。本站不透過未公開介面抓取 YouTube 影音檔。
-      </p>
-      <p>
-        若對資料用途、刪除或隱私有疑問，請聯絡提供本站帳號的站台管理員。<a href="/youtube"
-          >返回 YouTube 副本</a
-        >
-      </p>
+      <nav class="policy-toc" aria-label="政策目錄">
+        <a href="#collection">蒐集資料</a><a href="#use">使用目的</a
+        ><a href="#google">Google 權限</a><a href="#sharing">分享對象</a
+        ><a href="#storage">保存與安全</a><a href="#deletion">撤銷與刪除</a
+        ><a href="#cookies">Cookie</a><a href="#contact">聯絡方式</a>
+      </nav>
+      <section id="collection">
+        <h2>1. 蒐集、存取與保存哪些資料 / Data collection</h2>
+        <div class="policy-table-wrap">
+          <table class="policy-table">
+            <thead>
+              <tr>
+                <th scope="col">資料類型與來源</th>
+                <th scope="col">具體內容</th>
+                <th scope="col">用途</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>本站帳號：你或管理員提供</td>
+                <td>
+                  使用者名稱、顯示名稱、選填電子郵件、角色、裝置型號與備註、播放與介面偏好；密碼經加鹽雜湊保存，另保存登入工作階段。
+                </td>
+                <td>登入驗證、帳號與權限管理、顯示頭像、裝置管理及個人設定。</td>
+              </tr>
+              <tr>
+                <td>行車影片：你上傳或輸入</td>
+                <td>
+                  原始影片與檔名、剪輯片段、旅程日期與拍攝時間、鏡頭、時長、旅程筆記、支援格式可解析的
+                  G-force，以及素材包含的影像、聲音或其他資訊。影片可能包含臉部、車牌及位置線索。
+                </td>
+                <td>整理、播放、剪輯、由你確認的分享與檢舉輔助文字，以及備份選定影片。</td>
+              </tr>
+              <tr>
+                <td>Google OAuth：Google 授權回傳</td>
+                <td>
+                  Access token、refresh token、到期時間；授權流程的 state 與 PKCE
+                  驗證資料。本站不取得你的 Google 密碼，亦不要求 Gmail 信件或聯絡人權限。
+                </td>
+                <td>
+                  綁定授權流程、代表你執行已確認的 YouTube 工作，更新短期 access token
+                  以支援背景排程。
+                </td>
+              </tr>
+              <tr>
+                <td>YouTube API Services：你授權的頻道</td>
+                <td>
+                  頻道名稱與 ID；本站上傳影片的
+                  ID、標題、說明、可見性、處理狀態及播放清單配對；同步時讀取該批影片的觀看、留言、按讚數、時長與是否仍可取得。本站不讀取留言內容。
+                </td>
+                <td>
+                  顯示頻道與最近同步的影片狀態、確認上傳及處理完成、配對雙鏡頭播放清單，核對本機清理條件。
+                </td>
+              </tr>
+              <tr>
+                <td>上傳及維運：服務運作產生</td>
+                <td>
+                  工作時間、鏡頭與範本、進度、成功或錯誤紀錄、續傳工作階段；請求時間、IP
+                  位址、路徑與錯誤診斷。代理服務亦可能處理瀏覽器與連線資訊。
+                </td>
+                <td>續傳、排程、額度及速率限制、故障排查與服務安全。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section id="use">
+        <h2>2. 使用目的與資料使用限制 / Use of data</h2>
+        <p>
+          本站僅將上述資料用於你可見的影片管理、帳號設定、分享、排程備份、狀態同步及維運安全功能。影片不會因登入或連結
+          Google 就自動傳送至
+          YouTube；你必須選擇旅程、上傳設定並確認工作。分享與本機清理也需另外操作。
+        </p>
+        <p>
+          本站不出售 Google 使用者資料，不將 Google 或 YouTube
+          資料用於廣告、跨服務追蹤、信用評分，或訓練人工智慧／機器學習模型。本站對從 Google APIs
+          取得資訊的使用與轉移遵守
+          <a href="https://developers.google.com/terms/api-services-user-data-policy"
+            >Google API Services User Data Policy</a
+          >，包括 Limited Use 要求。對 Google
+          使用者資料的人工存取限於你的明確同意、必要的安全調查或適用法律要求。
+        </p>
+      </section>
+      <section id="google">
+        <h2>3. Google／YouTube 授權範圍 / OAuth permissions</h2>
+        <p>
+          本站使用 <strong>YouTube API Services</strong>。Google
+          授權是選用功能；拒絕或撤銷授權會停用 YouTube 操作，你仍可使用本站的本機影片管理功能。
+        </p>
+        <ul>
+          <li>
+            <code>https://www.googleapis.com/auth/youtube.upload</code
+            >：將你確認的影片及標題、說明、可見性和兒童內容設定上傳至自己的頻道。
+          </li>
+          <li>
+            <code>https://www.googleapis.com/auth/youtube.force-ssl</code
+            >：讀取頻道及本站上傳影片的狀態；雙鏡頭上傳時建立該趟播放清單、加入影片，並更新本站上傳影片的說明以附上配對連結。Google
+            同意畫面對此權限可能有較廣的管理描述，本站實際用途限於上述操作。
+          </li>
+        </ul>
+        <p>
+          本站不透過此功能修改或刪除其他影片，也不透過 API 刪除 YouTube 影片。Google
+          對資料的處理請見 <a href="https://policies.google.com/privacy">Google 隱私權政策</a>；使用
+          YouTube 功能也受 <a href="https://www.youtube.com/t/terms">YouTube 服務條款</a>規範。
+        </p>
+      </section>
+      <section id="sharing">
+        <h2>4. 資料會提供給誰 / Sharing and recipients</h2>
+        <ul>
+          <li>
+            <strong>Google／YouTube：</strong
+            >上傳時傳送你選定的影片、標題、說明、可見性與兒童內容設定；憑證僅用於 Google OAuth 與
+            YouTube API 授權請求。Google 依自身政策處理資料。
+          </li>
+          <li>
+            <strong>站台營運者：</strong
+            >具有伺服器、資料庫與備份管理權限，用於提供服務、處理你的請求及必要安全維運。一般使用者只能透過
+            YouTube 功能查看自己的上傳紀錄。
+          </li>
+          <li>
+            <strong>你選擇的觀看者：</strong
+            >公開旅程可由站內有權存取的人查看；免登入分享連結可由持有者在有效期間觀看。YouTube
+            觀看範圍依你設定的可見性及平台規則決定。
+          </li>
+          <li>
+            <strong>連線與頭像服務：</strong>主機及代理／CDN 業者處理連線所需的 IP
+            與請求資訊。若本站電子郵件或電子郵件形式的使用者名稱用來載入 Gravatar 頭像，瀏覽器會向
+            Gravatar 傳送該地址的雜湊及連線資訊，詳見
+            <a href="https://automattic.com/privacy/">Automattic 隱私權政策</a>。這不是 Google OAuth
+            讀取的電子郵件。
+          </li>
+          <li>
+            <strong>法律及安全：</strong>僅於法律要求、處理濫用或保護安全的必要範圍提供資料；Google
+            資料轉移仍遵守 Limited Use 限制。
+          </li>
+        </ul>
+        <p>
+          本站未提供廣告追蹤或將授權資料交給資料仲介的功能，也不向一般使用者輸出授權憑證或 YouTube
+          續傳網址。
+        </p>
+      </section>
+      <section id="storage">
+        <h2>5. 儲存、安全與保存期間 / Storage, security and retention</h2>
+        <p>
+          帳號、影片索引、工作紀錄與 Google 授權資料存於營運者管理的伺服器及 SQLite
+          資料庫；影片和剪輯檔案存於該站台的檔案空間，只有你選定並確認的影片另傳送到 YouTube。
+        </p>
+        <p>
+          Google OAuth Client Secret、access token、refresh token 及續傳資訊以 AES-256-GCM
+          加密，金鑰與資料庫分開保存。本站密碼使用加鹽雜湊，公開站台與 Google 授權使用
+          HTTPS，操作受到登入及權限檢查保護。這些措施降低風險，但不代表資料沒有遺失或外洩的可能。
+        </p>
+        <ul>
+          <li>
+            <strong>帳號與影片：</strong
+            >於帳號與影片管理用途存續期間保存，直到你使用可用的刪除功能或提出刪除請求；過期登入工作階段由系統清理。
+          </li>
+          <li>
+            <strong>Google 授權與 YouTube 紀錄：</strong
+            >於連結與備份用途存續期間保存；解除連結立即移除目前資料庫的授權與上傳紀錄。授權 state
+            有效期 10 分鐘且只能使用一次，系統在後續發起授權時清理過期
+            state。影片狀態於同步時更新並標示最近同步時間。
+          </li>
+          <li>
+            <strong>失敗素材：</strong>隔離素材依設定輪替，程式預設保存 7
+            天；不包含已整理的原始旅程影片。
+          </li>
+          <li>
+            <strong>備份：</strong>資料庫快照預設每 24 小時建立、保留最近 7
+            份，可由營運者調整。回退備份可能保存更久，並包含加密授權資料與金鑰；快照不等於影片備份。刪除請求可一併要求處理備份殘留。
+          </li>
+          <li>
+            <strong>技術日誌：</strong
+            >依主機與代理服務設定輪替，僅用於運作、安全與排查；可聯絡營運者確認實際保存設定。
+          </li>
+        </ul>
+      </section>
+      <section id="deletion">
+        <h2>6. 存取、更正、撤銷及刪除 / Access, revocation and deletion</h2>
+        <ol>
+          <li>
+            <strong>更正本站資料：</strong
+            >「我的帳號」可修改電子郵件、顯示名稱、裝置與偏好；其他存取、更正或帳號刪除請聯絡營運者。
+          </li>
+          <li>
+            <strong>停止 YouTube 操作：</strong>「維運 → YouTube 管理 →
+            頻道」可暫停或解除連結，工作可取消。解除連結立即刪除該使用者在目前資料庫的授權、影片連結、播放清單配對及上傳紀錄，並嘗試向
+            Google 撤銷。撤銷失敗時會提示你自行處理。
+          </li>
+          <li>
+            <strong>在 Google 撤銷：</strong>可隨時透過
+            <a href="https://security.google.com/settings/security/permissions"
+              >Google 帳號第三方存取設定</a
+            >撤銷本站權限。之後本站無法以該授權執行新的有效 API
+            操作；移除本站紀錄請同時解除連結或通知營運者。
+          </li>
+          <li>
+            <strong>完整刪除請求：</strong>聯絡
+            {{PUBLIC_CONTACT}}，提供本站使用者名稱、資料範圍及是否包含帳號、影片或備份殘留。營運者會核對請求、說明處理方式並回覆結果。請勿提供密碼、Google
+            token 或 Client Secret。
+          </li>
+        </ol>
+        <p>
+          解除連結或刪除本站 YouTube 紀錄不會刪除本機或 YouTube 影片；YouTube 影片請在
+          <a href="https://studio.youtube.com/">YouTube Studio</a
+          >管理。本機清理是另行確認的永久刪除操作；本站不保證可從 YouTube 還原原始畫質。
+        </p>
+        <p>
+          本站另保留經雜湊的頻道額度計數以遵守上傳上限，不含授權憑證，解除連結後不再用於執行你的上傳。
+        </p>
+      </section>
+      <section id="cookies">
+        <h2>7. Cookie 與瀏覽器儲存 / Cookies and browser storage</h2>
+        <p>
+          本站使用登入 Cookie 維持工作階段；localStorage／sessionStorage
+          保存主題、播放偏好、續看位置及介面快取，用於功能運作，不用於廣告。你可由瀏覽器清除，清除
+          Cookie 會登出，但不會刪除伺服器影片或 Google
+          授權。公開介紹與政策頁只載入本站樣式與主題程式，不需登入。
+        </p>
+      </section>
+      <section id="contact">
+        <h2>8. 聯絡方式與更新 / Contact and changes</h2>
+        <p>
+          公開聯絡方式：{{PUBLIC_CONTACT}}。可提出隱私疑問、資料存取、更正、刪除或撤銷後的資料處理請求。
+        </p>
+        <p>
+          政策變更會標示更新日期；新增未涵蓋的 Google
+          資料用途或授權操作時，會在相關功能說明並取得必要同意。其他使用條件請見<a href="/terms"
+            >服務條款</a
+          >。
+        </p>
+      </section>
     </main>
+    <footer class="public-footer">
+      <span>{{SITE_TITLE}} · Dashcam Viewer</span><a href="/about">服務介紹</a
+      ><a href="/privacy">隱私權政策</a><a href="/terms">服務條款</a>
+    </footer>
   </body>
 </html>

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Show a public app introduction to visitors while retaining the trip dashboard for signed-in users. Link the privacy policy and terms from the introduction and login page.
+- Expand the privacy policy with account, footage, OAuth and YouTube API data collection, usage, recipients, retention, security and deletion disclosures; add separate service terms and a deployment-configured public contact address. Keep the previous YouTube privacy URL working.
+- Update the compatible brace-expansion dependency to 5.0.12 to address the release audit's high-severity recursion vulnerability.
+
 ## 2.8.0 — 2026-10-07
 
 - Sync uploaded videos with YouTube from Ops: read back each video's current title, privacy, views, likes and comments, and flag videos that were deleted on YouTube. Syncing runs when the archive opens (at most every five minutes) or on demand, and never changes anything on YouTube; each video links to YouTube Studio for edits and deletion.

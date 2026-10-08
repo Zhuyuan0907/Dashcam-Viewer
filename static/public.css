@@ -1,0 +1,171 @@
+.public-page {
+  margin: 0;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.85;
+}
+.public-header,
+.public-footer {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 22px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.public-brand {
+  font-weight: 800;
+  font-size: 19px;
+  color: var(--ink);
+}
+.public-header nav,
+.public-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 22px;
+}
+.public-main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 20px 24px 56px;
+}
+.public-main > section + section {
+  margin-top: 48px;
+}
+.public-main p + p,
+.policy-main p + p,
+.policy-main ul,
+.policy-main ol {
+  margin-top: 16px;
+}
+.public-hero {
+  padding: clamp(24px, 6vw, 72px) 0;
+  max-width: 900px;
+}
+.public-eyebrow {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.public-hero h1 {
+  font-size: clamp(30px, 5vw, 58px);
+  line-height: 1.25;
+  margin: 14px 0 24px;
+  letter-spacing: -0.025em;
+}
+.public-lead {
+  font-size: 18px;
+  max-width: 780px;
+}
+.public-actions {
+  margin: 28px 0 14px;
+}
+.public-caption,
+.public-date {
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.public-main h2,
+.policy-main h2 {
+  font-size: 24px;
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+.public-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.public-card,
+.public-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 26px;
+  background: var(--surface);
+}
+.public-card h3 {
+  margin: 0 0 12px;
+  font-size: 19px;
+}
+.public-card p {
+  margin: 0;
+}
+.public-footer {
+  border-top: 1px solid var(--border);
+  justify-content: flex-start;
+  font-size: 14px;
+}
+.public-footer span {
+  margin-right: auto;
+}
+.policy-main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 36px 24px 64px;
+  overflow-wrap: anywhere;
+}
+.policy-main h1 {
+  font-size: clamp(30px, 4vw, 42px);
+  margin: 0 0 12px;
+}
+.policy-main section {
+  margin-top: 36px;
+}
+.policy-main ul,
+.policy-main ol {
+  padding-left: 24px;
+}
+.policy-main li + li {
+  margin-top: 8px;
+}
+.policy-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.policy-table-wrap {
+  overflow-x: auto;
+}
+.policy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+.policy-table th,
+.policy-table td {
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  padding: 14px;
+}
+.policy-table th {
+  background: var(--surface);
+}
+@media (max-width: 700px) {
+  .public-header,
+  .public-footer,
+  .public-main,
+  .policy-main {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .public-grid {
+    grid-template-columns: 1fr;
+  }
+  .public-panel,
+  .public-card {
+    padding: 20px;
+  }
+  .public-header nav {
+    gap: 16px;
+    font-size: 14px;
+  }
+}

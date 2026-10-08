@@ -9,12 +9,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { STATIC_DIR } from "../config.js";
+import { STATIC_DIR, PUBLIC_CONTACT_EMAIL } from "../config.js";
 import { lookupSession } from "../auth.js";
 import type { AppContext } from "../context.js";
 
 /** 每頁要注入給動態 JS 的字串命名空間(key 前綴)。靜態文字替換用全量,不受此限。 */
 const PAGE_NS: Record<string, string[]> = {
+  "public-home.html": [],
+  "youtube-privacy.html": [],
+  "terms.html": [],
   "index.html": ["common", "nav", "title", "index", "trip"],
   "browse.html": ["common", "nav", "title", "browse", "trip", "index"],
   "trip.html": ["common", "nav", "title", "trip"],
@@ -126,10 +129,16 @@ function pickStrings(strings: Record<string, string>, prefixes: string[]): Recor
 export function registerPages(app: FastifyInstance, ctx: AppContext): void {
   const { settings } = ctx;
 
-  function renderPage(name: string, reply: FastifyReply): FastifyReply {
+  function renderPage(name: string, reply: FastifyReply, cacheControl = "no-cache"): FastifyReply {
     const strings = settings.readStrings();
     const brandTitle = settings.get("site_title");
     let html = injectStrings(rawHtml(name), strings, brandTitle, "{page} — {brand}");
+    const contact = PUBLIC_CONTACT_EMAIL
+      ? `<a href="mailto:${escAttr(PUBLIC_CONTACT_EMAIL)}">${escHtml(PUBLIC_CONTACT_EMAIL)}</a>`
+      : "請聯絡為你建立帳號的站台管理員，提出隱私、資料存取或刪除請求。";
+    html = html
+      .replaceAll("{{SITE_TITLE}}", () => escHtml(brandTitle))
+      .replaceAll("{{PUBLIC_CONTACT}}", () => contact);
 
     // 注入該頁需要的字串給動態 JS(t() 讀 window.__S);只含該頁命名空間,避免外洩。
     // `<` 一律轉成 <:字串值(可由管理員自訂)含 </script> 時才不會提前關閉標籤。
@@ -144,7 +153,7 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
       html = html.replace("</body>", `${blob}\n</body>`);
     }
 
-    return reply.type("text/html").header("Cache-Control", "no-cache").send(html);
+    return reply.type("text/html").header("Cache-Control", cacheControl).send(html);
   }
 
   const page = (name: string) => (_req: unknown, reply: FastifyReply) => renderPage(name, reply);
@@ -160,7 +169,15 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
 
   app.get("/login", page("login.html"));
   app.get("/change-password", page("change-password.html"));
-  app.get("/", page("index.html"));
+  // 訪客直接取得用途介紹；已登入者仍使用原本的旅程首頁。不可快取不同登入狀態的內容。
+  app.get("/", (req, reply) => {
+    const user = lookupSession(ctx.db, req.cookies?.session_token);
+    reply.header("Vary", "Cookie");
+    return renderPage(user ? "index.html" : "public-home.html", reply, "no-store");
+  });
+  app.get("/about", page("public-home.html"));
+  app.get("/privacy", page("youtube-privacy.html"));
+  app.get("/terms", page("terms.html"));
   app.get("/browse", page("browse.html"));
   app.get("/trip/*", page("trip.html"));
   app.get("/upload", page("upload.html"));

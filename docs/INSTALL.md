@@ -80,6 +80,7 @@ npm start
 | 變數 | 預設 | 說明 |
 | --- | --- | --- |
 | `DASHCAM_DATA_DIR` | 專案 `data/` | 資料庫、影片、金鑰與工作狀態。正式環境請用絕對路徑 |
+| `DASHCAM_PUBLIC_CONTACT_EMAIL` | 空 | 公開介紹、隱私權政策與服務條款上的聯絡信箱；請由部署者設定 |
 | `DASHCAM_HOST` / `DASHCAM_PORT` | `0.0.0.0` / `8080` | 監聽位址與埠 |
 | `DASHCAM_BIND_IP` | `127.0.0.1` | （Compose）對外發佈的位址 |
 | `DASHCAM_COOKIE_SECURE` | production 為 true | HTTPS 請設 true |
