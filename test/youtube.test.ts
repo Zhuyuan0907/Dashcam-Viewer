@@ -865,3 +865,153 @@ test("reauthorization recovers one rejected fresh token and preserves the paused
     await f.close();
   }
 });
+
+test("picker counts only eligible cameras and submits exactly the reviewed video", async () => {
+  const f = await fixture();
+  try {
+    f.service.pause(1, true);
+    await f.service.enqueue(1, [f.tripId], f.options);
+    f.ctx.db
+      .prepare(
+        "UPDATE youtube_uploads SET status='succeeded',video_id='already-front' WHERE camera='front'",
+      )
+      .run();
+    f.ctx.db.prepare("UPDATE youtube_uploads SET status='failed' WHERE camera='rear'").run();
+    const calls = f.mock.calls.length;
+    const read = async (query: string) =>
+      (
+        await f.app.inject({
+          method: "GET",
+          url: `/api/youtube/trips?${query}`,
+          headers: { cookie: f.cookie },
+        })
+      ).json();
+    const ready = await read("filter=ready&camera=both");
+    assert.equal(ready.total, 1);
+    assert.equal(
+      (await read("filter=uploaded&camera=both")).total,
+      1,
+      "部分已上傳的旅程也會出現在紀錄中",
+    );
+    assert.equal(ready.trips[0].cameras.front.selectable, false);
+    assert.equal(
+      ready.trips[0].cameras.front.video_url,
+      "https://www.youtube.com/watch?v=already-front",
+    );
+    assert.equal(ready.trips[0].cameras.rear.selectable, true);
+    assert.equal((await read("filter=ready&camera=front")).total, 0);
+    assert.equal((await read("filter=uploaded&camera=front")).total, 1);
+    const response = await f.app.inject({
+      method: "POST",
+      url: "/api/youtube/uploads",
+      headers: { cookie: f.cookie },
+      payload: {
+        ...f.options,
+        trip_ids: [f.tripId],
+        videos: [
+          { trip_id: f.tripId, camera: "rear", revision: ready.trips[0].cameras.rear.revision },
+        ],
+      },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), { added: 1, skipped: 0 });
+    assert.equal((await read("filter=ready")).total, 0);
+    assert.equal((await read("filter=queued")).total, 1);
+    assert.equal(f.service.account(1)!.paused, 1);
+    assert.equal(f.mock.calls.length, calls, "picker and enqueue never invoke Google");
+    assert.equal(f.service.get(1)!.video_id, "already-front");
+    assert.ok(!JSON.stringify(ready).includes(f.dir), "private source paths are not exposed");
+  } finally {
+    await f.close();
+  }
+});
+
+test("picker filters before pagination and isolates ownership, channels and changed footage", async () => {
+  const f = await fixture();
+  try {
+    f.service.pause(1, true);
+    const original = f.ctx.db.prepare("SELECT * FROM trips WHERE trip_id=?").get(f.tripId) as any;
+    for (let i = 0; i < 5; i++)
+      upsertTrip(
+        f.ctx.db,
+        { ...original, trip_id: `picker-${i}`, day_order: i + 2, has_front: true, has_rear: true },
+        f.dir,
+        1,
+      );
+    f.ctx.db
+      .prepare(
+        "INSERT INTO users(id,username,password_hash,role,email,created_at) VALUES(2,'other','h','user','',0)",
+      )
+      .run();
+    upsertTrip(
+      f.ctx.db,
+      { ...original, trip_id: "other-private-trip", has_front: true, has_rear: true },
+      f.dir,
+      2,
+    );
+    await f.service.enqueue(1, [f.tripId, "picker-0", "picker-1"], f.options);
+    f.ctx.db
+      .prepare(
+        "UPDATE youtube_uploads SET status='succeeded',video_id='completed' WHERE trip_id IN (?,?)",
+      )
+      .run(f.tripId, "picker-0");
+    const read = async (query: string) =>
+      (
+        await f.app.inject({
+          method: "GET",
+          url: `/api/youtube/trips?${query}`,
+          headers: { cookie: f.cookie },
+        })
+      ).json();
+    const first = await read("filter=ready&limit=2");
+    const last = await read("filter=ready&limit=2&offset=2");
+    assert.equal(first.total, 3);
+    assert.equal(first.trips.length, 2);
+    assert.equal(last.trips.length, 1);
+    assert.deepEqual(first.counts, { ready: 3, queued: 1, uploaded: 2, unavailable: 0, all: 6 });
+    assert.equal((await read("filter=all&ids=other-private-trip")).total, 0);
+    await fs.appendFile(f.front, Buffer.from([3]));
+    const changed = await read(`filter=all&ids=${f.tripId}`);
+    assert.equal(changed.trips[0].cameras.front.status, "changed");
+    assert.equal(changed.trips[0].cameras.front.selectable, true);
+    assert.equal(changed.trips[0].cameras.rear.status, "succeeded");
+    f.ctx.db.prepare("UPDATE youtube_accounts SET channel_id='another-channel'").run();
+    const differentChannel = await read(`filter=all&ids=${f.tripId}`);
+    assert.equal(differentChannel.trips[0].cameras.rear.status, "not_uploaded");
+    assert.equal(differentChannel.trips[0].cameras.rear.video_url, null);
+  } finally {
+    await f.close();
+  }
+});
+
+test("picker rejects stale footage revisions before creating any upload jobs", async () => {
+  const f = await fixture();
+  try {
+    f.service.pause(1, true);
+    const result = (
+      await f.app.inject({
+        method: "GET",
+        url: "/api/youtube/trips",
+        headers: { cookie: f.cookie },
+      })
+    ).json();
+    f.ctx.db.prepare("UPDATE trips SET duration_sec=61 WHERE trip_id=?").run(f.tripId);
+    const response = await f.app.inject({
+      method: "POST",
+      url: "/api/youtube/uploads",
+      headers: { cookie: f.cookie },
+      payload: {
+        ...f.options,
+        trip_ids: [f.tripId],
+        videos: [
+          { trip_id: f.tripId, camera: "front", revision: result.trips[0].cameras.front.revision },
+        ],
+      },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.match(response.json().detail, /影片已變更/);
+    assert.equal((f.ctx.db.prepare("SELECT COUNT(*) AS n FROM youtube_uploads").get() as any).n, 0);
+  } finally {
+    await f.close();
+  }
+});

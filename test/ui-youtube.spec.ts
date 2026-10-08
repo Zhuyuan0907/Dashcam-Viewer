@@ -38,6 +38,94 @@ const connected = {
   },
 };
 
+function pickerTrip(index: number, states: Record<string, string> = {}) {
+  const cameras = Object.fromEntries(
+    ["front", "rear"].map((camera) => {
+      const status = states[camera] || "not_uploaded";
+      return [
+        camera,
+        {
+          status,
+          selectable: ["not_uploaded", "failed", "missing"].includes(status),
+          revision: "a".repeat(64),
+          video_url:
+            status === "succeeded"
+              ? `https://www.youtube.com/watch?v=video-${index}-${camera}`
+              : null,
+        },
+      ];
+    }),
+  );
+  return {
+    trip_id: `trip-${index}`,
+    date: "2026-10-06",
+    day_order: index + 1,
+    start_epoch: 1785714400,
+    end_epoch: 1785714406,
+    duration_sec: 6,
+    has_front: 1,
+    has_rear: 1,
+    device: { model: "Polaroid MS279WG" },
+    cameras,
+  };
+}
+async function mockPicker(page: Page, trips: ReturnType<typeof pickerTrip>[]) {
+  await page.route("**/video/*/thumbnail", (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="160" height="90" fill="#485965"/></svg>',
+    }),
+  );
+  await page.route("**/api/youtube/trips?*", (route) => {
+    const url = new URL(route.request().url());
+    const camera = url.searchParams.get("camera") || "both";
+    const filter = url.searchParams.get("filter") || "ready";
+    const ids = url.searchParams.get("ids")?.split("\n");
+    const date = url.searchParams.get("date");
+    const items = trips
+      .filter((t) => (!ids || ids.includes(t.trip_id)) && (!date || t.date === date))
+      .map((t) => {
+        const states = Object.entries(t.cameras)
+          .filter(([c]) => camera === "both" || c === camera)
+          .map(([, s]) => s);
+        const group = states.some((s) => s.selectable)
+          ? "ready"
+          : states.some((s) => ["queued", "uploading", "processing"].includes(s.status))
+            ? "queued"
+            : "uploaded";
+        return {
+          ...t,
+          group,
+          groups: {
+            ready: states.some((s) => s.selectable),
+            queued: states.some((s) => ["queued", "uploading", "processing"].includes(s.status)),
+            uploaded: states.some((s) => s.status === "succeeded"),
+          },
+        };
+      });
+    const counts = { ready: 0, queued: 0, uploaded: 0, all: items.length };
+    items.forEach((t) => {
+      for (const key of ["ready", "queued", "uploaded"] as const) if (t.groups[key]) counts[key]++;
+    });
+    const filtered = items.filter(
+      (t) => filter === "all" || t.groups[filter as keyof typeof t.groups],
+    );
+    const limit = Number(url.searchParams.get("limit")) || 6;
+    const offset = Math.min(
+      Number(url.searchParams.get("offset")) || 0,
+      Math.max(0, Math.ceil(filtered.length / limit) - 1) * limit,
+    );
+    return route.fulfill({
+      json: {
+        trips: filtered.slice(offset, offset + limit),
+        total: filtered.length,
+        counts,
+        offset,
+      },
+    });
+  });
+}
+
 test("unconfigured site guides the owner to the OAuth setup steps in ops", async ({ page }) => {
   await setup(page);
   const errors: string[] = [];
@@ -69,28 +157,10 @@ test("connected account walks through the five steps and submits a paired batch"
   page,
 }) => {
   await setup(page);
-  const trips = Array.from({ length: 30 }, (_, index) => ({
-    trip_id: `trip-${index}`,
-    date: "2026-10-06",
-    day_order: index + 1,
-    start_epoch: 1785714400,
-    end_epoch: 1785714406,
-    duration_sec: 6,
-    has_front: 1,
-    has_rear: 1,
-    device: { model: "Polaroid MS279WG" },
-  }));
-  await page.route("**/api/trips?*", (route) => {
-    const url = new URL(route.request().url());
-    const limit = Number(url.searchParams.get("limit"));
-    const offset = Number(url.searchParams.get("offset"));
-    return route.fulfill({
-      json: { trips: trips.slice(offset, offset + limit), total: trips.length },
-    });
-  });
-  await page.route("**/api/youtube/trip-status?*", (route) =>
-    route.fulfill({ json: { trips: { "trip-1": { front: "succeeded", rear: "uploading" } } } }),
+  const trips = Array.from({ length: 30 }, (_, i) =>
+    pickerTrip(i, i === 1 ? { front: "succeeded", rear: "uploading" } : {}),
   );
+  await mockPicker(page, trips);
   await page.route("**/api/youtube/account", (route) => route.fulfill({ json: connected }));
   await page.route("**/api/youtube/preview", (route) =>
     route.fulfill({ json: { title: "行車記錄 2026-10-06 前鏡頭", description: "旅程 trip-0" } }),
@@ -109,15 +179,18 @@ test("connected account walks through the five steps and submits a paired batch"
     await page.goto("/youtube");
     await expect(page.locator("#yt-step-1")).toBeVisible();
     await expect(page.locator('#yt-steps li[data-step="0"]')).toHaveClass(/is-done/);
-    await expect(page.locator("#yt-trips")).toContainText("前・已上傳");
+    await expect(page.locator('[data-trip="trip-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-filter="ready"]')).toContainText("29 趟");
+    await page.locator('[data-filter="queued"]').click();
     await expect(page.locator('[data-trip="trip-1"]')).toBeDisabled();
-    await expect(page.locator(".yt-trip.is-done")).toHaveCount(1);
+    await expect(page.locator("#yt-trips")).toContainText("已上傳");
+    await page.locator('[data-filter="ready"]').click();
     await noOverflow(page);
     await shot(page, `wizard-select-${viewport.width}`);
   }
   await expect(page.locator("#yt-next")).toBeDisabled();
   await page.locator("#yt-select-page").click();
-  await expect(page.locator('[data-trip="trip-1"]')).not.toBeChecked();
+  await expect(page.locator('[data-trip="trip-1"]')).toHaveCount(0);
   await expect(page.locator('[data-trip="trip-2"]')).toBeChecked();
   await page.locator("#yt-clear-selection").click();
   await expect(page.locator("#yt-foot-status")).toHaveText("尚未選擇旅程");
@@ -139,7 +212,7 @@ test("connected account walks through the five steps and submits a paired batch"
   await noOverflow(page);
   await shot(page, "wizard-metadata");
   await page.locator("#yt-next").click();
-  await expect(page.locator('input[name="yt-camera"][value="both"]')).toBeChecked();
+  await expect(page.locator("#yt-mode-selection")).toContainText("2 趟、4 部影片");
   await page.locator("details.yt-advanced summary").click();
   await page.locator("#yt-start").fill("2026-12-01T09:00");
   await noOverflow(page);
@@ -156,6 +229,7 @@ test("connected account walks through the five steps and submits a paired batch"
   await expect(page.locator("#yt-done-text")).toContainText("已加入 4 部影片");
   expect(submitted.trip_ids).toEqual(["trip-0", "trip-8"]);
   expect(submitted.camera).toBe("both");
+  expect(submitted.videos).toHaveLength(4);
   expect(submitted.pair).toBe(true);
   expect(submitted.privacy).toBe("private");
   expect(submitted.made_for_kids).toBe(false);
@@ -428,4 +502,130 @@ test("single-video action keeps the remaining queue paused", async ({ page }) =>
   expect(singleCalls).toBe(1);
   expect(mutations).toEqual(["/api/youtube/uploads/8/test"]);
   await noOverflow(page);
+});
+
+test("partial trips show exact camera selection, completed links and a persistent basket", async ({
+  page,
+}) => {
+  await setup(page);
+  const trips = [
+    pickerTrip(0, { front: "succeeded" }),
+    pickerTrip(1, { front: "succeeded", rear: "succeeded" }),
+    pickerTrip(2, { front: "queued", rear: "queued" }),
+    pickerTrip(3),
+  ];
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await mockPicker(page, trips);
+  await page.route("**/api/youtube/account", (r) =>
+    r.fulfill({ json: { ...connected, account: { ...connected.account, paused: true } } }),
+  );
+  await page.route("**/api/youtube/uploads?*", (r) =>
+    r.fulfill({ json: { counts: [{ status: "queued", n: 2 }] } }),
+  );
+  let previewCamera: string | undefined;
+  await page.route("**/api/youtube/preview", (r) => {
+    previewCamera = r.request().postDataJSON().camera;
+    return r.fulfill({ json: { title: "後鏡頭測試", description: "部分旅程" } });
+  });
+  let submitted: any;
+  await page.route("**/api/youtube/uploads", (r) => {
+    submitted = r.request().postDataJSON();
+    return r.fulfill({ json: { added: 1, skipped: 0 } });
+  });
+  for (const viewport of [
+    { width: 1366, height: 768 },
+    { width: 390, height: 844 },
+    { width: 390, height: 640 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/youtube");
+    await expect(page.locator('[data-filter="ready"]')).toContainText("2 趟");
+    await expect(page.locator("#yt-queue-chip")).toContainText("佇列已暫停 2 部");
+    await expect(page.locator('[data-trip="trip-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-trip="trip-2"]')).toHaveCount(0);
+    const card = page.locator(".yt-trip", { has: page.locator('[data-trip="trip-0"]') });
+    await expect(card).toContainText("這次可上傳：後鏡頭");
+    await expect(card.locator('a[href*="video-0-front"]')).toBeVisible();
+    await page.locator('[data-trip="trip-0"]').check();
+    await expect(page.locator("#yt-foot-status")).toHaveText("已選 1 趟 · 1 部影片");
+    if ((await page.locator("#yt-basket").getAttribute("open")) === null)
+      await page.locator("#yt-foot-status").click();
+    await expect(page.locator("#yt-basket")).toHaveAttribute("open", "");
+    await expect(page.locator("#yt-selected-list")).toContainText("後鏡頭 · 1 部影片");
+    await expect(page.locator("#yt-selected-list")).not.toContainText("前鏡頭");
+    await page.locator("#yt-selected-list [data-remove]").click();
+    await expect(page.locator('[data-trip="trip-0"]')).not.toBeChecked();
+    await page.locator('[data-trip="trip-0"]').check();
+    await page.locator('[data-filter="uploaded"]').click();
+    await expect(page.locator('[data-trip="trip-1"]')).toBeDisabled();
+    await expect(page.locator('#yt-trips a[href*="youtube.com"]')).toHaveCount(3);
+    await expect(page.locator("#yt-basket-count")).toHaveText("1 趟 · 1 部影片");
+    await noOverflow(page);
+    await page.locator('[data-filter="ready"]').click();
+    await expect(page.locator('[data-trip="trip-0"]')).toBeChecked();
+    await shot(page, `wizard-partial-${viewport.width}-${viewport.height}`);
+  }
+  await page.locator("#yt-next").click();
+  expect(previewCamera).toBe("rear");
+  await page.locator("#yt-next").click();
+  await page.locator("#yt-next").click();
+  await expect(page.locator("#yt-confirm-list")).toContainText("後鏡頭 · 1 部影片");
+  await expect(page.locator("#yt-confirm-hint")).toContainText("佇列已暫停");
+  await page.locator("#yt-confirm-upload").check();
+  await page.locator("#yt-next").click();
+  expect(submitted.videos).toEqual([
+    { trip_id: "trip-0", camera: "rear", revision: "a".repeat(64) },
+  ]);
+  await expect(page.locator("#yt-done-text")).toContainText("佇列仍保持暫停");
+  expect(errors).toEqual([]);
+});
+
+test("individual camera choices survive date filters and clear excluded cameras explicitly", async ({
+  page,
+}) => {
+  await setup(page);
+  await mockPicker(page, [pickerTrip(0), { ...pickerTrip(1), date: "2026-10-07" }]);
+  await page.route("**/api/youtube/account", (r) => r.fulfill({ json: connected }));
+  await page.goto("/youtube");
+  await page.locator('[data-camera-trip="trip-0"][data-camera="rear"]').check();
+  await expect(page.locator('[data-trip="trip-0"]')).toHaveJSProperty("indeterminate", true);
+  await expect(page.locator("#yt-foot-status")).toHaveText("已選 1 趟 · 1 部影片");
+  await page.locator("#yt-date").fill("2026-10-07");
+  await expect(page.locator('[data-trip="trip-0"]')).toHaveCount(0);
+  await expect(page.locator("#yt-basket-count")).toHaveText("1 趟 · 1 部影片");
+  await page.locator("#yt-clear-date").click();
+  await expect(page.locator('[data-camera-trip="trip-0"][data-camera="rear"]')).toBeChecked();
+  await page.locator("#yt-camera-filter").selectOption("front");
+  await expect(page.locator("#yt-basket-count")).toHaveText("0 趟 · 0 部影片");
+  await expect(page.locator("#yt-notice")).toContainText("已移除 1 部");
+  await page.locator('[data-trip="trip-0"]').check();
+  await expect(page.locator("#yt-selected-list")).toContainText("前鏡頭 · 1 部影片");
+});
+
+test("a selection that changed in another tab returns to review without submitting", async ({
+  page,
+}) => {
+  await setup(page);
+  const trips = [pickerTrip(0)];
+  await mockPicker(page, trips);
+  await page.route("**/api/youtube/account", (r) => r.fulfill({ json: connected }));
+  await page.route("**/api/youtube/preview", (r) =>
+    r.fulfill({ json: { title: "測試", description: "測試" } }),
+  );
+  let uploads = 0;
+  await page.route("**/api/youtube/uploads", (r) => {
+    uploads++;
+    return r.fulfill({ json: { added: 2 } });
+  });
+  await page.goto("/youtube");
+  await page.locator('[data-trip="trip-0"]').check();
+  await page.locator("#yt-next").click();
+  await page.locator("#yt-next").click();
+  trips[0].cameras.front = { ...trips[0].cameras.front, status: "queued", selectable: false };
+  await page.locator("#yt-next").click();
+  await expect(page.locator("#yt-step-1")).toBeVisible();
+  await expect(page.locator("#yt-notice")).toContainText("已移出清單");
+  await expect(page.locator("#yt-foot-status")).toHaveText("已選 1 趟 · 1 部影片");
+  expect(uploads).toBe(0);
 });

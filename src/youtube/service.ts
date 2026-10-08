@@ -121,6 +121,8 @@ export function version(row: TripRow): string {
 export function sourceVersion(row: TripRow, size: number, mtime: number): string {
   return JSON.stringify([version(row), size, mtime]);
 }
+export const sourceRevision = (value: string): string =>
+  crypto.createHash("sha256").update(value).digest("hex");
 const pacificFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/Los_Angeles",
   year: "numeric",
@@ -379,6 +381,7 @@ export class YoutubeService {
       not_before: number;
       /** 雙鏡頭時自動建立「一趟一個播放清單」並在說明互相連結。 */
       pair?: boolean;
+      videos?: Array<{ trip_id: string; camera: string; revision: string }>;
     },
   ) {
     const account = this.account(user);
@@ -398,8 +401,15 @@ export class YoutubeService {
       if (this.ctx.jobs.busy(id)) throw new Error("旅程正在處理，請等待完成再加入");
       for (const camera of ["front", "rear"] as const) {
         if (options.camera !== "both" && camera !== options.camera) continue;
+        const chosen = options.videos?.find((v) => v.trip_id === id && v.camera === camera);
+        if (options.videos && !chosen) continue;
         if (!row[`has_${camera}`]) continue;
         const source = await this.source(row, camera);
+        if (
+          chosen &&
+          chosen.revision !== sourceRevision(sourceVersion(row, source.size, source.mtime))
+        )
+          throw new Error("影片已變更，請回到旅程選擇頁重新選取");
         prepared.push({
           row,
           camera,

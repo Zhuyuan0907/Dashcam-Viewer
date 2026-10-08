@@ -6,6 +6,8 @@ import { YoutubeService, type UploadRow } from "../youtube/service.js";
 import { getTrip } from "../trips/repo.js";
 import { PARAMETERS, variables, metadata } from "../youtube/templates.js";
 import { sendRange } from "./video.js";
+import { uploadSelection } from "../youtube/selection.js";
+import { clampInt } from "../util/num.js";
 
 const hash = (text: string) => crypto.createHash("sha256").update(text).digest("hex");
 function integer(value: unknown, min: number, max: number): number {
@@ -298,6 +300,22 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
         body.not_before === undefined
           ? Date.now()
           : integer(body.not_before, 0, Date.now() + 366 * 86_400_000);
+      if (
+        body.videos !== undefined &&
+        (!Array.isArray(body.videos) ||
+          !body.videos.length ||
+          body.videos.length > 1000 ||
+          !body.videos.every(
+            (v: any) =>
+              v &&
+              body.trip_ids.includes(v.trip_id) &&
+              ["front", "rear"].includes(v.camera) &&
+              (body.camera === "both" || v.camera === body.camera) &&
+              typeof v.revision === "string" &&
+              /^[a-f0-9]{64}$/.test(v.revision),
+          ))
+      )
+        throw new Error("選取的影片資料不正確，請重新選擇");
       return service.enqueue(req.user.id, body.trip_ids, {
         camera: body.camera,
         privacy: body.privacy,
@@ -306,6 +324,34 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
         title_template: text(body.title_template, 2000),
         description_template: text(body.description_template, 10000),
         pair: body.pair !== false,
+        videos: body.videos,
+      });
+    }),
+  );
+  app.get(
+    "/api/youtube/trips",
+    protect,
+    guard((req) => {
+      const query = req.query;
+      if (query.filter && !["ready", "queued", "uploaded", "all"].includes(query.filter))
+        throw new Error("旅程篩選不正確");
+      if (query.camera && !["both", "front", "rear"].includes(query.camera))
+        throw new Error("鏡頭篩選不正確");
+      if (query.date && !/^\d{4}-\d{2}-\d{2}$/.test(query.date))
+        throw new Error("拍攝日期格式不正確");
+      const ids = query.ids?.split("\n");
+      if (
+        ids &&
+        (!ids.length || ids.length > 50 || ids.some((id: string) => !id || id.length > 1000))
+      )
+        throw new Error("選取的旅程資料不正確");
+      return uploadSelection(ctx, service, req.user.id, {
+        date: query.date,
+        camera: query.camera,
+        filter: query.filter ?? "ready",
+        ids,
+        limit: clampInt(query.limit, 6, 1, 50),
+        offset: clampInt(query.offset, 0, 0, Number.MAX_SAFE_INTEGER),
       });
     }),
   );

@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/static/ui.css?v=2.2.0" />
     <script src="/static/themes.js"></script>
     <link rel="stylesheet" href="/static/themes.css?v=2.1.2" />
-    <link rel="stylesheet" href="/static/youtube.css?v=4" />
+    <link rel="stylesheet" href="/static/youtube.css?v=5" />
   </head>
   <body class="fit-page fit-mobile">
     <header class="hdr">
@@ -110,12 +110,32 @@
           <!-- ② 選擇旅程 -->
           <div class="yt-step" id="yt-step-1" hidden>
             <div class="yt-step-head">
-              <h2>第 2 步：勾選要上傳的旅程</h2>
-              <p>
-                可以跨頁、跨日期勾選。已經上傳過的旅程會變灰、無法再選；只傳了一個鏡頭的旅程仍可選，已上傳的鏡頭會自動略過。
-              </p>
+              <h2>第 2 步：選擇要上傳的影片</h2>
+              <p>預設只顯示還需要上傳的旅程。可跨日期、跨頁選取，也能單獨選前後鏡頭。</p>
             </div>
+            <nav class="yt-filters" aria-label="旅程上傳狀態">
+              <button type="button" data-filter="ready" aria-pressed="true">
+                待上傳 <span>—</span>
+              </button>
+              <button type="button" data-filter="queued" aria-pressed="false">
+                佇列中 <span>—</span>
+              </button>
+              <button type="button" data-filter="uploaded" aria-pressed="false">
+                已上傳 <span>—</span>
+              </button>
+              <button type="button" data-filter="all" aria-pressed="false">
+                全部 <span>—</span>
+              </button>
+            </nav>
             <div class="yt-toolbar">
+              <label class="yt-inline"
+                >鏡頭
+                <select id="yt-camera-filter" class="form-input form-select">
+                  <option value="both">前後鏡頭</option>
+                  <option value="front">前鏡頭</option>
+                  <option value="rear">後鏡頭</option>
+                </select>
+              </label>
               <label class="yt-inline"
                 >拍攝日期 <input id="yt-date" type="date" class="form-input"
               /></label>
@@ -126,12 +146,24 @@
               <button id="yt-select-page" class="btn btn--ghost btn--sm" type="button">
                 全選本頁
               </button>
-              <button id="yt-clear-selection" class="btn btn--ghost btn--sm" type="button">
-                清空
-              </button>
             </div>
-            <div id="yt-trips" class="yt-step-body yt-list"></div>
-            <div class="yt-pager" id="yt-trip-pager"></div>
+            <div class="yt-selection-body">
+              <div class="yt-library">
+                <p class="yt-hint" id="yt-filter-hint"></p>
+                <div id="yt-trips" class="yt-list"></div>
+                <div class="yt-pager" id="yt-trip-pager"></div>
+              </div>
+              <details class="yt-basket" id="yt-basket">
+                <summary>已選清單 <span id="yt-basket-count">0 部影片</span></summary>
+                <div class="yt-basket-body">
+                  <p class="yt-hint">這裡列出的鏡頭才會加入上傳佇列。</p>
+                  <div id="yt-selected-list"></div>
+                  <button id="yt-clear-selection" class="btn btn--ghost btn--sm" type="button">
+                    清空已選
+                  </button>
+                </div>
+              </details>
+            </div>
           </div>
 
           <!-- ③ 標題與說明 -->
@@ -173,28 +205,7 @@
               </p>
             </div>
             <div class="yt-step-body">
-              <fieldset class="yt-options">
-                <legend>要上傳哪個鏡頭</legend>
-                <label class="yt-option"
-                  ><input type="radio" name="yt-camera" value="both" checked /><span
-                    ><b>前後鏡頭都上傳（建議）</b
-                    ><small
-                      >每趟自動建立一個「前後鏡頭」播放清單，兩部影片的說明也會互相附上連結，看的時候可以一鍵切換視角。</small
-                    ></span
-                  ></label
-                >
-                <label class="yt-option"
-                  ><input type="radio" name="yt-camera" value="front" /><span
-                    ><b>只上傳前鏡頭</b
-                    ><small>佔用的上傳額度減半；後鏡頭仍保留在本機。</small></span
-                  ></label
-                >
-                <label class="yt-option"
-                  ><input type="radio" name="yt-camera" value="rear" /><span
-                    ><b>只上傳後鏡頭</b><small>前鏡頭仍保留在本機。</small></span
-                  ></label
-                >
-              </fieldset>
+              <p class="yt-callout" id="yt-mode-selection"></p>
               <fieldset class="yt-options">
                 <legend>誰可以看</legend>
                 <label class="yt-option"
@@ -236,11 +247,12 @@
           <!-- ⑤ 確認送出 -->
           <div class="yt-step" id="yt-step-4" hidden>
             <div class="yt-step-head">
-              <h2>第 5 步：確認並開始上傳</h2>
-              <p>送出後會在背景依序上傳，關掉瀏覽器也會繼續。</p>
+              <h2>第 5 步：確認上傳清單</h2>
+              <p id="yt-confirm-hint">送出後會加入佇列，依序在背景上傳。</p>
             </div>
             <div class="yt-step-body">
               <dl class="yt-summary" id="yt-summary"></dl>
+              <div class="yt-confirm-list" id="yt-confirm-list"></div>
               <label class="yt-check">
                 <input id="yt-confirm-upload" type="checkbox" />
                 <span
@@ -279,7 +291,7 @@
 
           <footer class="yt-card-foot" id="yt-foot">
             <button id="yt-prev" class="btn btn--ghost" type="button">← 上一步</button>
-            <span id="yt-foot-status" class="yt-foot-status"></span>
+            <button type="button" id="yt-foot-status" class="yt-foot-status" disabled></button>
             <button id="yt-next" class="btn btn--solid" type="button">下一步 →</button>
           </footer>
         </section>
@@ -288,6 +300,6 @@
     </main>
     <div id="toast-container"></div>
     <script src="/static/app.js?v=2.6.1"></script>
-    <script src="/static/youtube.js?v=6"></script>
+    <script src="/static/youtube.js?v=7"></script>
   </body>
 </html>
