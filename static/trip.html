@@ -591,7 +591,7 @@
           <!-- 面板標題列:focus-title 風 + 收合鈕 -->
           <header class="edit-head">
             <h2 class="edit-head-title" data-i18n="trip.edit">剪輯</h2>
-            <button class="edit-close" type="button" onclick="toggleEdit()" title="收合" aria-label="收合">收合</button>
+            <button class="edit-close" type="button" onclick="toggleEdit()" title="收合" aria-label="收合">×</button>
           </header>
 
           <div class="edit-body">
@@ -729,7 +729,7 @@
   <div class="modal-box share-modal-box">
     <div class="modal-head">
       <h3 id="share-modal-title" data-i18n="trip.share.title">快速分享這趟旅程</h3>
-      <button class="modal-close" id="share-close" type="button" onclick="closeShareModal()" aria-label="關閉">關閉</button>
+      <button class="modal-close" id="share-close" type="button" onclick="closeShareModal()" aria-label="關閉">×</button>
     </div>
     <div class="modal-body">
       <p class="share-lead" data-i18n="trip.share.lead">收件人不必登入；連結只會開啟這趟旅程的影片，不會看到其他旅程或私人備註。分享者可隨時撤銷。</p>
@@ -951,6 +951,7 @@ function layoutCams() {
   const pip = document.getElementById('pip');
   const main = videos[mainCam];
   main.className = 'stage-video';
+  main.disableRemotePlayback = true; // 不讓 Chrome 在畫面左上角疊加投放按鈕
   layer.replaceChildren(main);
   document.getElementById('cam-tag').textContent = mainCam === 'front' ? tt('trip.camFront') : tt('trip.camRear');
   const camBtn = document.getElementById('btn-cam');

@@ -1497,3 +1497,13 @@ body.yt-wide .wrap {
 .ytm-missing[hidden] {
   display: none;
 }
+/* 維運列表在中寬螢幕：操作按鈕換到第二行，標題不被擠成直排 */
+@media (min-width: 601px) and (max-width: 1180px) {
+  .ytm-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .ytm-row-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}

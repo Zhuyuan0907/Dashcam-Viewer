@@ -122,6 +122,7 @@
     .cal-months { display: grid; grid-auto-flow: column; grid-auto-columns: calc(var(--cell) + var(--gap));
       margin-left: calc(18px + var(--gap)); margin-bottom: 5px; font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
     .cal-months span { white-space: nowrap; overflow: visible; }
+    .cal-months .cal-m-end { justify-self: end; }
     .cal-body { display: flex; gap: var(--gap); }
     .cal-weekdays { display: grid; grid-template-rows: repeat(7, var(--cell)); gap: var(--gap); width: 18px; font-size: 9.5px; color: var(--ink-3); }
     .cal-weekdays span { display: flex; align-items: center; line-height: 1; }
@@ -142,6 +143,7 @@
     .quick i { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
     .quick i svg { width: 17px; height: 17px; }
     .quick b { display: block; font-size: 13.5px; }
+    .quick a > span, .quick button > span { min-width: 0; }
     .quick small { display: block; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .quick .live { color: var(--accent); font-weight: 700; }
 
@@ -428,6 +430,8 @@ async function loadHeatmap() {
     const m = ws.getUTCMonth();
     let lbl = '';
     if (m !== prevM) { lbl = ws.toLocaleDateString(cfgLocale(), { month: 'short', timeZone: 'UTC' }); prevM = m; }
+    // 最後兩週才換月時，標籤會超出日曆右緣：改為佔滿剩餘欄並靠右對齊。
+    if (lbl && w >= WEEKS - 2) { months += `<span class="cal-m-end" style="grid-column: span ${WEEKS - w}">${lbl}</span>`; break; }
     months += `<span>${lbl}</span>`;
   }
   document.getElementById('cal-months').innerHTML = months;

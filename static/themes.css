@@ -179,7 +179,8 @@ progress {
   font-size: 13px;
 }
 .editor-tools input[type="number"] {
-  width: 100px;
+  width: 104px;
+  font-variant-numeric: tabular-nums;
 }
 .timeline-scroll {
   overflow-x: auto;
@@ -212,7 +213,8 @@ body.editing .page-body {
     overflow: visible;
   }
   .editor-tools input[type="number"] {
-    width: 86px;
+    width: 96px;
+    padding-inline: 8px;
   }
   .clip-export-btn,
   .btn {

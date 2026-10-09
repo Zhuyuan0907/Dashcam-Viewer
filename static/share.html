@@ -417,6 +417,7 @@
         video.src = `/share/video/${camera}`;
         video.preload = 'metadata';
         video.playsInline = true;
+        video.disableRemotePlayback = true;
         video.muted = camera !== mainCamera;
         video.volume = Number(volume.value);
         video.playbackRate = speeds[speedIndex];

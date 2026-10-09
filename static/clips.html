@@ -348,7 +348,7 @@ function openReport(id) {
     <div class="modal-box" role="dialog" aria-modal="true">
       <div class="modal-head">
         <h3>${tFb('clips.report.title','產生檢舉資料')}</h3>
-        <button class="modal-close" type="button" onclick="closeReport()">關閉</button>
+        <button class="modal-close" type="button" onclick="closeReport()" aria-label="關閉">×</button>
       </div>
       <div class="modal-body">
         <div class="report-note">${tFb('clips.report.notice','提醒:檢舉採實名制;違規行為終了起 7 日內有效;請在檢舉系統上傳影片「原始檔」,勿貼連結。')}</div>
@@ -498,7 +498,7 @@ function playClip(id, frame) {
   frame.onclick = null;
   frame.classList.add('playing');
   frame.innerHTML = `
-    <video class="stage-video" src="/api/trip-clip-stream/${id}" playsinline preload="metadata" autoplay></video>
+    <video class="stage-video" disableremoteplayback src="/api/trip-clip-stream/${id}" playsinline preload="metadata" autoplay></video>
     <div class="ctrl">
       <div class="ctrl-group ctrl-transport">
         <button class="ctrl-btn" data-role="rew" title="${tFb('clips.rewind','倒轉 5 秒')}">

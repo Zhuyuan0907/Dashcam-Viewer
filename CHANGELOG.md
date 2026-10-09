@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.9.1 — 2026-10-09
+
+- Fix layout breakage found in a full-site audit at 1920, 1366, 1024, 768, 390 and 360 px: the home page no longer scrolls sideways on phones and the last calendar month label stays inside the card; browse cards hide the date overlay on narrow screens so it does not collide with the duration badge; the admin user list becomes cards on narrow screens so role and actions stay reachable; Ops YouTube rows move their buttons below the title on mid-size screens; storage tiles keep sizes on one line; the editor's in/out fields fit seven digits on phones.
+- Stop Chrome from overlaying its cast button on the trip, share and clip players.
+- Restore compact close buttons in the editor and dialogs.
+
 ## 2.9.0 — 2026-10-09
 
 - Redesign the YouTube upload page: three steps (choose videos, title and privacy, confirm) instead of five. Linking the channel is no longer a step — it appears as a separate screen only when no channel is linked or when reauthorizing; once linked, the page header just shows the channel.

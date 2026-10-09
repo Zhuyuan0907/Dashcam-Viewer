@@ -263,6 +263,7 @@ a.trip-card:hover .trip-thumb-img { transform: scale(1.03); }
 .trip-rec::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--crit); }
 .trip-osd { position: absolute; left: 11px; bottom: 10px; display: flex; align-items: baseline; gap: 7px; font-family: var(--font-mono); font-size: 11.5px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.55); }
 .trip-osd-tc { font-weight: 600; }
+@media (max-width: 600px) { .trip-osd-date { display: none; } }
 .trip-badges { position: absolute; bottom: 9px; right: 11px; display: flex; align-items: center; gap: 5px; }
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 6px; font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; background: rgba(0,0,0,.45); color: #fff; backdrop-filter: blur(4px); }
 .badge-dark { background: rgba(0,0,0,.45); color: #fff; }

@@ -12,6 +12,18 @@
     .pane-section-title { font-size:12px; font-weight:700; letter-spacing:.04em; color:var(--accent); margin-bottom:12px; }
     #pane-users .data-table th { position:sticky; top:0; background:var(--surface); z-index:1; }
     #pane-users .table-scroll { overflow:visible; }
+    .st-tiles-admin > div > div:last-child { white-space:nowrap; }
+    /* 窄螢幕：使用者表格改為卡片排列，操作按鈕不會被裁掉 */
+    @media (max-width: 860px) {
+      #pane-users .table-scroll .data-table { min-width:0; }
+      #pane-users .data-table thead { display:none; }
+      #pane-users .data-table tr { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px 12px; padding:12px 14px; border-bottom:1px solid var(--line); }
+      #pane-users .data-table tr:last-child { border-bottom:0; }
+      #pane-users .data-table td { padding:0; border:0; background:none !important; }
+      #pane-users .data-table td:first-child { grid-column:1 / -1; }
+      #pane-users .data-table td:last-child { text-align:right; }
+      #pane-users .data-table td[colspan] { grid-column:1 / -1; }
+    }
     .cfg-section-head { font-family:var(--font-mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); background:var(--surface-2); padding:10px 16px; border-bottom:1px solid var(--line); }
     .cfg-section-body { padding:16px; }
     .cfg-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px 18px; }
@@ -151,7 +163,7 @@
         </div>
 
         <!-- Breakdown -->
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+        <div class="st-tiles-admin" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;">
           <div style="background:var(--surface-2);border-radius:8px;padding:8px 12px;">
             <div style="font-size:11px;color:var(--ink-3);margin-bottom:2px;" data-i18n="admin.storage.tripsVideo">旅程影片</div>
             <div style="font-size:14px;font-weight:600;color:var(--ink-1);" id="st-trips">—</div>
@@ -638,10 +650,10 @@ function renderTable(users) {
             <div style="font-weight:500;">${escHtml(u.display_name || u.username)}</div>
             ${(u.display_name || u.email) ? `<div style="font-size:12px;color:var(--ink-3);">${escHtml(u.display_name ? u.username : u.email)}</div>` : ''}
           </div>
-          ${isSelf ? `<span style="font-size:12px;color:var(--ink-3);">${t('admin.self')}</span>` : ''}
+          ${isSelf ? `<span style="font-size:12px;color:var(--ink-3);white-space:nowrap;">${t('admin.self')}</span>` : ''}
         </div>
       </td>
-      <td>${roleCell}</td>
+      <td><div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">${roleCell}</div></td>
       <td>
         <button class="btn--link-idle" style="font-size:13px;color:var(--ink-2);background:none;border:none;cursor:pointer;padding:2px 0;text-align:left;white-space:nowrap;"
                 onclick="openIdleModal(${u.id})" title="調整上傳閒置逾時">
