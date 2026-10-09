@@ -382,8 +382,17 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
     guard((req) => {
       const page = Math.max(1, Math.min(100000, Number(req.query.page) || 1));
       const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 6));
-      const archive = req.query.filter === "archive";
-      const condition = archive ? " AND video_id IS NOT NULL" : "";
+      // active：進行中與已完成（不含已取消）；cancelled：只看已取消；archive：已上傳到 YouTube 的（不含已取消）。
+      const filter = req.query.filter;
+      const archive = filter === "archive";
+      const condition =
+        filter === "archive"
+          ? " AND video_id IS NOT NULL AND status!='cancelled'"
+          : filter === "active"
+            ? " AND status!='cancelled'"
+            : filter === "cancelled"
+              ? " AND status='cancelled'"
+              : "";
       const total = (
         ctx.db
           .prepare(`SELECT COUNT(*) AS n FROM youtube_uploads WHERE user_id=?${condition}`)

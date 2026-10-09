@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.9.3 — 2026-10-09
+
+- Ops › YouTube: open on Upload progress and order the tabs progress, uploaded, channel, setup. Cancelled jobs no longer fill the progress list; a "Cancelled N" button shows them separately. Queued rows say "paused" or "next" instead of misleading times, and empty messages no longer leave stray separators.
+- Upload picker: load exactly as many cards as fit in whole rows, so no card is cut off under the pager; switch to compact side-by-side cards when two rows of thumbnails do not fit; separate the pager from the cards; keep the Ready/All counts inside their buttons.
+- Use thin scrollbars in the theme colours across the site instead of the browser's default white ones.
+
 ## 2.9.2 — 2026-10-09
 
 - Save the YouTube title and description templates automatically when they are edited (about a second after typing stops, and before leaving the page), per user, and reuse them on the next upload. A status line shows when they were saved; "Restore default" returns to the built-in template.

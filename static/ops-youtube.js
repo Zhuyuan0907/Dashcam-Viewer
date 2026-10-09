@@ -8,7 +8,7 @@ window.OpsYoutube = (() => {
     succeeded: "已確認完成", failed: "需處理", cancelled: "已取消",
   };
   const pairNames = { pending: "播放清單待建立", done: "已配對播放清單", failed: "配對失敗" };
-  let user = null, account = null, section = "account", queuePage = 1, archivePage = 1, logPage = 1;
+  let user = null, account = null, section = "queue", queueView = "active", queuePage = 1, archivePage = 1, logPage = 1;
   let activeJob = null, timer = 0;
   const cleanup = new Set();
   const request = (url, body, method = "POST") =>
@@ -172,24 +172,40 @@ window.OpsYoutube = (() => {
   }
 
   /* ── 佇列 ─────────────────────────────────────────────── */
+  /** 排隊中影片的時間說明：暫停時不顯示估計時間（不準）。 */
+  function queueTiming(u) {
+    if (u.status !== "queued") return "";
+    if (account?.paused) return "佇列暫停中";
+    if (!u.eta || u.eta <= Date.now() + 60_000) return "下一部";
+    return `預計 ${new Date(u.eta).toLocaleString("zh-TW", { hour12: false })} 開始`;
+  }
   async function loadUploads() {
-    const limit = 8, r = await apiFetch(`/api/youtube/uploads?page=${queuePage}&limit=${limit}`);
+    const limit = 8, r = await apiFetch(`/api/youtube/uploads?filter=${queueView}&page=${queuePage}&limit=${limit}`);
     const c = Object.fromEntries(r.counts.map((x) => [x.status, x.n]));
-    $("ytm-queue-stat").innerHTML = ["queued", "uploading", "processing", "succeeded", "failed"]
-      .map((s) => `<span>${names[s]} <b>${c[s] || 0}</b></span>`).join("");
-    if (r.transferred !== undefined)
+    $("ytm-queue-stat").innerHTML = queueView === "cancelled"
+      ? `<span>已取消 <b>${c.cancelled || 0}</b></span><button type="button" class="btn btn--ghost btn--sm ytm-view" data-view="active">返回上傳進度</button>`
+      : ["queued", "uploading", "processing", "succeeded", "failed"]
+          .map((s) => `<span>${names[s]} <b>${c[s] || 0}</b></span>`).join("") +
+        (c.cancelled ? `<button type="button" class="btn btn--ghost btn--sm ytm-view" data-view="cancelled">已取消 ${c.cancelled} 部</button>` : "");
+    if (r.transferred !== undefined && queueView !== "cancelled")
       $("ytm-queue-stat").insertAdjacentHTML("afterbegin", `<span>已傳輸 <b>${r.transferred}</b></span>`);
+    $("ytm-queue-stat").querySelectorAll("[data-view]").forEach((b) => (b.onclick = () => act(b, async () => {
+      queueView = b.dataset.view; queuePage = 1; activeJob = null;
+      await loadUploads();
+    })));
     renderMissing(r.missing || 0);
     $("ytm-uploads").innerHTML = r.uploads.length
       ? r.uploads.map((u) => `
         <div class="ytm-row${u.id === activeJob ? " is-active" : ""}" role="button" tabindex="0" data-job="${u.id}">
           <span class="yt-badge s-${esc(u.missing && u.status !== "cancelled" ? "missing" : u.status)}">${u.missing && u.status !== "cancelled" ? "YouTube 已刪除" : u.transfer_complete && u.status === "failed" ? "已傳輸，需確認" : names[u.status] || esc(u.status)}</span>
           <span class="ytm-row-main"><b>${esc(u.title)}</b>
-            <small>${u.camera === "front" ? "前鏡頭" : "後鏡頭"} · ${u.progress}% · ${esc(u.message)}${u.status === "queued" && u.eta && u.eta > Date.now() + 60_000 ? ` · 預計 ${new Date(u.eta).toLocaleString("zh-TW")} 開始` : ""}</small>
+            <small>${[u.camera === "front" ? "前鏡頭" : "後鏡頭", `${u.progress}%`, u.message, queueTiming(u)].filter(Boolean).map(esc).join(" · ")}</small>
             <progress max="100" value="${u.progress}"></progress></span>
           <span class="ytm-row-actions"><span class="btn btn--ghost btn--sm">詳情</span></span>
         </div>`).join("")
-      : '<p class="yt-empty">目前沒有上傳工作。到 <a class="link" href="/youtube">上傳到 YouTube</a> 選擇旅程。</p>';
+      : queueView === "cancelled"
+        ? '<p class="yt-empty">沒有已取消的工作。</p>'
+        : '<p class="yt-empty">目前沒有上傳工作。到 <a class="link" href="/youtube">上傳到 YouTube</a> 選擇旅程。</p>';
     $("ytm-uploads").querySelectorAll("[data-job]").forEach((el) => {
       const open = () => { activeJob = Number(el.dataset.job); logPage = 1; void loadUploads(); };
       el.onclick = open;

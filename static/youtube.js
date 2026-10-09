@@ -72,11 +72,44 @@
       render();
     }
   }
-  function pageSize() {
-    if (innerWidth <= 760) return 4;
-    if (innerWidth >= 1500) return innerHeight < 820 ? 8 : 12;
-    return innerHeight < 820 ? 6 : 9;
+  /** 高度不足時改用精簡卡片；每頁張數 = 實際放得下的整列數 × 欄數，不會出現切半的卡片。 */
+  function pageSize(measure = false) {
+    const grid = $("yt-trips");
+    const setCompact = (compact) => {
+      if (grid.classList.contains("is-compact") === compact) return;
+      grid.classList.toggle("is-compact", compact);
+      grid.replaceChildren(); // 版型切換後舊卡片的高度不能拿來量
+    };
+    if (innerWidth <= 760) {
+      setCompact(true);
+      return 4;
+    }
+    const cs = getComputedStyle(grid);
+    const gap = parseFloat(cs.rowGap) || 12;
+    const w = grid.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = grid.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    if (w <= 0 || h <= 0) return grid.classList.contains("is-compact") ? 6 : 9;
+    const fit = (minCol, cardH) => {
+      const cols = Math.max(1, Math.floor((w + gap) / (minCol + gap)));
+      const colW = (w - gap * (cols - 1)) / cols;
+      const height = typeof cardH === "function" ? cardH(colW) : cardH;
+      return { cols, rows: Math.max(1, Math.floor((h + gap) / (height + gap))) };
+    };
+    // 縮圖卡放不下兩列時改用精簡卡（縮圖在左），一頁能看到更多旅程。
+    const normal = fit(205, (colW) => (colW * 9) / 16 + 150);
+    const compact = normal.rows < 2;
+    setCompact(compact);
+    // 只在剛畫好目前這一頁時實測；切換篩選前的舊卡片高度可能不同。
+    const measured = measure
+      ? Math.max(
+          0,
+          ...[...grid.querySelectorAll(".yt-trip")].map((el) => el.getBoundingClientRect().height),
+        )
+      : 0;
+    const result = measured ? fit(compact ? 330 : 205, measured) : compact ? fit(330, 134) : normal;
+    return Math.min(50, result.cols * result.rows);
   }
+
   function videoCount() {
     return [...selected.values()].reduce((n, t) => n + t.chosen.length, 0);
   }
@@ -354,12 +387,13 @@
       });
   }
   let tripLoad = 0;
-  async function loadTrips() {
+  async function loadTrips(remeasured = false) {
     const seq = ++tripLoad;
     loadingTrips = true;
     $("yt-next").disabled = true;
     $("yt-trips").setAttribute("aria-busy", "true");
     const limit = pageSize();
+    lastLimit = limit;
     const query = new URLSearchParams({
       limit,
       offset: (tripPage - 1) * limit,
@@ -396,6 +430,12 @@
       renderTrips();
       renderBasket();
       pager(result.total, limit);
+      // 第一次只能估計卡片高度；畫出來後實測，放不下整列就重新載入一次。
+      const fit = innerWidth > 760 && trips.length ? pageSize(true) : limit;
+      if (!remeasured && fit !== limit && (fit < trips.length || result.total > limit)) {
+        loadingTrips = false;
+        return void (await loadTrips(true));
+      }
     } finally {
       if (seq === tripLoad) {
         loadingTrips = false;
@@ -713,6 +753,19 @@
     renderBasket();
     render();
   };
+  // 視窗大小改變時重新計算每頁張數（保留已選）。
+  let resizeTimer = 0,
+    lastLimit = 0;
+  addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (step !== 0 || !connected()) return;
+      const wasCompact = $("yt-trips").classList.contains("is-compact");
+      const size = pageSize(true);
+      if (size !== lastLimit || wasCompact !== $("yt-trips").classList.contains("is-compact"))
+        void loadTrips().catch((e) => notice(e.message, "error"));
+    }, 250);
+  });
   $("yt-basket-toggle").onclick = () => {
     const open = !$("yt-basket").classList.contains("is-open");
     $("yt-basket").classList.toggle("is-open", open);

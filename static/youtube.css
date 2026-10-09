@@ -620,6 +620,7 @@
 }
 .ytm-stat {
   display: flex;
+  align-items: center;
   gap: 14px;
   flex-wrap: wrap;
   font-size: 14px;
@@ -933,7 +934,7 @@ body.yt-wide .wrap {
   grid-auto-rows: max-content;
   align-content: start;
   gap: 14px;
-  padding: 2px 20px 16px;
+  padding: 2px 20px 10px;
 }
 .yt-grid .yt-empty {
   grid-column: 1 / -1;
@@ -1390,44 +1391,10 @@ body.yt-wide .wrap {
   #yt-filter-hint {
     display: none;
   }
-  .yt-grid {
+  .yt-grid.is-compact {
     grid-template-columns: minmax(0, 1fr);
     padding: 10px 12px;
     gap: 10px;
-  }
-  .yt-trip {
-    display: grid;
-    grid-template-columns: 116px minmax(0, 1fr);
-  }
-  .yt-trip-select {
-    display: contents;
-  }
-  .yt-thumb {
-    grid-column: 1;
-    grid-row: 1 / 4;
-    margin: 0;
-    aspect-ratio: auto;
-    min-height: 100%;
-  }
-  .yt-trip-select input {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-  }
-  .yt-trip-main {
-    grid-column: 2;
-    padding: 8px 10px 4px;
-  }
-  .yt-trip-main b {
-    font-size: 15px;
-  }
-  .yt-trip-cameras {
-    grid-column: 2;
-    padding: 0 10px;
-  }
-  .yt-trip-preview {
-    grid-column: 2;
-    margin: 6px 10px 8px;
   }
   .yt-basket {
     padding: 8px 12px;
@@ -1526,4 +1493,72 @@ body.yt-wide .wrap {
 }
 .yt-autosave button[hidden] {
   display: none;
+}
+/* 上傳進度：「已取消 N 部」切換鈕靠右 */
+.ytm-view {
+  margin-left: auto;
+}
+
+/* 精簡卡片（手機與高度不足的螢幕）：縮圖在左、資訊在右，一頁放得下更多且不會切半張 */
+.yt-grid.is-compact {
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 10px;
+}
+.yt-grid.is-compact .yt-trip {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+}
+.yt-grid.is-compact .yt-trip-select {
+  display: contents;
+}
+.yt-grid.is-compact .yt-thumb {
+  grid-column: 1;
+  grid-row: 1 / 4;
+  margin: 0;
+  aspect-ratio: auto;
+  min-height: 100%;
+}
+.yt-grid.is-compact .yt-trip-select input {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+}
+.yt-grid.is-compact .yt-trip-main {
+  grid-column: 2;
+  padding: 8px 10px 4px;
+}
+.yt-grid.is-compact .yt-trip-main b {
+  font-size: 15px;
+}
+.yt-grid.is-compact .yt-trip-cameras {
+  grid-column: 2;
+  padding: 0 10px;
+}
+.yt-grid.is-compact .yt-trip-preview {
+  grid-column: 2;
+  margin: 6px 10px 8px;
+}
+
+/* 分頁列：與卡片之間留白並以分隔線區隔；固定高度，計算每頁張數時不會跳動 */
+#yt-trip-pager {
+  display: flex;
+  min-height: 52px;
+  margin: 0;
+  padding: 8px 20px;
+  border-top: 1px solid var(--line);
+  box-sizing: border-box;
+}
+#yt-trip-pager:empty {
+  visibility: hidden;
+}
+
+/* 左欄「待上傳／全部」：數字不超出外框 */
+.yt-rail .yt-seg button {
+  min-width: 0;
+  padding: 6px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yt-rail .yt-seg button span {
+  margin-left: 3px;
 }

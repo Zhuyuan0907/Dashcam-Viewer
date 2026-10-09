@@ -462,6 +462,10 @@ test("reconnect opens consent for an existing paused account without discarding 
     }),
   );
   await page.goto("/ops#youtube");
+  // 上傳進度是預設分頁且排在頻道前面。
+  await expect(page.locator("[data-ytm]:not([hidden])").first()).toHaveText("上傳進度");
+  await expect(page.locator("#ytm-queue")).toBeVisible();
+  await page.locator('[data-ytm="account"]').click();
   await expect(page.locator("#ytm-account-body")).toContainText("失敗也計入");
   await page.locator("#ytm-reconnect").click();
   await expect(page).toHaveURL(/\/youtube\?reauthorize=1$/);
@@ -744,5 +748,58 @@ test("editing the title template saves it automatically", async ({ page }) => {
   await expect.poll(() => saves.length).toBe(2);
   expect(saves[1].title_template).toBe("行車記錄 {date} {camera}");
   await expect(page.locator("#yt-reset-template")).toBeHidden();
+  await noOverflow(page);
+});
+
+test("cancelled uploads are hidden from progress until requested", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/youtube/account", (r) => r.fulfill({ json: connected }));
+  const base = {
+    camera: "front",
+    progress: 0,
+    uploaded_bytes: 0,
+    source_size: 10,
+    not_before: 0,
+    deleted_at: null,
+    video_url: null,
+    can_restart: false,
+    youtube: null,
+  };
+  const queued = { ...base, id: 1, title: "排隊中的影片", status: "queued", message: "", eta: 0 };
+  const cancelled = {
+    ...base,
+    id: 2,
+    title: "取消的影片",
+    status: "cancelled",
+    message: "使用者取消",
+  };
+  const filters: string[] = [];
+  await page.route("**/api/youtube/uploads?*", (route) => {
+    const filter = new URL(route.request().url()).searchParams.get("filter") || "";
+    filters.push(filter);
+    const counts = [
+      { status: "queued", n: 1 },
+      { status: "cancelled", n: 5 },
+    ];
+    return route.fulfill({
+      json: {
+        uploads: filter === "cancelled" ? [cancelled] : [queued],
+        total: 1,
+        counts,
+        transferred: 0,
+      },
+    });
+  });
+  await page.goto("/ops#youtube");
+  await expect(page.locator("#ytm-uploads")).toContainText("排隊中的影片");
+  await expect(page.locator("#ytm-uploads")).not.toContainText("取消的影片");
+  await expect(page.locator("#ytm-uploads")).toContainText("下一部");
+  await expect(page.locator("#ytm-uploads small").first()).not.toContainText("· ·");
+  expect(filters).toContain("active");
+  await page.locator('[data-view="cancelled"]').click();
+  await expect(page.locator("#ytm-uploads")).toContainText("取消的影片");
+  await expect(page.locator("#ytm-queue-stat")).toContainText("已取消 5");
+  await page.locator('[data-view="active"]').click();
+  await expect(page.locator("#ytm-uploads")).toContainText("排隊中的影片");
   await noOverflow(page);
 });
