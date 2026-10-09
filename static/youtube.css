@@ -1032,8 +1032,10 @@ body.yt-wide .wrap {
 }
 .yt-cam {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  align-content: center;
+  gap: 2px 6px;
   min-width: 0;
   padding: 6px 8px;
   border-radius: 8px;
@@ -1048,8 +1050,12 @@ body.yt-wide .wrap {
   margin: 0;
   flex: none;
 }
+.yt-cam span {
+  white-space: nowrap;
+}
+/* 狀態文字放第二行，避免窄卡片把鏡頭名稱擠成直排 */
 .yt-cam small {
-  margin-left: auto;
+  flex-basis: 100%;
   font-size: 12px;
   font-weight: 500;
   color: var(--ink-3);
