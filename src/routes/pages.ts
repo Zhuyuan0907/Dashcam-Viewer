@@ -36,6 +36,30 @@ const PAGE_NS: Record<string, string[]> = {
 
 // HTML 快取以 mtime 失效:改 static/*.html 立即生效(不必重啟),同時避免每請求重讀磁碟。
 const rawCache = new Map<string, { html: string; mtimeMs: number }>();
+/**
+ * 依檔案修改時間與大小產生靜態資源版本字串。Cloudflare 會把瀏覽器快取延長到數小時，
+ * 只要檔案一改網址就跟著變，使用者就不會拿到舊的 CSS/JS；手動維護 ?v= 容易漏改。
+ */
+export function assetVersion(rel: string): string | null {
+  const file = path.resolve(STATIC_DIR, rel);
+  if (!file.startsWith(path.resolve(STATIC_DIR) + path.sep)) return null;
+  try {
+    const { mtimeMs, size } = fs.statSync(file);
+    return `${Math.floor(mtimeMs).toString(36)}${size.toString(36)}`;
+  } catch {
+    return null;
+  }
+}
+/** 把 src/href 指向 /static/ 的網址加上（或替換成）實際檔案版本。 */
+export function versionAssets(html: string): string {
+  return html.replace(
+    /\b(src|href)="\/static\/([^"?#]+)(?:\?[^"#]*)?"/g,
+    (match, attr: string, rel: string) => {
+      const v = assetVersion(rel);
+      return v ? `${attr}="/static/${rel}?v=${v}"` : match;
+    },
+  );
+}
 function rawHtml(name: string): string {
   const file = path.join(STATIC_DIR, name);
   const { mtimeMs } = fs.statSync(file);
@@ -132,7 +156,9 @@ export function registerPages(app: FastifyInstance, ctx: AppContext): void {
   function renderPage(name: string, reply: FastifyReply, cacheControl = "no-cache"): FastifyReply {
     const strings = settings.readStrings();
     const brandTitle = settings.get("site_title");
-    let html = injectStrings(rawHtml(name), strings, brandTitle, "{page} — {brand}");
+    let html = versionAssets(
+      injectStrings(rawHtml(name), strings, brandTitle, "{page} — {brand}"),
+    );
     // Keep the public contact readable without JavaScript behind Cloudflare's email protection.
     const contact = PUBLIC_CONTACT_EMAIL
       ? `<!--email_off--><a href="mailto:${escAttr(PUBLIC_CONTACT_EMAIL)}">${escHtml(PUBLIC_CONTACT_EMAIL)}</a><!--/email_off-->`

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.9.4 — 2026-10-09
+
+- Stamp every `/static/` link with a version taken from the file's modification time and size when a page is rendered. Cloudflare extends browser caching of static files to four hours, so a changed page could load with old CSS/JS and look broken; now a changed file always gets a new URL.
+- Keep three-digit counts visible in the upload picker's Ready/All filter.
+
 ## 2.9.3 — 2026-10-09
 
 - Ops › YouTube: open on Upload progress and order the tabs progress, uploaded, channel, setup. Cancelled jobs no longer fill the progress list; a "Cancelled N" button shows them separately. Queued rows say "paused" or "next" instead of misleading times, and empty messages no longer leave stray separators.
