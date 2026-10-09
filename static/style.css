@@ -87,7 +87,6 @@ a.link {
 }
 :where(p, li, label, small, td, dd, span, h2, h3, .card-title, .hint) > a:not([class]):hover,
 a.link:hover { color: var(--accent-2); text-decoration-thickness: 2px; text-decoration-color: currentColor; }
-a[target="_blank"].link::after { content: " ↗"; font-size: .85em; }
 img { max-width: 100%; display: block; }
 button { font-family: inherit; }
 ::selection { background: var(--accent); color: var(--accent-ink); }

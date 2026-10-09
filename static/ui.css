@@ -162,6 +162,9 @@ body.fit-page #app-footer { display: none; }
 .jl-ico { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 10px;
   font-weight: 800; background: var(--surface-3); color: var(--ink-3); }
 .jl-row.ok .jl-ico { background: color-mix(in oklch, var(--ok) 16%, var(--surface)); color: var(--ok); }
+/* 完成勾號以 CSS 繪製(不使用 emoji/符號字元) */
+.jl-row.ok .jl-ico::after, .jl-step.done i::after { content: ""; width: 7px; height: 3.5px; border: solid currentColor;
+  border-width: 0 0 1.6px 1.6px; transform: translateY(-1px) rotate(-45deg); }
 .jl-row.run .jl-ico { background: var(--accent); color: var(--accent-ink); animation: jl-pulse 1.4s ease-in-out infinite; }
 .jl-row.warn .jl-ico { background: color-mix(in oklch, var(--warn) 22%, var(--surface)); color: var(--warn); }
 .jl-row.bad .jl-ico { background: var(--crit); color: #fff; }

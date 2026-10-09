@@ -181,7 +181,7 @@ async function renderDetail() {
   if (job.result?.clip?.id || !activeStates.has(job.status)) {
     const link = node(
       "a",
-      job.result?.clip?.id ? "查看片段 →" : job.type === "import" ? "瀏覽旅程 →" : "回到旅程 →",
+      job.result?.clip?.id ? "查看片段" : job.type === "import" ? "瀏覽旅程" : "回到旅程",
       "btn btn--solid btn--sm",
     );
     link.href = job.result?.clip?.id

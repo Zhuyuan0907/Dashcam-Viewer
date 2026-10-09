@@ -164,7 +164,7 @@
   const toolbar = document.createElement('form');
   toolbar.className = 'editor-tools clips-toolbar';
   toolbar.setAttribute('role', 'search');
-  toolbar.innerHTML = '<label class="clips-search-label"><span>搜尋片段</span><input class="form-input clips-search-input" name="q" type="search" aria-label="片段名稱或日期" placeholder="名稱或 YYYY-MM-DD" maxlength="120"></label><button class="btn btn--solid" type="submit">搜尋</button><a class="btn btn--ghost clips-new" href="/browse">建立新片段 ↗</a>';
+  toolbar.innerHTML = '<label class="clips-search-label"><span>搜尋片段</span><input class="form-input clips-search-input" name="q" type="search" aria-label="片段名稱或日期" placeholder="名稱或 YYYY-MM-DD" maxlength="120"></label><button class="btn btn--solid" type="submit">搜尋</button><a class="btn btn--ghost clips-new" href="/browse">建立新片段</a>';
   document.getElementById('clips-body').before(toolbar);
   toolbar.onsubmit = e => {e.preventDefault();clipSearch=toolbar.elements.q.value;load();};
   const more = document.createElement('button'); more.id='clips-more'; more.className='btn'; more.type='button'; more.textContent='載入更多'; more.hidden=true;
@@ -251,7 +251,7 @@ function cardHtml(c) {
     c.quality === 'fast' ? t('trip.clip.qualityFast') : t('trip.clip.qualityPrecise'),
   ].join(' · ');
   const reported = c.reported_at
-    ? `<span class="clip-reported">⚑ ${tFb('clips.reportedBadge','已檢舉')}</span>` : '';
+    ? `<span class="clip-reported">${tFb('clips.reportedBadge','已檢舉')}</span>` : '';
   const tripHref = `/trip/${encodeURIComponent(c.trip_id)}`;
   return `
     <article class="clip-card" id="clip-card-${c.id}">
@@ -347,8 +347,8 @@ function openReport(id) {
   scrim.innerHTML = `
     <div class="modal-box" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <h3>⚑ ${tFb('clips.report.title','產生檢舉資料')}</h3>
-        <button class="modal-close" type="button" onclick="closeReport()">✕</button>
+        <h3>${tFb('clips.report.title','產生檢舉資料')}</h3>
+        <button class="modal-close" type="button" onclick="closeReport()">關閉</button>
       </div>
       <div class="modal-body">
         <div class="report-note">${tFb('clips.report.notice','提醒:檢舉採實名制;違規行為終了起 7 日內有效;請在檢舉系統上傳影片「原始檔」,勿貼連結。')}</div>
@@ -410,7 +410,7 @@ function openReport(id) {
     const a = document.createElement('a');
     a.className = 'btn btn--ghost btn--sm';
     a.href = cfgReport.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-    a.textContent = (cfgReport.name || tFb('clips.report.goSystem','前往檢舉系統')) + ' ↗';
+    a.textContent = (cfgReport.name || tFb('clips.report.goSystem','前往檢舉系統'));
     go.appendChild(a);
   } else {
     document.getElementById('rp-go-hint').style.display = '';

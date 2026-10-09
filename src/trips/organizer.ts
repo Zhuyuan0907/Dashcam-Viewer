@@ -481,7 +481,7 @@ export async function* processBatch(opts: ProcessOptions): AsyncGenerator<Progre
         ].join("\n");
         yield {
           stage: "merge",
-          message: `  ⚠ 旅程 ${tripLabel} 合併失敗,未產生有效影片,已略過`,
+          message: `  旅程 ${tripLabel} 合併失敗,未產生有效影片,已略過`,
           incident: {
             kind: "trip_skipped",
             severity: "error",

@@ -207,7 +207,7 @@
     const finished = pct === null ? !(live && isLastStep) : pct >= 100 || !(live && isLastStep);
     const state = /失敗|錯誤|無法/.test(step.title) ? "bad" : finished ? "ok" : "run";
     const row = el("div", "jl-row " + state);
-    row.append(el("span", "jl-ico", state === "ok" ? "✓" : state === "bad" ? "!" : ""));
+    row.append(el("span", "jl-ico", state === "bad" ? "!" : ""));
     const main = el("div", "jl-main");
     main.append(el("strong", null, step.title));
     const detail = [];
@@ -226,7 +226,7 @@
     return row;
   }
 
-  const STATE_TEXT = { ok: "✓ 完成", run: "● 合併中", bad: "✕ 失敗", warn: "⚠ 部分完成", stopped: "— 中斷", wait: "等待" };
+  const STATE_TEXT = { ok: "完成", run: "合併中", bad: "失敗", warn: "部分完成", stopped: "中斷", wait: "等待" };
   function tripTable(model) {
     const cams = [];
     for (const t of model.trips) for (const name of Object.keys(t.cams)) if (!cams.includes(name)) cams.push(name);
@@ -284,7 +284,7 @@
       const steps = el("div", "jl-steps");
       for (const phase of model.phases) {
         const chip = el("span", "jl-step " + phase.state);
-        chip.append(el("i", null, phase.state === "done" ? "✓" : phase.state === "bad" ? "!" : ""));
+        chip.append(el("i", null, phase.state === "bad" ? "!" : ""));
         chip.append(document.createTextNode(phase.label));
         if (phase.ms >= 1000) chip.append(el("small", null, span(phase.ms)));
         steps.append(chip);
@@ -329,7 +329,7 @@
       const bad = BAD_STAGES.has(model.final.stage) || BAD_STAGES.has(opts.status);
       const block = el("div", "jl-block");
       const row = el("div", "jl-row " + (bad ? "bad" : model.final.stage === "partial" ? "warn" : "ok"));
-      row.append(el("span", "jl-ico", bad ? "!" : "✓"));
+      row.append(el("span", "jl-ico", bad ? "!" : ""));
       const main = el("div", "jl-main");
       main.append(el("strong", null, model.final.message || (bad ? "處理失敗" : "處理完成")));
       if (model.start) main.append(el("span", null, `總耗時 ${span(model.final.at - model.start)}`));

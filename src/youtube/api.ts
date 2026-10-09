@@ -114,7 +114,7 @@ export class YoutubeAPI {
   async video(token: string, id: string) {
     const data = await this.checked(
       await this.request(
-        `https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails,snippet&id=${encodeURIComponent(id)}`,
+        `https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails,snippet,contentDetails,fileDetails&id=${encodeURIComponent(id)}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -126,7 +126,7 @@ export class YoutubeAPI {
   async videos(token: string, ids: string[]): Promise<any[]> {
     const data = await this.checked(
       await this.request(
-        `https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails,snippet,statistics,contentDetails&id=${ids.map(encodeURIComponent).join(",")}`,
+        `https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails,snippet,statistics,contentDetails,fileDetails&id=${ids.map(encodeURIComponent).join(",")}`,
         { headers: { Authorization: `Bearer ${token}` } },
       ),
     );

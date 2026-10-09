@@ -427,7 +427,7 @@
     .yt-back { appearance: none; display: block; width: 100%; padding: 4px 16px 12px; margin-bottom: 6px; border: 0; border-bottom: 1px solid rgba(255,255,255,.2);
       background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
     #speed-menu .yt-item { padding-left: 52px; position: relative; }
-    #speed-menu .yt-item[aria-checked="true"]::before { content: "✓"; position: absolute; left: 22px; }
+    #speed-menu .yt-item[aria-checked="true"]::before { content: ""; position: absolute; left: 24px; top: 50%; width: 8px; height: 4px; border: solid currentColor; border-width: 0 0 2px 2px; transform: translateY(-70%) rotate(-45deg); }
 
     .stage.pip-off .pip { display: none !important; }
     /* 備註編輯:浮動卡片,不推擠版面(避免影片被壓縮、上下留白) */
@@ -492,7 +492,7 @@
   <div class="wrap">
     <div class="empty" style="padding-top:80px;">
       <h3 id="err-msg" data-i18n="trip.notFound">找不到此旅程</h3>
-      <a href="/browse" class="btn" style="margin-top:20px;" data-i18n="trip.backLink">← 返回</a>
+      <a href="/browse" class="btn" style="margin-top:20px;" data-i18n="trip.backLink">返回</a>
     </div>
   </div>
 </div>
@@ -502,7 +502,7 @@
 
     <!-- 標題列(緊湊):返回 / 標題＋時間 / 刪除 -->
     <div class="trip-head">
-      <a href="/browse" id="back-link" class="other-chip trip-back" data-i18n="trip.back">← 瀏覽</a>
+      <a href="/browse" id="back-link" class="other-chip trip-back" data-i18n="trip.back">瀏覽</a>
       <div class="trip-headings">
         <h1 id="trip-title">—</h1>
         <span id="trip-sub" class="trip-sub">—</span>
@@ -534,7 +534,7 @@
         <!-- 子母畫面(後鏡頭) -->
         <div class="pip" id="pip" style="display:none;" title="點擊切換主畫面" data-i18n-attr="title:trip.switchMain">
           <span class="pip-tag" id="pip-tag" data-i18n="trip.camRear">後鏡頭</span>
-          <span class="pip-swap" data-i18n="trip.switch">⇄ 切換</span>
+          <span class="pip-swap" data-i18n="trip.switch">切換</span>
         </div>
 
         <!-- 播放器控制(YouTube 式):細進度條貼齊底部 + 一排純圖示按鈕;滑過顯示提示,播放中自動隱藏 -->
@@ -591,7 +591,7 @@
           <!-- 面板標題列:focus-title 風 + 收合鈕 -->
           <header class="edit-head">
             <h2 class="edit-head-title" data-i18n="trip.edit">剪輯</h2>
-            <button class="edit-close" type="button" onclick="toggleEdit()" title="收合" aria-label="收合">✕</button>
+            <button class="edit-close" type="button" onclick="toggleEdit()" title="收合" aria-label="收合">收合</button>
           </header>
 
           <div class="edit-body">
@@ -606,7 +606,7 @@
               <label>時間軸倍率 <select class="form-input form-select" aria-label="時間軸倍率" onchange="document.getElementById('clip-timeline').style.width=(Number(this.value)*100)+'%'">
                 <option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
               </select></label>
-              <a href="/jobs">背景作業與結果 ↗</a>
+              <a href="/jobs">背景作業與結果</a>
               <span id="draft-note" role="status"></span>
             </div>
             <div class="timeline-scroll"><div class="clip-timeline" id="clip-timeline">
@@ -622,7 +622,7 @@
               <span class="clip-ro-actions">
                 <button class="btn btn--ghost btn--sm" type="button" onclick="setSelPoint('in')" data-i18n="trip.clip.setIn">設為入點 (I)</button>
                 <button class="btn btn--ghost btn--sm" type="button" onclick="setSelPoint('out')" data-i18n="trip.clip.setOut">設為出點 (O)</button>
-                <button class="btn btn--ghost btn--sm" type="button" id="clip-preview" onclick="togglePreview()" data-i18n="trip.clip.preview">▶ 預覽選取</button>
+                <button class="btn btn--ghost btn--sm" type="button" id="clip-preview" onclick="togglePreview()" data-i18n="trip.clip.preview">預覽選取</button>
               </span>
             </div>
 
@@ -674,8 +674,8 @@
                   <button class="btn btn--ghost btn--sm" type="button" onclick="cancelClip()" data-i18n="common.cancel">取消</button>
                 </div>
               </div>
-              <a class="clip-goto" id="clip-goto" href="/clips" style="display:none;" data-i18n="trip.clip.gotoPage">→ 前往片段頁查看</a>
-              <a class="clip-goto" id="clip-report-cta" href="/clips" style="display:none;margin-left:14px;" data-i18n="trip.clip.reportCta">⚑ 產生檢舉資料</a>
+              <a class="clip-goto" id="clip-goto" href="/clips" style="display:none;" data-i18n="trip.clip.gotoPage">前往片段頁查看</a>
+              <a class="clip-goto" id="clip-report-cta" href="/clips" style="display:none;margin-left:14px;" data-i18n="trip.clip.reportCta">產生檢舉資料</a>
             </div>
 
             <!-- 分頁內容:整趟裁剪(破壞性,沿用既有 /api/trip-trim) -->
@@ -729,7 +729,7 @@
   <div class="modal-box share-modal-box">
     <div class="modal-head">
       <h3 id="share-modal-title" data-i18n="trip.share.title">快速分享這趟旅程</h3>
-      <button class="modal-close" id="share-close" type="button" onclick="closeShareModal()" aria-label="關閉">✕</button>
+      <button class="modal-close" id="share-close" type="button" onclick="closeShareModal()" aria-label="關閉">關閉</button>
     </div>
     <div class="modal-body">
       <p class="share-lead" data-i18n="trip.share.lead">收件人不必登入；連結只會開啟這趟旅程的影片，不會看到其他旅程或私人備註。分享者可隨時撤銷。</p>

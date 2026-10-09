@@ -56,6 +56,10 @@ function dto(row: UploadRow) {
           synced_at: row.yt_synced_at,
         }
       : null,
+    missing: !!row.yt_missing,
+    resolution:
+      row.yt_width && row.yt_height ? { width: row.yt_width, height: row.yt_height } : null,
+    definition: row.yt_definition ?? null,
   };
 }
 export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
@@ -111,6 +115,8 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
               paused: !!account.paused,
               daily_limit: account.daily_limit,
               blocked_until: account.blocked_until,
+              spread: !!account.spread,
+              interval_ms: service.interval(account),
               ...service.allowance(account, config?.project_daily_limit ?? 100),
             }
           : null,
@@ -256,6 +262,10 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
       if (!service.account(req.user.id)) throw new Error("尚未連結 YouTube");
       if (req.body?.daily_limit !== undefined)
         service.setDailyLimit(req.user.id, integer(req.body.daily_limit, 1, 1000));
+      if (req.body?.spread !== undefined) {
+        if (typeof req.body.spread !== "boolean") throw new Error("spread 格式不正確");
+        service.setSpread(req.user.id, req.body.spread);
+      }
       if (req.body?.paused !== undefined) {
         if (typeof req.body.paused !== "boolean") throw new Error("paused 格式不正確");
         service.pause(req.user.id, req.body.paused);
@@ -384,11 +394,13 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
           .get(req.user.id) as { n: number }
       ).n;
       const pairs = service.pairFor(req.user.id, [...new Set(rows.map((r) => r.trip_id))]);
+      const estimates = archive ? new Map<number, number>() : service.estimates(req.user.id);
       return {
         uploads: rows.map((row) => {
           const pair = pairs.get(row.trip_id);
           return {
             ...dto(row),
+            eta: estimates.get(row.id) ?? null,
             playlist_url: pair?.playlist_id
               ? `https://www.youtube.com/playlist?list=${pair.playlist_id}`
               : null,
@@ -399,6 +411,7 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
         total,
         counts,
         transferred,
+        missing: service.missingIds(req.user.id).length,
         page,
         limit,
       };
@@ -482,6 +495,36 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
       const row = owned(req);
       if (!row.video_id) throw new Error("尚未完成傳輸");
       return { ready: await service.verify(row) };
+    }),
+  );
+  // 在 YouTube 上找不到（多半是使用者自己刪除）的影片：重新上傳，或確認刪除、不再提醒。
+  app.post(
+    "/api/youtube/uploads/:id/missing",
+    write,
+    guard((req) => {
+      const row = owned(req);
+      if (req.body?.action === "reupload") service.reuploadMissing(row.id);
+      else if (req.body?.action === "dismiss") service.dismissMissing(row.id);
+      else throw new Error("請選擇重新上傳或忽略");
+      return { status: "ok" };
+    }),
+  );
+  app.post(
+    "/api/youtube/missing",
+    write,
+    guard((req) => {
+      const action = req.body?.action;
+      if (action !== "reupload" && action !== "dismiss") throw new Error("請選擇重新上傳或忽略");
+      const results = service.missingIds(req.user.id).map((id) => {
+        try {
+          if (action === "reupload") service.reuploadMissing(id);
+          else service.dismissMissing(id);
+          return { id, ok: true };
+        } catch (error) {
+          return { id, ok: false, detail: error instanceof Error ? error.message : "操作失敗" };
+        }
+      });
+      return { results };
     }),
   );
   // 與 YouTube 同步：讀回已上傳影片目前的標題、可見性、觀看數，及是否已在 YouTube 刪除。

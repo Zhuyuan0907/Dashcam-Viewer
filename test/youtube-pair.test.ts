@@ -97,6 +97,7 @@ test("雙鏡頭完成後建立播放清單並互相連結，失敗後續做不�
     project_daily_limit: 100,
   });
   await service.connect(1, { access_token: "a", refresh_token: "r", expires_at: now + 3600_000 });
+  service.setSpread(1, false);
   const dir = path.join(root, "trips", "pair-trip");
   await fs.mkdir(dir, { recursive: true });
   const front = path.join(dir, "前鏡頭.mp4"),

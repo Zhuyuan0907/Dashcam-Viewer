@@ -150,6 +150,8 @@ async function fixture() {
     refresh_token: "refresh-secret",
     expires_at: now + 3600_000,
   });
+  // 既有測試驗證「額度內」的連續行為；平均分散另有專門測試。
+  service.setSpread(1, false);
   const tripId = `youtube-trip-${seq}`;
   const dir = path.join(root, "trips", tripId);
   await fs.mkdir(dir, { recursive: true });
@@ -1011,6 +1013,103 @@ test("picker rejects stale footage revisions before creating any upload jobs", a
     assert.equal(response.statusCode, 400);
     assert.match(response.json().detail, /影片已變更/);
     assert.equal((f.ctx.db.prepare("SELECT COUNT(*) AS n FROM youtube_uploads").get() as any).n, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("spread mode spaces upload starts evenly across the day instead of bursting", async () => {
+  const f = await fixture();
+  try {
+    f.service.setSpread(1, true);
+    f.service.setDailyLimit(1, 4);
+    await f.service.enqueue(1, [f.tripId], f.options);
+    await f.service.tick(); // 前鏡頭：第一部立即開始
+    await f.service.tick();
+    const rows = () =>
+      f.ctx.db.prepare("SELECT camera,status,not_before FROM youtube_uploads ORDER BY id").all() as any[];
+    assert.equal(rows()[0].status, "processing");
+    assert.equal(rows()[1].status, "queued");
+    const initiations = () => f.mock.calls.filter((c) => c.url.includes("uploadType")).length;
+    assert.equal(initiations(), 1);
+    // 24h / 4 = 6 小時一部；後鏡頭排到下一個時段，訊息說明是平均分散而非額度用完。
+    const used = f.ctx.db.prepare("SELECT MAX(created_at) AS t FROM youtube_usage").get() as any;
+    assert.equal(rows()[1].not_before, used.t + 6 * 3_600_000);
+    assert.match(f.service.get(2)!.message, /平均分散/);
+    const eta = f.service.estimates(1);
+    assert.equal(eta.get(2), used.t + 6 * 3_600_000);
+    f.advance(6 * 3_600_000 - 1000);
+    await f.service.tick();
+    assert.equal(initiations(), 1);
+    f.advance(2000);
+    await f.service.tick();
+    assert.equal(initiations(), 2);
+    // 關閉分散：額度內立即上傳。
+    f.service.setSpread(1, false);
+    assert.equal(f.service.interval(f.service.account(1)!), 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("videos deleted on YouTube can be re-uploaded or dismissed", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], f.options);
+    for (let i = 0; i < 6; i++) {
+      await f.service.tick();
+      f.advance(31_000);
+    }
+    const db = f.ctx.db;
+    db.prepare("UPDATE youtube_uploads SET yt_missing=1,status='failed'").run();
+    assert.deepEqual(f.service.missingIds(1), [1, 2]);
+    f.service.reuploadMissing(1);
+    const again = f.service.get(1)!;
+    assert.equal(again.status, "queued");
+    assert.equal(again.video_id, null);
+    assert.equal(again.yt_missing, 0);
+    f.service.dismissMissing(2);
+    assert.equal(f.service.get(2)!.status, "cancelled");
+    assert.deepEqual(f.service.missingIds(1), []);
+    assert.throws(() => f.service.dismissMissing(1), /沒有被標記/);
+    const response = await f.app.inject({
+      method: "POST",
+      url: "/api/youtube/missing",
+      headers: { cookie: f.cookie },
+      payload: { action: "nope" },
+    });
+    assert.equal(response.statusCode, 400);
+  } finally {
+    await f.close();
+  }
+});
+
+test("1080p uploads are confirmed only after YouTube finishes the HD version", async () => {
+  const f = await fixture();
+  try {
+    await f.service.enqueue(1, [f.tripId], { ...f.options, camera: "front" });
+    await f.service.tick();
+    const row = f.service.get(1)!;
+    assert.equal(row.status, "processing");
+    let definition = "sd";
+    (f.service.api as any).video = async () => ({
+      id: row.video_id,
+      snippet: { channelId: "channel-test" },
+      status: { uploadStatus: "processed", privacyStatus: "private" },
+      processingDetails: { processingStatus: "succeeded" },
+      contentDetails: { definition },
+      fileDetails: { videoStreams: [{ widthPixels: 1920, heightPixels: 1080 }] },
+    });
+    assert.equal(await f.service.verify(f.service.get(1)!), false);
+    assert.equal(f.service.get(1)!.status, "processing");
+    assert.match(f.service.get(1)!.message, /高畫質/);
+    definition = "hd";
+    assert.equal(await f.service.verify(f.service.get(1)!), true);
+    const done = f.service.get(1)!;
+    assert.equal(done.status, "succeeded");
+    assert.equal(done.yt_width, 1920);
+    assert.equal(done.yt_height, 1080);
+    assert.equal(done.yt_definition, "hd");
   } finally {
     await f.close();
   }

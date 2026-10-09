@@ -115,12 +115,29 @@ async function mockPicker(page: Page, trips: ReturnType<typeof pickerTrip>[]) {
       Number(url.searchParams.get("offset")) || 0,
       Math.max(0, Math.ceil(filtered.length / limit) - 1) * limit,
     );
+    const all = trips
+      .filter((t) => !ids || ids.includes(t.trip_id))
+      .map((t) => ({
+        date: t.date,
+        ready: Object.entries(t.cameras).some(
+          ([c, s]) => (camera === "both" || c === camera) && s.selectable,
+        ),
+      }));
+    const dates = [...new Set(all.map((t) => t.date))]
+      .map((d) => ({
+        date: d,
+        trips: all.filter((t) => t.date === d && (filter === "all" || t.ready)).length,
+        ready: all.filter((t) => t.date === d && t.ready).length,
+      }))
+      .filter((d) => d.trips > 0);
     return route.fulfill({
       json: {
         trips: filtered.slice(offset, offset + limit),
         total: filtered.length,
         counts,
         offset,
+        dates,
+        totals: { ready: all.filter((t) => t.ready).length, all: all.length },
       },
     });
   });
@@ -137,8 +154,7 @@ test("unconfigured site guides the owner to the OAuth setup steps in ops", async
     await page.setViewportSize(viewport);
     await page.goto("/youtube");
     await expect(page.locator("#yt-need-setup")).toBeVisible();
-    await expect(page.locator("#yt-next")).toBeDisabled();
-    await expect(page.locator("#yt-foot-status")).toContainText("連結頻道後才能繼續");
+    await expect(page.locator("#yt-wizard")).toBeHidden();
     await noOverflow(page);
     await shot(page, `wizard-setup-${viewport.width}`);
   }
@@ -153,15 +169,20 @@ test("unconfigured site guides the owner to the OAuth setup steps in ops", async
   expect(errors).toEqual([]);
 });
 
-test("connected account walks through the five steps and submits a paired batch", async ({
+test("connected account picks videos, sets privacy and submits a paired batch", async ({
   page,
 }) => {
   await setup(page);
-  const trips = Array.from({ length: 30 }, (_, i) =>
-    pickerTrip(i, i === 1 ? { front: "succeeded", rear: "uploading" } : {}),
-  );
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const trips = Array.from({ length: 30 }, (_, i) => ({
+    ...pickerTrip(i, i === 1 ? { front: "succeeded", rear: "uploading" } : {}),
+    date: i < 20 ? "2026-10-06" : "2026-10-05",
+  }));
   await mockPicker(page, trips);
-  await page.route("**/api/youtube/account", (route) => route.fulfill({ json: connected }));
+  await page.route("**/api/youtube/account", (route) =>
+    route.fulfill({ json: { ...connected, account: { ...connected.account, spread: true } } }),
+  );
   await page.route("**/api/youtube/preview", (route) =>
     route.fulfill({ json: { title: "行車記錄 2026-10-06 前鏡頭", description: "旅程 trip-0" } }),
   );
@@ -174,26 +195,32 @@ test("connected account walks through the five steps and submits a paired batch"
     { width: 390, height: 844 },
     { width: 1024, height: 768 },
     { width: 1366, height: 768 },
+    { width: 1920, height: 1080 },
   ]) {
     await page.setViewportSize(viewport);
     await page.goto("/youtube");
-    await expect(page.locator("#yt-step-1")).toBeVisible();
-    await expect(page.locator('#yt-steps li[data-step="0"]')).toHaveClass(/is-done/);
+    await expect(page.locator("#yt-step-0")).toBeVisible();
+    await expect(page.locator("#yt-connect-panel")).toBeHidden();
+    await expect(page.locator("#yt-channel")).toContainText("UI 頻道");
+    await expect(page.locator("#yt-steps li")).toHaveCount(3);
     await expect(page.locator('[data-trip="trip-1"]')).toHaveCount(0);
-    await expect(page.locator('[data-filter="ready"]')).toContainText("29 趟");
-    await page.locator('[data-filter="queued"]').click();
+    await expect(page.locator('[data-filter="ready"]')).toContainText("29");
+    await expect(page.locator('[data-date="2026-10-05"]')).toContainText("10");
+    await page.locator('[data-filter="all"]').click();
     await expect(page.locator('[data-trip="trip-1"]')).toBeDisabled();
     await expect(page.locator("#yt-trips")).toContainText("已上傳");
     await page.locator('[data-filter="ready"]').click();
     await noOverflow(page);
     await shot(page, `wizard-select-${viewport.width}`);
   }
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/youtube");
   await expect(page.locator("#yt-next")).toBeDisabled();
   await page.locator("#yt-select-page").click();
-  await expect(page.locator('[data-trip="trip-1"]')).toHaveCount(0);
   await expect(page.locator('[data-trip="trip-2"]')).toBeChecked();
+  await expect(page.locator("#yt-basket-plan")).toContainText("平均");
   await page.locator("#yt-clear-selection").click();
-  await expect(page.locator("#yt-foot-status")).toHaveText("尚未選擇旅程");
+  await expect(page.locator("#yt-basket-count")).toHaveText("尚未選擇");
   await expect(page.locator('[data-trip="trip-2"]')).not.toBeChecked();
   await page.locator('[data-trip="trip-0"]').check();
   await expect(page.locator("#yt-foot-status")).toContainText("已選 1 趟");
@@ -203,23 +230,24 @@ test("connected account walks through the five steps and submits a paired batch"
   await page.locator("#yt-trip-pager").getByRole("button", { name: "上一頁" }).click();
   await expect(page.locator('[data-trip="trip-0"]')).toBeChecked();
   await expect(page.locator("#yt-foot-status")).toContainText("已選 2 趟 · 4 部影片");
+  await page.locator('[data-date="2026-10-05"]').click();
+  await expect(page.locator('[data-trip="trip-0"]')).toHaveCount(0);
+  await expect(page.locator("#yt-basket-count")).toHaveText("2 趟 · 4 部影片");
+  await page.locator('[data-date=""]').click();
   await page.locator("#yt-next").click();
-  await expect(page.locator("#yt-step-2")).toBeVisible();
+  await expect(page.locator("#yt-step-1")).toBeVisible();
   await expect(page.locator("#yt-preview-result")).toContainText("行車記錄 2026-10-06 前鏡頭");
   await page.locator("#yt-title").focus();
   await page.locator(".yt-param", { hasText: "鏡頭" }).click();
   await expect(page.locator("#yt-title")).toHaveValue(/\{camera\}$/);
-  await noOverflow(page);
-  await shot(page, "wizard-metadata");
-  await page.locator("#yt-next").click();
-  await expect(page.locator("#yt-mode-selection")).toContainText("2 趟、4 部影片");
   await page.locator("details.yt-advanced summary").click();
   await page.locator("#yt-start").fill("2026-12-01T09:00");
   await noOverflow(page);
-  await shot(page, "wizard-mode");
+  await shot(page, "wizard-settings");
   await page.locator("#yt-next").click();
-  await expect(page.locator("#yt-summary")).toContainText("2 趟");
   await expect(page.locator("#yt-summary")).toContainText("4 部");
+  await expect(page.locator("#yt-schedule")).toContainText("約每 2 小時 24 分 一部");
+  await expect(page.locator("#yt-schedule .yt-ruler i")).toHaveCount(4);
   await expect(page.locator("#yt-next")).toBeDisabled();
   await page.locator("#yt-confirm-upload").check();
   await noOverflow(page);
@@ -237,6 +265,7 @@ test("connected account walks through the five steps and submits a paired batch"
   expect(submitted.not_before).toBeGreaterThan(Date.now());
   await noOverflow(page);
   await shot(page, "wizard-done");
+  expect(errors).toEqual([]);
 });
 
 test("ops YouTube pane shows queue detail and archive with playlist links", async ({ page }) => {
@@ -258,6 +287,8 @@ test("ops YouTube pane shows queue detail and archive with playlist links", asyn
     playlist_url: "https://www.youtube.com/playlist?list=PL1",
     pair_status: "done",
     can_restart: false,
+    resolution: { width: 1920, height: 1080 },
+    definition: "hd",
     youtube: {
       title: "Studio 改過的標題",
       privacy: "unlisted",
@@ -274,8 +305,15 @@ test("ops YouTube pane shows queue detail and archive with playlist links", asyn
     camera: "rear",
     title: "測試後鏡頭",
     status: "failed",
+    missing: true,
     youtube: { missing: true, synced_at: Date.now() },
   };
+  const missingActions: string[] = [];
+  await page.route("**/api/youtube/uploads/43/missing", (route) => {
+    missingActions.push(route.request().postDataJSON().action);
+    return route.fulfill({ json: { status: "ok" } });
+  });
+  page.on("dialog", (d) => d.accept());
   let syncCalls = 0;
   await page.route("**/api/youtube/sync", (route) => {
     syncCalls++;
@@ -285,7 +323,12 @@ test("ops YouTube pane shows queue detail and archive with playlist links", asyn
   await page.route("**/api/youtube/uploads?*", (route) =>
     route.fulfill({
       json: route.request().url().includes("filter=archive")
-        ? { uploads: [upload, deletedUpload], total: 2, counts: [{ status: "succeeded", n: 1 }] }
+        ? {
+            uploads: [upload, deletedUpload],
+            total: 2,
+            missing: 1,
+            counts: [{ status: "succeeded", n: 1 }],
+          }
         : { uploads: [upload], total: 1, counts: [{ status: "succeeded", n: 1 }] },
     }),
   );
@@ -312,7 +355,9 @@ test("ops YouTube pane shows queue detail and archive with playlist links", asyn
     await shot(page, `ops-youtube-queue-${viewport.width}`);
     await page.locator('[data-ytm="archive"]').click();
     await expect(page.locator("#ytm-archives")).toContainText("已配對播放清單");
-    await expect(page.locator("#ytm-archives")).toContainText("1,234 次觀看");
+    await expect(page.locator("#ytm-archives")).toContainText("觀看 1,234 次");
+    await expect(page.locator("#ytm-archives")).toContainText("1920×1080");
+    await expect(page.locator("#ytm-missing")).toContainText("1 部影片在 YouTube 上找不到");
     await expect(page.locator("#ytm-archives")).toContainText("YouTube 標題：Studio 改過的標題");
     await expect(page.locator("#ytm-archives")).toContainText("YouTube 上找不到這部影片");
     await expect(page.locator("#ytm-archives a", { hasText: "在 Studio 編輯" })).toHaveAttribute(
@@ -326,6 +371,35 @@ test("ops YouTube pane shows queue detail and archive with playlist links", asyn
     await noOverflow(page);
     await shot(page, `ops-youtube-archive-${viewport.width}`);
   }
+  await page.locator('#ytm-archives [data-row-missing="dismiss"]').click();
+  await expect.poll(() => missingActions).toEqual(["dismiss"]);
+  await page.locator('#ytm-archives [data-row-missing="reupload"]').click();
+  await expect.poll(() => missingActions).toEqual(["dismiss", "reupload"]);
+});
+
+test("ops channel settings save the daily limit with an even-spread pace", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/youtube/account", (route) =>
+    route.request().method() === "PATCH"
+      ? route.fallback()
+      : route.fulfill({ json: { ...connected, account: { ...connected.account, spread: true } } }),
+  );
+  let saved: any;
+  await page.route("**/api/youtube/account", (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    saved = route.request().postDataJSON();
+    return route.fulfill({ json: { status: "saved" } });
+  });
+  await page.goto("/ops#youtube");
+  await page.locator('[data-ytm="account"]').click();
+  await expect(page.locator('input[name="ytm-spread"][value="1"]')).toBeChecked();
+  await page.locator("#ytm-limit").fill("12");
+  await expect(page.locator("#ytm-pace-hint")).toContainText("每 2 小時 上傳一部");
+  await page.locator('input[name="ytm-spread"][value="0"]').check();
+  await page.locator("#ytm-save-limit").click();
+  await expect.poll(() => saved).toEqual({ daily_limit: 12, spread: false });
+  await noOverflow(page);
+  await shot(page, "ops-youtube-account");
 });
 
 test("ops storage pane reports disk usage and reclaimable items", async ({ page }) => {
@@ -384,10 +458,10 @@ test("reconnect opens consent for an existing paused account without discarding 
   await expect(page.locator("#ytm-account-body")).toContainText("失敗也計入");
   await page.locator("#ytm-reconnect").click();
   await expect(page).toHaveURL(/\/youtube\?reauthorize=1$/);
-  await expect(page.locator("#yt-step-0")).toBeVisible();
-  await expect(page.locator("#yt-connect-box")).toBeVisible();
-  await expect(page.locator("#yt-connected")).toContainText("保留現有上傳紀錄");
-  await expect(page.locator("#yt-next")).toBeDisabled();
+  await expect(page.locator("#yt-connect-panel")).toBeVisible();
+  await expect(page.locator("#yt-wizard")).toBeHidden();
+  await expect(page.locator("#yt-connect-title")).toContainText("重新授權頻道：UI 頻道");
+  await expect(page.locator("#yt-connect-back")).toBeVisible();
   await expect(page.locator("#yt-connect")).toBeDisabled();
   await page.locator("#yt-policy").check();
   await expect(page.locator("#yt-connect")).toBeEnabled();
@@ -398,7 +472,8 @@ test("reconnect opens consent for an existing paused account without discarding 
     return route.fulfill({ json: { url: `${baseURL}/youtube?oauth=connected` } });
   });
   await page.locator("#yt-connect").click();
-  await expect(page.locator("#yt-oauth-notice")).toContainText("仍保持暫停");
+  await expect(page.locator("#yt-notice")).toContainText("仍保持暫停");
+  await expect(page.locator("#yt-wizard")).toBeVisible();
   expect(authStarts).toBe(1);
   await noOverflow(page);
 });
@@ -540,24 +615,25 @@ test("partial trips show exact camera selection, completed links and a persisten
   ]) {
     await page.setViewportSize(viewport);
     await page.goto("/youtube");
-    await expect(page.locator('[data-filter="ready"]')).toContainText("2 趟");
+    await expect(page.locator('[data-filter="ready"]')).toContainText("2");
     await expect(page.locator("#yt-queue-chip")).toContainText("佇列已暫停 2 部");
     await expect(page.locator('[data-trip="trip-1"]')).toHaveCount(0);
     await expect(page.locator('[data-trip="trip-2"]')).toHaveCount(0);
     const card = page.locator(".yt-trip", { has: page.locator('[data-trip="trip-0"]') });
-    await expect(card).toContainText("這次可上傳：後鏡頭");
+    await expect(card.locator('[data-camera="rear"]')).toBeVisible();
+    await expect(card.locator('[data-camera="front"]')).toHaveCount(0);
     await expect(card.locator('a[href*="video-0-front"]')).toBeVisible();
     await page.locator('[data-trip="trip-0"]').check();
     await expect(page.locator("#yt-foot-status")).toHaveText("已選 1 趟 · 1 部影片");
-    if ((await page.locator("#yt-basket").getAttribute("open")) === null)
-      await page.locator("#yt-foot-status").click();
-    await expect(page.locator("#yt-basket")).toHaveAttribute("open", "");
-    await expect(page.locator("#yt-selected-list")).toContainText("後鏡頭 · 1 部影片");
+    if (await page.locator("#yt-basket-toggle").isVisible())
+      await page.locator("#yt-basket-toggle").click();
+    await expect(page.locator("#yt-selected-list")).toBeVisible();
+    await expect(page.locator("#yt-selected-list")).toContainText("後鏡頭");
     await expect(page.locator("#yt-selected-list")).not.toContainText("前鏡頭");
     await page.locator("#yt-selected-list [data-remove]").click();
     await expect(page.locator('[data-trip="trip-0"]')).not.toBeChecked();
     await page.locator('[data-trip="trip-0"]').check();
-    await page.locator('[data-filter="uploaded"]').click();
+    await page.locator('[data-filter="all"]').click();
     await expect(page.locator('[data-trip="trip-1"]')).toBeDisabled();
     await expect(page.locator('#yt-trips a[href*="youtube.com"]')).toHaveCount(3);
     await expect(page.locator("#yt-basket-count")).toHaveText("1 趟 · 1 部影片");
@@ -567,17 +643,17 @@ test("partial trips show exact camera selection, completed links and a persisten
     await shot(page, `wizard-partial-${viewport.width}-${viewport.height}`);
   }
   await page.locator("#yt-next").click();
+  await expect(page.locator("#yt-step-1")).toBeVisible();
   expect(previewCamera).toBe("rear");
   await page.locator("#yt-next").click();
-  await page.locator("#yt-next").click();
-  await expect(page.locator("#yt-confirm-list")).toContainText("後鏡頭 · 1 部影片");
+  await expect(page.locator("#yt-confirm-list")).toContainText("後鏡頭");
   await expect(page.locator("#yt-confirm-hint")).toContainText("佇列已暫停");
   await page.locator("#yt-confirm-upload").check();
   await page.locator("#yt-next").click();
   expect(submitted.videos).toEqual([
     { trip_id: "trip-0", camera: "rear", revision: "a".repeat(64) },
   ]);
-  await expect(page.locator("#yt-done-text")).toContainText("佇列仍保持暫停");
+  await expect(page.locator("#yt-done-text")).toContainText("佇列目前暫停");
   expect(errors).toEqual([]);
 });
 
@@ -591,16 +667,16 @@ test("individual camera choices survive date filters and clear excluded cameras 
   await page.locator('[data-camera-trip="trip-0"][data-camera="rear"]').check();
   await expect(page.locator('[data-trip="trip-0"]')).toHaveJSProperty("indeterminate", true);
   await expect(page.locator("#yt-foot-status")).toHaveText("已選 1 趟 · 1 部影片");
-  await page.locator("#yt-date").fill("2026-10-07");
+  await page.locator('[data-date="2026-10-07"]').click();
   await expect(page.locator('[data-trip="trip-0"]')).toHaveCount(0);
   await expect(page.locator("#yt-basket-count")).toHaveText("1 趟 · 1 部影片");
-  await page.locator("#yt-clear-date").click();
+  await page.locator('[data-date=""]').click();
   await expect(page.locator('[data-camera-trip="trip-0"][data-camera="rear"]')).toBeChecked();
-  await page.locator("#yt-camera-filter").selectOption("front");
-  await expect(page.locator("#yt-basket-count")).toHaveText("0 趟 · 0 部影片");
+  await page.locator('[data-camera-mode="front"]').click();
+  await expect(page.locator("#yt-basket-count")).toHaveText("尚未選擇");
   await expect(page.locator("#yt-notice")).toContainText("已移除 1 部");
   await page.locator('[data-trip="trip-0"]').check();
-  await expect(page.locator("#yt-selected-list")).toContainText("前鏡頭 · 1 部影片");
+  await expect(page.locator("#yt-selected-list")).toContainText("前鏡頭");
 });
 
 test("a selection that changed in another tab returns to review without submitting", async ({
@@ -621,10 +697,10 @@ test("a selection that changed in another tab returns to review without submitti
   await page.goto("/youtube");
   await page.locator('[data-trip="trip-0"]').check();
   await page.locator("#yt-next").click();
-  await page.locator("#yt-next").click();
+  await expect(page.locator("#yt-step-1")).toBeVisible();
   trips[0].cameras.front = { ...trips[0].cameras.front, status: "queued", selectable: false };
   await page.locator("#yt-next").click();
-  await expect(page.locator("#yt-step-1")).toBeVisible();
+  await expect(page.locator("#yt-step-0")).toBeVisible();
   await expect(page.locator("#yt-notice")).toContainText("已移出清單");
   await expect(page.locator("#yt-foot-status")).toHaveText("已選 1 趟 · 1 部影片");
   expect(uploads).toBe(0);

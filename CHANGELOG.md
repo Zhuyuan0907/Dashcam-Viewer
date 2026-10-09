@@ -1,7 +1,14 @@
 # Changelog
 
-## Unreleased
+## 2.9.0 — 2026-10-09
 
+- Redesign the YouTube upload page: three steps (choose videos, title and privacy, confirm) instead of five. Linking the channel is no longer a step — it appears as a separate screen only when no channel is linked or when reauthorizing; once linked, the page header just shows the channel.
+- Use the full desktop width for choosing trips: a date list on the left, thumbnail cards with per-camera toggles in the middle, and the selection with an upload-schedule estimate on the right. Tablet and phone layouts collapse the dates into a scrolling strip and the selection into an expandable bar.
+- Spread uploads evenly across the day: with a daily limit of N, each new upload starts at least 24h/N after the previous one instead of the whole allowance running back to back. Ops › YouTube › Channel can switch to "as fast as the limit allows". The queue shows each video's estimated start time, and the confirm step draws the first day's schedule on a 24-hour ruler.
+- Offer two choices for videos that were deleted on YouTube: re-upload, or dismiss (stop reminding; the trip can still be chosen again later), per video or all at once.
+- Record the resolution YouTube received and its HD status; a 1080p upload is only marked complete (and eligible for local cleanup) once YouTube has finished the HD version. Uploads continue to send the original file without re-encoding.
+- Cancelling the last active upload of a trip now drops its pending playlist pairing instead of leaving it to fail later.
+- Remove emoji and decorative symbols from the interface (status labels, buttons, link markers and the YouTube playlist cross-link text).
 - Show a public app introduction to visitors while retaining the trip dashboard for signed-in users. Link the privacy policy and terms from the introduction and login page.
 - Expand the privacy policy with account, footage, OAuth and YouTube API data collection, usage, recipients, retention, security and deletion disclosures; add separate service terms and a deployment-configured public contact address. Keep the previous YouTube privacy URL working.
 - Keep the public contact address readable without JavaScript when served through Cloudflare email protection.

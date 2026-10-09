@@ -8,9 +8,9 @@
     <link rel="stylesheet" href="/static/ui.css?v=2.2.0" />
     <script src="/static/themes.js"></script>
     <link rel="stylesheet" href="/static/themes.css?v=2.1.2" />
-    <link rel="stylesheet" href="/static/youtube.css?v=5" />
+    <link rel="stylesheet" href="/static/youtube.css?v=6" />
   </head>
-  <body class="fit-page fit-mobile">
+  <body class="fit-page fit-mobile yt-wide">
     <header class="hdr">
       <div class="wrap hdr-inner">
         <a class="hdr-brand" href="/">
@@ -49,257 +49,246 @@
         <div class="page-head">
           <div class="page-head-title">
             <h1>上傳到 YouTube</h1>
-            <span class="page-head-sub">跟著步驟，把旅程備份到自己的頻道</span>
+            <span class="page-head-sub">選好旅程，系統會在背景依排程上傳到你的頻道</span>
           </div>
-          <a id="yt-queue-chip" class="yt-chip" href="/ops#youtube" hidden></a>
+          <div class="yt-head-side">
+            <a id="yt-queue-chip" class="yt-chip" href="/ops#youtube" hidden></a>
+            <span class="yt-channel" id="yt-channel" hidden>
+              <span class="yt-channel-label">頻道</span>
+              <b id="yt-channel-name"></b>
+              <a class="link" href="/ops#youtube" id="yt-channel-manage">管理</a>
+            </span>
+          </div>
         </div>
 
-        <ol class="yt-steps" id="yt-steps" aria-label="上傳步驟">
-          <li data-step="0"><i>1</i><span>連結頻道</span></li>
-          <li data-step="1"><i>2</i><span>選擇旅程</span></li>
-          <li data-step="2"><i>3</i><span>標題與說明</span></li>
-          <li data-step="3"><i>4</i><span>上傳方式</span></li>
-          <li data-step="4"><i>5</i><span>確認送出</span></li>
-        </ol>
-
-        <section class="yt-card" aria-live="polite">
-          <!-- ① 連結頻道 -->
-          <div class="yt-step" id="yt-step-0">
-            <div class="yt-step-head">
-              <h2>第 1 步：連結你的 YouTube 頻道</h2>
-              <p>影片會上傳到你自己的頻道。本站只保存加密過的授權，隨時可以解除。</p>
+        <!-- 連結頻道：只有尚未連結或要重新授權時出現，不算在上傳步驟裡 -->
+        <section class="yt-card yt-connect" id="yt-connect-panel" hidden>
+          <div class="yt-connect-inner">
+            <h2 id="yt-connect-title">先連結你的 YouTube 頻道</h2>
+            <p>影片會上傳到你自己的頻道。本站只保存加密過的授權，隨時可以解除。只需要做一次。</p>
+            <div class="yt-callout warn" id="yt-need-setup" hidden>
+              <b>站台尚未設定 Google 授權</b>
+              <p id="yt-need-setup-text">
+                這是第一次使用 YouTube 功能時需要的一次性設定（約 10 分鐘），完成後就能連結頻道。
+              </p>
+              <a class="btn btn--solid" id="yt-go-setup" href="/ops#youtube">前往設定步驟</a>
             </div>
-            <div class="yt-step-body">
-              <div class="yt-callout warn" id="yt-need-setup" hidden>
-                <b>還差一步：站台尚未設定 Google 授權</b>
-                <p id="yt-need-setup-text">
-                  這是第一次使用 YouTube 功能時需要的一次性設定（約 10 分鐘），完成後就能連結頻道。
-                </p>
-                <a class="btn btn--solid" id="yt-go-setup" href="/ops#youtube">前往設定步驟</a>
-              </div>
-              <div id="yt-connect-box" hidden>
-                <label class="yt-check">
-                  <input id="yt-policy" type="checkbox" />
-                  <span
-                    >我已閱讀並同意
-                    <a class="link" href="/privacy" target="_blank" rel="noopener">隱私權政策</a>
-                    與
-                    <a class="link" href="/terms" target="_blank" rel="noopener">服務條款</a> ，了解
-                    YouTube 副本不保證永久保存原始畫質。</span
-                  >
-                </label>
-                <div class="yt-actions">
-                  <button id="yt-connect" class="btn btn--solid btn--lg" type="button" disabled>
-                    使用 Google 帳號連結
-                  </button>
-                  <span class="yt-hint" id="yt-connect-hint">請先勾選上方的同意</span>
-                </div>
-              </div>
-              <div class="yt-callout ok" id="yt-connected" hidden>
-                <b>已連結頻道：<span id="yt-channel-name"></span></b>
-                <p>
-                  可以開始選擇要上傳的旅程。要更換頻道、暫停或解除連結，請到
-                  <a class="link" href="/ops#youtube">維運 › YouTube</a>。
-                  <a class="link" href="/youtube?reauthorize=1">重新授權</a>會保留現有上傳紀錄。
-                </p>
-              </div>
-              <p class="yt-notice" id="yt-oauth-notice" role="status" hidden></p>
-            </div>
-          </div>
-
-          <!-- ② 選擇旅程 -->
-          <div class="yt-step" id="yt-step-1" hidden>
-            <div class="yt-step-head">
-              <h2>第 2 步：選擇要上傳的影片</h2>
-              <p>預設只顯示還需要上傳的旅程。可跨日期、跨頁選取，也能單獨選前後鏡頭。</p>
-            </div>
-            <nav class="yt-filters" aria-label="旅程上傳狀態">
-              <button type="button" data-filter="ready" aria-pressed="true">
-                待上傳 <span>—</span>
-              </button>
-              <button type="button" data-filter="queued" aria-pressed="false">
-                佇列中 <span>—</span>
-              </button>
-              <button type="button" data-filter="uploaded" aria-pressed="false">
-                已上傳 <span>—</span>
-              </button>
-              <button type="button" data-filter="all" aria-pressed="false">
-                全部 <span>—</span>
-              </button>
-            </nav>
-            <div class="yt-toolbar">
-              <label class="yt-inline"
-                >鏡頭
-                <select id="yt-camera-filter" class="form-input form-select">
-                  <option value="both">前後鏡頭</option>
-                  <option value="front">前鏡頭</option>
-                  <option value="rear">後鏡頭</option>
-                </select>
+            <div id="yt-connect-box" hidden>
+              <label class="yt-check">
+                <input id="yt-policy" type="checkbox" />
+                <span
+                  >我已閱讀並同意
+                  <a class="link" href="/privacy" target="_blank" rel="noopener">隱私權政策</a>
+                  與
+                  <a class="link" href="/terms" target="_blank" rel="noopener">服務條款</a>，了解
+                  YouTube 副本不保證永久保存原始畫質。</span
+                >
               </label>
-              <label class="yt-inline"
-                >拍攝日期 <input id="yt-date" type="date" class="form-input"
-              /></label>
-              <button id="yt-clear-date" class="btn btn--ghost btn--sm" type="button">
-                顯示全部日期
-              </button>
-              <span class="yt-spacer"></span>
-              <button id="yt-select-page" class="btn btn--ghost btn--sm" type="button">
-                全選本頁
-              </button>
-            </div>
-            <div class="yt-selection-body">
-              <div class="yt-library">
-                <p class="yt-hint" id="yt-filter-hint"></p>
-                <div id="yt-trips" class="yt-list"></div>
-                <div class="yt-pager" id="yt-trip-pager"></div>
+              <div class="yt-actions">
+                <button id="yt-connect" class="btn btn--solid btn--lg" type="button" disabled>
+                  使用 Google 帳號連結
+                </button>
+                <span class="yt-hint" id="yt-connect-hint">請先勾選上方的同意</span>
+                <a class="btn btn--ghost" href="/youtube" id="yt-connect-back" hidden>返回上傳</a>
               </div>
-              <details class="yt-basket" id="yt-basket">
-                <summary>已選清單 <span id="yt-basket-count">0 部影片</span></summary>
-                <div class="yt-basket-body">
-                  <p class="yt-hint">這裡列出的鏡頭才會加入上傳佇列。</p>
-                  <div id="yt-selected-list"></div>
+            </div>
+            <p class="yt-notice" id="yt-oauth-notice" role="status" hidden></p>
+          </div>
+        </section>
+
+        <div class="yt-wizard" id="yt-wizard" hidden>
+          <ol class="yt-steps" id="yt-steps" aria-label="上傳步驟">
+            <li data-step="0"><i>1</i><span>選擇影片</span></li>
+            <li data-step="1"><i>2</i><span>標題與隱私</span></li>
+            <li data-step="2"><i>3</i><span>確認送出</span></li>
+          </ol>
+
+          <section class="yt-card" aria-live="polite">
+            <!-- 1 選擇影片 -->
+            <div class="yt-step" id="yt-step-0">
+              <div class="yt-picker">
+                <aside class="yt-rail" aria-label="依日期篩選">
+                  <div class="yt-seg" role="group" aria-label="顯示範圍">
+                    <button type="button" data-filter="ready" aria-pressed="true">
+                      待上傳 <span>—</span>
+                    </button>
+                    <button type="button" data-filter="all" aria-pressed="false">
+                      全部 <span>—</span>
+                    </button>
+                  </div>
+                  <div class="yt-dates" id="yt-dates"></div>
+                </aside>
+
+                <div class="yt-library">
+                  <div class="yt-toolbar">
+                    <div class="yt-seg" role="group" aria-label="要上傳的鏡頭" id="yt-camera-seg">
+                      <button type="button" data-camera-mode="both" aria-pressed="true">
+                        前後鏡頭
+                      </button>
+                      <button type="button" data-camera-mode="front" aria-pressed="false">
+                        只要前鏡頭
+                      </button>
+                      <button type="button" data-camera-mode="rear" aria-pressed="false">
+                        只要後鏡頭
+                      </button>
+                    </div>
+                    <span class="yt-spacer"></span>
+                    <button id="yt-select-page" class="btn btn--ghost btn--sm" type="button">
+                      全選這一頁
+                    </button>
+                  </div>
+                  <p class="yt-hint" id="yt-filter-hint"></p>
+                  <div id="yt-trips" class="yt-grid"></div>
+                  <div class="yt-pager" id="yt-trip-pager"></div>
+                </div>
+
+                <aside class="yt-basket" id="yt-basket" aria-label="已選影片">
+                  <div class="yt-basket-head">
+                    <b>已選擇</b>
+                    <span id="yt-basket-count">0 部影片</span>
+                  </div>
+                  <button
+                    id="yt-basket-toggle"
+                    class="btn btn--ghost btn--sm"
+                    type="button"
+                    aria-expanded="false"
+                    aria-controls="yt-selected-list"
+                  >
+                    查看清單
+                  </button>
+                  <div class="yt-basket-list" id="yt-selected-list"></div>
+                  <p class="yt-basket-plan" id="yt-basket-plan"></p>
                   <button id="yt-clear-selection" class="btn btn--ghost btn--sm" type="button">
                     清空已選
                   </button>
-                </div>
-              </details>
-            </div>
-          </div>
-
-          <!-- ③ 標題與說明 -->
-          <div class="yt-step" id="yt-step-2" hidden>
-            <div class="yt-step-head">
-              <h2>第 3 步：設定標題與說明</h2>
-              <p>每部影片會自動填入自己的日期、時間與鏡頭。通常保留預設即可。</p>
-            </div>
-            <div class="yt-step-body yt-two">
-              <div>
-                <label class="field"
-                  >影片標題<input class="form-input" id="yt-title" maxlength="2000"
-                /></label>
-                <label class="field"
-                  >影片說明<textarea
-                    class="form-input"
-                    id="yt-description"
-                    rows="5"
-                    maxlength="10000"
-                  ></textarea>
-                </label>
-                <p class="yt-hint">點下方的標籤，可插入到游標所在位置：</p>
-                <div class="yt-parameters" id="yt-parameters"></div>
-              </div>
-              <div class="yt-preview-box">
-                <b>實際效果預覽（第一部影片）</b>
-                <div id="yt-preview-result" class="yt-preview">—</div>
+                </aside>
               </div>
             </div>
-          </div>
 
-          <!-- ④ 上傳方式 -->
-          <div class="yt-step" id="yt-step-3" hidden>
-            <div class="yt-step-head">
-              <h2>第 4 步：選擇上傳方式</h2>
-              <p>
-                網站上可以切換前後鏡頭；YouTube
-                一部影片只有一個畫面，所以前後鏡頭會各成一部影片，再自動配對。
-              </p>
-            </div>
-            <div class="yt-step-body">
-              <p class="yt-callout" id="yt-mode-selection"></p>
-              <fieldset class="yt-options">
-                <legend>誰可以看</legend>
-                <label class="yt-option"
-                  ><input type="radio" name="yt-privacy" value="private" checked /><span
-                    ><b>私人（建議）</b><small>只有你自己看得到。</small></span
-                  ></label
-                >
-                <label class="yt-option"
-                  ><input type="radio" name="yt-privacy" value="unlisted" /><span
-                    ><b>不公開</b><small>拿到連結的人才看得到，適合提供給保險或警方。</small></span
-                  ></label
-                >
-                <label class="yt-option"
-                  ><input type="radio" name="yt-privacy" value="public" /><span
-                    ><b>公開</b><small>所有人都能搜尋到。</small></span
-                  ></label
-                >
-              </fieldset>
-              <details class="yt-advanced">
-                <summary>進階設定（排程、兒童內容）</summary>
-                <div class="field-grid">
+            <!-- 2 標題與隱私 -->
+            <div class="yt-step" id="yt-step-1" hidden>
+              <div class="yt-step-body yt-settings">
+                <div class="yt-settings-main">
+                  <h2>標題與說明</h2>
+                  <p class="yt-hint">
+                    每部影片會自動帶入自己的日期、時間與鏡頭，通常保留預設即可。
+                  </p>
                   <label class="field"
-                    >開始上傳時間（留空 = 立即）<input
-                      id="yt-start"
-                      type="datetime-local"
-                      class="form-input"
+                    >影片標題<input class="form-input" id="yt-title" maxlength="2000"
                   /></label>
                   <label class="field"
-                    >是否為兒童內容<select id="yt-kids" class="form-input form-select">
-                      <option value="false">否（行車記錄通常選這個）</option>
-                      <option value="true">是</option>
-                    </select></label
-                  >
+                    >影片說明<textarea
+                      class="form-input"
+                      id="yt-description"
+                      rows="5"
+                      maxlength="10000"
+                    ></textarea>
+                  </label>
+                  <p class="yt-hint">點標籤可插入到游標位置：</p>
+                  <div class="yt-parameters" id="yt-parameters"></div>
+                  <div class="yt-preview-box">
+                    <b>實際效果（第一部影片）</b>
+                    <div id="yt-preview-result" class="yt-preview">—</div>
+                  </div>
                 </div>
-              </details>
-            </div>
-          </div>
-
-          <!-- ⑤ 確認送出 -->
-          <div class="yt-step" id="yt-step-4" hidden>
-            <div class="yt-step-head">
-              <h2>第 5 步：確認上傳清單</h2>
-              <p id="yt-confirm-hint">送出後會加入佇列，依序在背景上傳。</p>
-            </div>
-            <div class="yt-step-body">
-              <dl class="yt-summary" id="yt-summary"></dl>
-              <div class="yt-confirm-list" id="yt-confirm-list"></div>
-              <label class="yt-check">
-                <input id="yt-confirm-upload" type="checkbox" />
-                <span
-                  >我確認以上設定，授權系統把這些影片上傳到我的 YouTube
-                  頻道。本機影片會保留，之後可在維運頁確認上傳成功後再釋放空間。</span
-                >
-              </label>
-            </div>
-          </div>
-
-          <!-- 完成 -->
-          <div class="yt-step" id="yt-step-done" hidden>
-            <div class="yt-step-head">
-              <h2>✓ 已加入上傳佇列</h2>
-              <p id="yt-done-text"></p>
-            </div>
-            <div class="yt-step-body">
-              <ol class="yt-next-steps">
-                <li>
-                  系統會在背景依序上傳，每 24 小時最多
-                  <b id="yt-done-limit">10</b> 次建立上傳的嘗試，失敗也計入；超過會等待上限恢復。
-                </li>
-                <li>YouTube 處理完成後，前後鏡頭會自動放進同一個播放清單。</li>
-                <li>
-                  確認影片都上傳成功後，到
-                  <a class="link" href="/ops#youtube">維運 › YouTube › 已上傳</a>
-                  勾選旅程，即可刪除本機檔案、釋放硬碟空間。
-                </li>
-              </ol>
-              <div class="yt-actions">
-                <a class="btn btn--solid" href="/ops#youtube" id="yt-done-ops">查看上傳進度</a>
-                <button class="btn btn--ghost" type="button" id="yt-again">再上傳其他旅程</button>
+                <div class="yt-settings-side">
+                  <fieldset class="yt-options">
+                    <legend>誰可以看</legend>
+                    <label class="yt-option"
+                      ><input type="radio" name="yt-privacy" value="private" checked /><span
+                        ><b>私人（建議）</b><small>只有你自己看得到。</small></span
+                      ></label
+                    >
+                    <label class="yt-option"
+                      ><input type="radio" name="yt-privacy" value="unlisted" /><span
+                        ><b>不公開</b
+                        ><small>拿到連結的人才看得到，適合提供給保險或警方。</small></span
+                      ></label
+                    >
+                    <label class="yt-option"
+                      ><input type="radio" name="yt-privacy" value="public" /><span
+                        ><b>公開</b><small>所有人都能搜尋到。</small></span
+                      ></label
+                    >
+                  </fieldset>
+                  <details class="yt-advanced">
+                    <summary>進階設定（開始時間、兒童內容）</summary>
+                    <div class="yt-advanced-body">
+                      <label class="field"
+                        >最早開始時間（留空 = 現在）<input
+                          id="yt-start"
+                          type="datetime-local"
+                          class="form-input"
+                      /></label>
+                      <label class="field"
+                        >是否為兒童內容<select id="yt-kids" class="form-input form-select">
+                          <option value="false">否（行車記錄通常選這個）</option>
+                          <option value="true">是</option>
+                        </select></label
+                      >
+                    </div>
+                  </details>
+                  <p class="yt-hint">
+                    以原始檔上傳，不另外壓縮；1080p 的影片在 YouTube 會保留 1080p。系統會等 YouTube
+                    產生高畫質版本後才標記為完成。
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
 
-          <footer class="yt-card-foot" id="yt-foot">
-            <button id="yt-prev" class="btn btn--ghost" type="button">← 上一步</button>
-            <button type="button" id="yt-foot-status" class="yt-foot-status" disabled></button>
-            <button id="yt-next" class="btn btn--solid" type="button">下一步 →</button>
-          </footer>
-        </section>
+            <!-- 3 確認送出 -->
+            <div class="yt-step" id="yt-step-2" hidden>
+              <div class="yt-step-body yt-confirm">
+                <div>
+                  <h2>確認上傳清單</h2>
+                  <p class="yt-hint" id="yt-confirm-hint">送出後會加入佇列，在背景依排程上傳。</p>
+                  <dl class="yt-summary" id="yt-summary"></dl>
+                  <div class="yt-schedule" id="yt-schedule"></div>
+                  <label class="yt-check">
+                    <input id="yt-confirm-upload" type="checkbox" />
+                    <span
+                      >我確認以上設定，授權系統把這些影片上傳到我的 YouTube
+                      頻道。本機影片會保留，之後可在維運頁確認上傳成功後再釋放空間。</span
+                    >
+                  </label>
+                </div>
+                <div class="yt-confirm-list" id="yt-confirm-list"></div>
+              </div>
+            </div>
+
+            <!-- 完成 -->
+            <div class="yt-step" id="yt-step-done" hidden>
+              <div class="yt-step-body yt-done">
+                <h2>已加入上傳佇列</h2>
+                <p id="yt-done-text"></p>
+                <ol class="yt-next-steps">
+                  <li id="yt-done-pace"></li>
+                  <li>YouTube 產生高畫質版本後，前後鏡頭會自動放進同一個播放清單。</li>
+                  <li>
+                    確認影片都上傳成功後，到
+                    <a class="link" href="/ops#youtube">維運 › YouTube 管理 › 已上傳</a>
+                    勾選旅程，即可刪除本機檔案、釋放硬碟空間。
+                  </li>
+                </ol>
+                <div class="yt-actions">
+                  <a class="btn btn--solid" href="/ops#youtube" id="yt-done-ops">查看上傳進度</a>
+                  <button class="btn btn--ghost" type="button" id="yt-again">再上傳其他旅程</button>
+                </div>
+              </div>
+            </div>
+
+            <footer class="yt-card-foot" id="yt-foot">
+              <button id="yt-prev" class="btn btn--ghost" type="button">上一步</button>
+              <button type="button" id="yt-foot-status" class="yt-foot-status" disabled></button>
+              <button id="yt-next" class="btn btn--solid" type="button">下一步</button>
+            </footer>
+          </section>
+        </div>
         <div id="yt-notice" class="yt-notice" role="status" aria-live="polite"></div>
       </div>
     </main>
     <div id="toast-container"></div>
     <script src="/static/app.js?v=2.6.1"></script>
-    <script src="/static/youtube.js?v=7"></script>
+    <script src="/static/youtube.js?v=8"></script>
   </body>
 </html>

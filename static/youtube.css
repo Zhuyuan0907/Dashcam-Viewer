@@ -34,7 +34,7 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   flex: none;
   counter-reset: none;
@@ -79,8 +79,12 @@
   font-size: 0;
 }
 .yt-steps li.is-done i::after {
-  content: "✓";
-  font-size: 14px;
+  content: "";
+  width: 9px;
+  height: 5px;
+  border: solid currentColor;
+  border-width: 0 0 2px 2px;
+  transform: translateY(-1px) rotate(-45deg);
 }
 .yt-steps li.is-current {
   background: var(--surface);
@@ -266,77 +270,6 @@
   font-size: 14.5px;
 }
 
-/* ── 選旅程 ─────────────────────────────────────────────── */
-.yt-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 0 24px 12px;
-  flex: none;
-}
-.yt-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-}
-.yt-inline .form-input {
-  padding: 6px 10px;
-  min-height: 0;
-}
-.yt-spacer {
-  flex: 1;
-}
-.yt-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.yt-trip {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-  transition:
-    border-color 0.15s,
-    background-color 0.15s;
-}
-.yt-trip:hover {
-  border-color: var(--accent-line);
-}
-.yt-trip.is-on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.yt-trip input {
-  width: 18px;
-  height: 18px;
-}
-.yt-trip-main {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.yt-trip-main b {
-  font-size: 15px;
-  font-variant-numeric: tabular-nums;
-}
-.yt-trip-main small {
-  font-size: 13.5px;
-  color: var(--ink-2);
-}
-.yt-trip-side {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
 .yt-badge {
   font-size: 12.5px;
   font-weight: 600;
@@ -697,13 +630,6 @@
 }
 
 @media (max-width: 860px) {
-  .yt-steps {
-    grid-template-columns: repeat(5, auto);
-    overflow-x: auto;
-  }
-  .yt-steps li:not(.is-current) span {
-    display: none;
-  }
   .yt-two {
     grid-template-columns: 1fr;
   }
@@ -719,7 +645,6 @@
     font-size: 18px;
   }
   .yt-step-body,
-  .yt-toolbar,
   .yt-pager {
     padding-left: 16px;
     padding-right: 16px;
@@ -729,13 +654,6 @@
   }
   .yt-foot-status {
     font-size: 13px;
-  }
-  .yt-trip {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-  .yt-trip-side {
-    grid-column: 2;
-    justify-content: flex-start;
   }
   .yt-summary {
     grid-template-columns: 1fr;
@@ -765,24 +683,7 @@
 .ytm-section progress {
   width: 100%;
 }
-/* 選項卡片橫排，讓第 4 步在一般筆電一屏看完 */
-.yt-options {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-.yt-options legend {
-  grid-column: 1 / -1;
-}
-.yt-inline {
-  white-space: nowrap;
-}
 /* 已加入／完成的旅程保留清楚的狀態及影片連結。 */
-.yt-trip.is-done {
-  background: var(--surface-2);
-  border-style: dashed;
-}
-.yt-trip.is-done:hover {
-  border-color: var(--line);
-}
 .yt-badge.s-missing {
   background: color-mix(in oklch, var(--warn) 18%, var(--surface));
   color: color-mix(in oklch, var(--warn) 70%, var(--ink));
@@ -833,172 +734,487 @@
   background: color-mix(in oklch, var(--crit) 6%, var(--surface));
 }
 
-/* 影片選擇：狀態分頁、各鏡頭選取與跨頁已選清單。 */
-.yt-filters {
+/* ── 上傳頁版面：桌機用滿寬度（日期 | 旅程 | 已選） ─────────────────────── */
+body.yt-wide .wrap {
+  max-width: min(1760px, 100%);
+}
+.yt-head-side {
   display: flex;
-  gap: 6px;
-  padding: 0 24px 12px;
-  flex: none;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
-.yt-filters button {
+.yt-channel {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px 12px;
-  background: var(--surface-2);
+  background: var(--surface);
+  font-size: 13.5px;
+}
+.yt-channel[hidden] {
+  display: none;
+}
+.yt-channel-label {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.yt-wizard {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.yt-wizard[hidden],
+.yt-connect[hidden] {
+  display: none;
+}
+.yt-connect {
+  flex: none;
+  max-width: 720px;
+  width: 100%;
+  margin: clamp(0px, 4vh, 40px) auto 0;
+}
+.yt-connect-inner {
+  padding: 28px 30px;
+}
+.yt-connect-inner h2 {
+  font-size: 22px;
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+.yt-connect-inner > p {
+  margin: 0 0 18px;
   color: var(--ink-2);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+
+/* 分段按鈕（顯示範圍、鏡頭） */
+.yt-seg {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.yt-seg button {
+  appearance: none;
+  border: 0;
+  background: none;
   font: inherit;
-  font-size: 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  padding: 6px 12px;
+  border-radius: 8px;
   cursor: pointer;
+  white-space: nowrap;
 }
-.yt-filters button[aria-pressed="true"] {
-  background: var(--accent-soft);
+.yt-seg button:hover {
+  color: var(--ink);
+}
+.yt-seg button[aria-pressed="true"] {
+  background: var(--surface);
   color: var(--accent-2);
-  border-color: var(--accent);
-  font-weight: 700;
+  box-shadow: var(--shadow-sm);
 }
-.yt-filters span {
-  font-size: 13px;
-  margin-left: 5px;
+.yt-seg button span {
+  margin-left: 4px;
+  font-weight: 500;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
 }
-.yt-selection-body {
+
+.yt-picker {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr) 280px;
+}
+.yt-rail {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 12px 16px 16px;
+  border-right: 1px solid var(--line);
+}
+.yt-rail .yt-seg {
+  display: flex;
+}
+.yt-rail .yt-seg button {
+  flex: 1;
+}
+.yt-dates {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  align-items: start;
-  gap: 20px;
-  padding: 0 24px 20px;
-}
-.yt-library {
-  min-width: 0;
-}
-#yt-filter-hint {
-  margin: 0 0 10px;
-}
-.yt-trip-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-}
-.yt-trip-select {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  min-width: 0;
-}
-.yt-trip-select input {
-  flex: none;
-}
-.yt-trip-main > span {
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-.yt-trip-preview {
-  flex: none;
-  width: 112px;
   display: flex;
   flex-direction: column;
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--surface-2);
-  color: var(--accent-2);
-  font-size: 13px;
-  text-align: center;
+  gap: 2px;
 }
-.yt-trip-preview img {
-  width: 100%;
-  height: 60px;
-  object-fit: cover;
-}
-.yt-trip-preview span {
-  padding: 3px;
-}
-.yt-trip-cameras {
-  width: 100%;
-  display: grid;
-  gap: 6px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-}
-.yt-camera-row {
+.yt-date {
+  appearance: none;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 6px 12px;
-  flex-wrap: wrap;
-  font-size: 13px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
 }
-.yt-camera-row label {
+.yt-date span {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.yt-date small {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.yt-date b {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.yt-date:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.yt-date[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  font-weight: 600;
+}
+.yt-date[aria-pressed="true"] b {
+  color: var(--accent-2);
+}
+
+.yt-library {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.yt-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  cursor: pointer;
+  padding: 16px 20px 0;
+  flex: none;
 }
-.yt-camera-mark {
-  width: 18px;
-  text-align: center;
-  color: var(--ok);
-  font-weight: 700;
+.yt-spacer {
+  flex: 1;
 }
-.yt-trip-note {
-  align-self: flex-start;
-  color: var(--ink-2);
-  font-size: 13px;
+#yt-filter-hint {
+  margin: 8px 20px 10px;
+  flex: none;
 }
-.yt-basket {
-  position: sticky;
-  top: 0;
-  border: 1px solid var(--accent-line);
-  border-radius: 12px;
-  background: var(--surface-2);
+.yt-grid {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
-  max-height: 55vh;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 14px;
+  padding: 2px 20px 16px;
 }
-.yt-basket summary {
+.yt-grid .yt-empty {
+  grid-column: 1 / -1;
+}
+#yt-trips[aria-busy="true"] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.yt-trip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+  overflow: hidden;
+  transition: box-shadow 0.15s;
+}
+.yt-trip:hover {
+  box-shadow:
+    0 0 0 1px var(--accent-line),
+    var(--shadow-sm);
+}
+.yt-trip.is-on {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.yt-trip.is-done .yt-thumb img {
+  opacity: 0.55;
+}
+.yt-trip-select {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 0 12px 10px;
   cursor: pointer;
-  padding: 12px;
-  font-size: 14px;
-  font-weight: 700;
 }
-.yt-basket summary span {
+.yt-trip.is-done .yt-trip-select {
+  cursor: default;
+}
+.yt-thumb {
+  grid-column: 1 / -1;
+  position: relative;
+  margin: 0 -12px;
+  aspect-ratio: 16 / 9;
+  background: var(--surface-3);
+}
+.yt-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   display: block;
-  color: var(--accent-2);
-  font-size: 13px;
-  margin-top: 4px;
 }
-.yt-basket-body {
-  padding: 0 12px 12px;
+.yt-thumb em {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.yt-trip-select input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+}
+.yt-trip-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.yt-trip-main b {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.yt-trip-main small {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yt-trip-cameras {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 12px;
+}
+.yt-cam {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.yt-cam input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  flex: none;
+}
+.yt-cam small {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yt-cam:has(input:checked) {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+.yt-cam.is-static {
+  cursor: default;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.yt-cam.is-static span {
+  color: var(--ink-2);
+}
+.yt-cam.s-succeeded small,
+.yt-cam.s-succeeded small a {
+  color: var(--ok);
+}
+.yt-cam.s-failed small,
+.yt-cam.s-missing small {
+  color: var(--crit);
+}
+.yt-trip-preview {
+  align-self: flex-start;
+  margin: 8px 12px 10px;
+  font-size: 12.5px;
+}
+
+.yt-basket {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-left: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.yt-basket-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.yt-basket-head b {
+  font-size: 15px;
+  white-space: nowrap;
+}
+.yt-basket-head span {
+  white-space: nowrap;
+}
+.yt-basket-head span {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+.yt-basket-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.yt-basket-plan {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.yt-basket-plan[hidden],
+.yt-basket > button[hidden] {
+  display: none;
+}
+.yt-basket > button {
+  align-self: flex-start;
+}
+#yt-basket-toggle {
+  display: none;
 }
 .yt-selected-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--line);
   font-size: 13px;
 }
 .yt-selected-item > div {
   display: grid;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0;
+}
+.yt-selected-item b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 .yt-selected-item small {
-  color: var(--ink-2);
-  font-size: 13px;
+  color: var(--ink-3);
+  font-size: 12.5px;
 }
-.yt-selected-item span {
-  color: var(--accent-2);
+
+/* 第 2 步：標題說明（左）＋隱私與進階（右） */
+.yt-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+  gap: 28px;
+  align-items: start;
+  padding-top: 20px;
 }
-.yt-basket-body > button {
-  margin-top: 10px;
+.yt-settings h2,
+.yt-confirm h2,
+.yt-done h2 {
+  font-size: 20px;
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+.yt-settings .field,
+.yt-advanced .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 12px 0 0;
+}
+.yt-settings textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-size: 14px;
+}
+.yt-settings .yt-preview-box {
+  margin-top: 16px;
+}
+.yt-settings-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.yt-settings-side .yt-options {
+  margin: 0;
+}
+.yt-advanced-body {
+  display: grid;
+  gap: 4px;
+}
+
+/* 第 3 步：確認 */
+.yt-confirm {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  gap: 28px;
+  align-items: start;
+  padding-top: 20px;
+}
+.yt-confirm .yt-summary {
+  margin-top: 14px;
 }
 .yt-confirm-list {
-  margin-bottom: 18px;
   padding: 0 16px 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1007,85 +1223,271 @@
   margin: 12px 0 0;
   font-size: 15px;
 }
-#yt-trips[aria-busy="true"] {
-  opacity: 0.6;
-  pointer-events: none;
+.yt-schedule {
+  margin: 0 0 18px;
+  padding: 14px 16px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
 }
-@media (max-width: 999px) {
-  .yt-selection-body {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+.yt-schedule-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.yt-schedule-head b {
+  font-size: 15px;
+}
+.yt-schedule-head span {
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.yt-ruler {
+  position: relative;
+  height: 26px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--surface-2) 0,
+    var(--surface-2) calc(100% / 24 - 1px),
+    var(--line) calc(100% / 24 - 1px),
+    var(--line) calc(100% / 24)
+  );
+}
+.yt-ruler i {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.yt-ruler-marks {
+  position: relative;
+  height: 18px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.yt-ruler-marks span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.yt-ruler-marks span:first-child {
+  transform: none;
+}
+.yt-ruler-marks span:last-child {
+  transform: translateX(-100%);
+}
+.yt-done {
+  padding-top: 28px;
+  max-width: 760px;
+}
+.yt-done > p {
+  color: var(--ink-2);
+  margin: 0 0 14px;
+}
+
+/* 中寬：已選清單移到下方橫條 */
+@media (max-width: 1199px) {
+  .yt-picker {
+    grid-template-columns: 190px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
   }
-  .yt-library {
-    flex: none;
-    width: 100%;
+  .yt-rail {
+    grid-row: 1 / 3;
   }
   .yt-basket {
-    flex: none;
-    width: 100%;
-    position: static;
-    order: -1;
-    max-height: 240px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    padding: 10px 20px;
   }
-  .yt-basket summary span {
-    display: inline;
-    margin-left: 10px;
+  .yt-basket > button {
+    align-self: center;
+  }
+  .yt-basket-head span {
+    font-size: 17px;
+  }
+  .yt-basket-list {
+    display: none;
+  }
+  #yt-basket-toggle {
+    display: inline-flex;
+  }
+  .yt-basket.is-open .yt-basket-list {
+    display: block;
+    order: -1;
+    flex: 1 1 100%;
+    max-height: 32vh;
+  }
+  .yt-basket-plan {
+    flex: 1;
+    min-width: 200px;
+    background: none;
+    padding: 0;
+  }
+  .yt-settings,
+  .yt-confirm {
+    grid-template-columns: 1fr;
   }
 }
-@media (max-width: 600px) {
-  .yt-selection-body {
-    padding: 0 16px 16px;
+/* 手機：日期改為橫向捲動，旅程單欄 */
+@media (max-width: 760px) {
+  .yt-picker {
+    display: flex;
+    flex-direction: column;
   }
-  .yt-filters {
-    padding: 0 16px 10px;
-    gap: 4px;
+  .yt-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 12px;
+    gap: 8px;
   }
-  .yt-filters button {
+  .yt-dates {
+    flex: none;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .yt-date {
+    flex: none;
+    padding: 6px 10px;
+    background: var(--surface-2);
+  }
+  .yt-date small {
+    display: none;
+  }
+  .yt-library {
+    flex: 1;
+  }
+  .yt-toolbar {
+    padding: 10px 12px 0;
+  }
+  .yt-toolbar .yt-seg {
+    width: 100%;
+  }
+  .yt-toolbar .yt-seg button {
     flex: 1;
     padding: 6px 4px;
     font-size: 13px;
   }
-  .yt-filters span {
-    display: block;
-    margin: 2px 0 0;
-  }
-  .yt-toolbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 6px;
-  }
-  .yt-toolbar .yt-spacer {
+  .yt-toolbar .yt-spacer,
+  #yt-select-page,
+  #yt-filter-hint {
     display: none;
   }
-  .yt-inline {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    font-size: 13px;
-  }
-  .yt-inline .form-input {
-    width: 100%;
-    min-width: 0;
-    padding: 5px 6px;
-  }
-  .yt-trip-preview {
-    width: 86px;
-  }
-  .yt-trip-preview img {
-    height: 48px;
-  }
-  .yt-trip-select {
-    gap: 8px;
-  }
-  .yt-trip-main b,
-  .yt-trip-main > span {
-    font-size: 13px;
-  }
-  .yt-trip-main small {
-    font-size: 13px;
+  .yt-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px 12px;
+    gap: 10px;
   }
   .yt-trip {
-    padding: 10px;
+    display: grid;
+    grid-template-columns: 116px minmax(0, 1fr);
   }
+  .yt-trip-select {
+    display: contents;
+  }
+  .yt-thumb {
+    grid-column: 1;
+    grid-row: 1 / 4;
+    margin: 0;
+    aspect-ratio: auto;
+    min-height: 100%;
+  }
+  .yt-trip-select input {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+  }
+  .yt-trip-main {
+    grid-column: 2;
+    padding: 8px 10px 4px;
+  }
+  .yt-trip-main b {
+    font-size: 15px;
+  }
+  .yt-trip-cameras {
+    grid-column: 2;
+    padding: 0 10px;
+  }
+  .yt-trip-preview {
+    grid-column: 2;
+    margin: 6px 10px 8px;
+  }
+  .yt-basket {
+    padding: 8px 12px;
+  }
+  .yt-basket-head {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .yt-basket-head {
+    flex: 1;
+  }
+  .yt-basket-plan {
+    order: 5;
+    flex: 1 1 100%;
+    font-size: 12.5px;
+  }
+  .yt-connect-inner {
+    padding: 20px 18px;
+  }
+  .yt-ruler-marks span:not(:first-child):not(:last-child) {
+    display: none;
+  }
+}
+@media (max-width: 1499px) and (min-width: 1200px) {
+  .yt-grid {
+    gap: 12px;
+    padding-inline: 16px;
+  }
+  #yt-filter-hint {
+    margin-inline: 16px;
+  }
+  .yt-toolbar {
+    padding-inline: 16px;
+  }
+}
+/* 維運 › 頻道：上傳節奏；YouTube 已刪除影片提示 */
+.ytm-pace {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  gap: 8px;
+}
+.ytm-pace legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+.ytm-pace label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 8px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ytm-pace input {
+  margin: 3px 0 0;
+}
+.ytm-pace small {
+  grid-column: 2;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.ytm-missing {
+  margin: 0 0 14px;
+}
+.ytm-missing[hidden] {
+  display: none;
 }

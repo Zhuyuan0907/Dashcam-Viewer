@@ -45,6 +45,9 @@ export interface UploadRow {
   yt_likes?: number | null;
   yt_missing?: number;
   yt_synced_at?: number | null;
+  yt_width?: number | null;
+  yt_height?: number | null;
+  yt_definition?: string | null;
 }
 interface Account {
   user_id: number;
@@ -54,6 +57,8 @@ interface Account {
   daily_limit: number;
   paused: number;
   blocked_until: number;
+  /** 1 = 把每日上限平均分散在 24 小時內（預設）；0 = 額度內盡快上傳。 */
+  spread: number;
 }
 export interface Pair {
   user_id: number;
@@ -183,8 +188,18 @@ export class YoutubeService {
       ["yt_missing", "INTEGER NOT NULL DEFAULT 0"],
       ["yt_synced_at", "INTEGER"],
       ["retry_count", "INTEGER NOT NULL DEFAULT 0"],
+      ["yt_width", "INTEGER"],
+      ["yt_height", "INTEGER"],
+      ["yt_definition", "TEXT"],
     ] as const)
       if (!columns.has(name)) ctx.db.exec(`ALTER TABLE youtube_uploads ADD COLUMN ${name} ${type}`);
+    const accountColumns = new Set(
+      (ctx.db.prepare("PRAGMA table_info(youtube_accounts)").all() as { name: string }[]).map(
+        (c) => c.name,
+      ),
+    );
+    if (!accountColumns.has("spread"))
+      ctx.db.exec("ALTER TABLE youtube_accounts ADD COLUMN spread INTEGER NOT NULL DEFAULT 1");
     const interrupted = ctx.db
       .prepare("SELECT id FROM youtube_uploads WHERE status='uploading'")
       .all() as { id: number }[];
@@ -338,6 +353,47 @@ export class YoutubeService {
     this.ctx.db
       .prepare("UPDATE youtube_accounts SET daily_limit=? WHERE user_id=?")
       .run(limit, user);
+  }
+  setSpread(user: number, spread: boolean): void {
+    this.ctx.db
+      .prepare("UPDATE youtube_accounts SET spread=? WHERE user_id=?")
+      .run(spread ? 1 : 0, user);
+  }
+  /** 平均分散時兩次建立上傳之間的最短間隔；關閉分散則為 0。 */
+  interval(account: Account): number {
+    return account.spread ? Math.floor(86_400_000 / Math.max(1, account.daily_limit)) : 0;
+  }
+  /**
+   * 佇列中尚未開始傳輸的工作預計何時開始（依排序、每日上限與平均分散推算）。
+   * 只是估計：失敗重試、暫停或 YouTube 額度都可能讓實際時間延後。
+   */
+  estimates(user: number): Map<number, number> {
+    const out = new Map<number, number>();
+    const account = this.account(user),
+      config = this.config();
+    if (!account || !config) return out;
+    const rows = this.ctx.db
+      .prepare(
+        "SELECT id,not_before,upload_secret FROM youtube_uploads WHERE user_id=? AND channel_id=? AND status='queued' ORDER BY not_before,id",
+      )
+      .all(user, account.channel_id) as {
+      id: number;
+      not_before: number;
+      upload_secret: string | null;
+    }[];
+    const { until } = this.allowance(account, config.project_daily_limit);
+    const step = this.interval(account);
+    let slot = until;
+    for (const row of rows) {
+      if (row.upload_secret) {
+        out.set(row.id, Math.max(this.clock(), row.not_before));
+        continue;
+      }
+      slot = Math.max(slot, row.not_before);
+      out.set(row.id, slot);
+      slot += step;
+    }
+    return out;
   }
   get(id: number): UploadRow | undefined {
     return this.ctx.db.prepare("SELECT * FROM youtube_uploads WHERE id=?").get(id) as
@@ -526,7 +582,9 @@ export class YoutubeService {
     }
     if (row.video_id && restart) {
       this.ctx.db
-        .prepare("UPDATE youtube_uploads SET video_id=NULL,verified_at=NULL WHERE id=?")
+        .prepare(
+          "UPDATE youtube_uploads SET video_id=NULL,verified_at=NULL,yt_missing=0,uploaded_bytes=0 WHERE id=?",
+        )
         .run(id);
     }
     if (row.upload_secret && !restart) {
@@ -557,6 +615,41 @@ export class YoutubeService {
     const current = this.get(id);
     if (current?.video_id) throw new Error("影片已完成傳輸，取消不會刪除 YouTube 影片");
     this.update(id, "cancelled", "使用者取消；已建立的 YouTube 工作階段仍可能保留");
+    this.dropIdlePair(row);
+  }
+  /** 該趟已沒有任何有效工作時，移除尚未開始的播放清單配對，避免之後被判定為配對失敗。 */
+  private dropIdlePair(row: UploadRow): void {
+    this.ctx.db
+      .prepare(
+        `DELETE FROM youtube_pairs WHERE user_id=? AND channel_id=? AND trip_id=? AND done_at IS NULL AND playlist_id IS NULL
+         AND NOT EXISTS(SELECT 1 FROM youtube_uploads WHERE user_id=? AND channel_id=? AND trip_id=? AND status!='cancelled')`,
+      )
+      .run(row.user_id, row.channel_id, row.trip_id, row.user_id, row.channel_id, row.trip_id);
+  }
+  /** 在 YouTube 上找不到的影片：重新上傳。 */
+  reuploadMissing(id: number): void {
+    const row = this.get(id);
+    if (!row?.yt_missing || row.status === "cancelled")
+      throw new Error("這部影片沒有被標記為已刪除");
+    if (row.status !== "failed") this.update(id, "failed", "YouTube 上找不到這部影片");
+    this.retry(id, true);
+  }
+  /** 在 YouTube 上找不到的影片：使用者確認是自己刪除的，不再提醒；旅程之後仍可重新選取上傳。 */
+  dismissMissing(id: number): void {
+    const row = this.get(id);
+    if (!row?.yt_missing || row.status === "cancelled")
+      throw new Error("這部影片沒有被標記為已刪除");
+    this.update(id, "cancelled", "使用者確認影片已在 YouTube 刪除，不再提醒");
+    this.dropIdlePair(row);
+  }
+  missingIds(user: number): number[] {
+    return (
+      this.ctx.db
+        .prepare(
+          "SELECT id FROM youtube_uploads WHERE user_id=? AND yt_missing=1 AND status!='cancelled' ORDER BY id",
+        )
+        .all(user) as { id: number }[]
+    ).map((r) => r.id);
   }
   /** Count initiation attempts, including failed API calls. Channel budget is a rolling 24 hours. */
   allowance(
@@ -578,6 +671,9 @@ export class YoutubeService {
     let until = Math.max(now, account.blocked_until);
     if (own.length >= account.daily_limit)
       until = Math.max(until, own[own.length - account.daily_limit]!.created_at + 86_400_001);
+    // 平均分散：每日 N 部 → 兩次建立上傳至少間隔 24h/N，而不是額度一恢復就連續上傳。
+    if (own.length && account.spread)
+      until = Math.max(until, own[own.length - 1]!.created_at + this.interval(account));
     // Conservative wait for a project quota boundary; YouTube remains the authority on actual quota.
     if (project.length >= projectLimit) until = Math.max(until, nextPacificMidnight(now));
     return { until, used: own.length, project_used: project.length };
@@ -613,7 +709,19 @@ export class YoutubeService {
       if (row.status === "queued" && !row.upload_secret) {
         const budget = this.allowance(account, config.project_daily_limit);
         if (budget.until > this.clock()) {
-          this.update(row.id, "queued", "等待每日額度恢復，會自動繼續", budget.until);
+          const spaced =
+            account.spread &&
+            budget.used < account.daily_limit &&
+            budget.until > account.blocked_until &&
+            budget.project_used < config.project_daily_limit;
+          this.update(
+            row.id,
+            "queued",
+            spaced
+              ? `依每日 ${account.daily_limit} 部平均分散上傳，排定下一個時段`
+              : "等待每日額度恢復，會自動繼續",
+            budget.until,
+          );
           return;
         }
       }
@@ -920,7 +1028,7 @@ export class YoutubeService {
         ["rear", rear, front, "前鏡頭"],
       ] as const) {
         if (pair[`${camera}_desc`]) continue;
-        const suffix = `\n\n▶ 同一趟的${label}：https://youtu.be/${other.video_id}\n▶ 前後鏡頭播放清單：https://www.youtube.com/playlist?list=${playlistId}`;
+        const suffix = `\n\n同一趟的${label}：https://youtu.be/${other.video_id}\n前後鏡頭播放清單：https://www.youtube.com/playlist?list=${playlistId}`;
         let base = own.description;
         while (Buffer.byteLength(base + suffix, "utf8") > 5000)
           base = Array.from(base).slice(0, -50).join("");
@@ -1035,6 +1143,8 @@ export class YoutubeService {
     if (!current || current.video_id !== row.video_id || current.status === "cancelled")
       return false;
     if (!video || video.snippet?.channelId !== row.channel_id) {
+      if (!video)
+        this.ctx.db.prepare("UPDATE youtube_uploads SET yt_missing=1 WHERE id=?").run(row.id);
       this.update(row.id, "failed", "YouTube 影片不存在或不屬於目前頻道");
       return false;
     }
@@ -1042,11 +1152,34 @@ export class YoutubeService {
   }
   private applyVideo(row: UploadRow, video: any): boolean {
     const status = video.processingDetails?.processingStatus;
+    // YouTube 收到的原始檔解析度與目前可播放的畫質（hd = 720p 以上；1080p 原檔處理完會到 1080p）。
+    const stream = video.fileDetails?.videoStreams?.[0];
+    const width = Number(stream?.widthPixels) || null,
+      height = Number(stream?.heightPixels) || null;
+    const definition =
+      typeof video.contentDetails?.definition === "string" ? video.contentDetails.definition : null;
+    this.ctx.db
+      .prepare(
+        "UPDATE youtube_uploads SET yt_width=COALESCE(?,yt_width),yt_height=COALESCE(?,yt_height),yt_definition=COALESCE(?,yt_definition) WHERE id=?",
+      )
+      .run(width, height, definition, row.id);
     if (
       ["failed", "terminated"].includes(status) ||
       ["failed", "rejected", "deleted"].includes(video.status?.uploadStatus)
     ) {
       this.update(row.id, "failed", "YouTube 處理失敗或影片遭拒，請保留本機影片");
+      return false;
+    }
+    // 高畫質版本比標準畫質晚完成；原檔是 HD 時，等 YouTube 產生 HD 版本才算完成（也才允許清理本機）。
+    const hdPending = definition === "sd" && (height ?? 0) >= 720;
+    if (status === "succeeded" && video.status?.uploadStatus === "processed" && hdPending) {
+      if (row.status !== "succeeded")
+        this.update(
+          row.id,
+          "processing",
+          `YouTube 仍在產生高畫質版本（原檔 ${width}×${height}），完成後自動確認`,
+          this.clock() + 300_000,
+        );
       return false;
     }
     if (status === "succeeded" && video.status?.uploadStatus === "processed") {
@@ -1057,7 +1190,7 @@ export class YoutubeService {
         this.update(
           row.id,
           "succeeded",
-          `YouTube 已完成處理（可見性：${video.status.privacyStatus}），可查看或選擇清理本機檔案`,
+          `YouTube 已完成處理（${height ? `原檔 ${width}×${height}，` : ""}可見性：${video.status.privacyStatus}），可查看或選擇清理本機檔案`,
         );
       return true;
     }

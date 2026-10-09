@@ -6,7 +6,7 @@
   <title data-i18n-title="title.ops">維運與善後 — 行車記錄</title>
   <link rel="stylesheet" href="/static/style.css?v=2.7.0">
   <link rel="stylesheet" href="/static/ui.css?v=2.2.0">
-  <link rel="stylesheet" href="/static/youtube.css?v=5">
+  <link rel="stylesheet" href="/static/youtube.css?v=6">
   <style>
     .ops-pill { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; font-family:var(--font-mono); letter-spacing:.03em; }
     .ops-pill.sev-error { background:color-mix(in oklch, var(--crit) 14%, var(--surface)); color:var(--crit); }
@@ -169,7 +169,7 @@
           </div>
           <div class="ytm-bar">
             <div class="ytm-tabs ops-tabs" role="tablist">
-              <button class="ops-tab" type="button" data-ytm="setup" id="ytm-setup-tab" hidden>① 授權設定</button>
+              <button class="ops-tab" type="button" data-ytm="setup" id="ytm-setup-tab" hidden>授權設定</button>
               <button class="ops-tab" type="button" data-ytm="account">頻道</button>
               <button class="ops-tab" type="button" data-ytm="queue">上傳進度</button>
               <button class="ops-tab" type="button" data-ytm="archive">已上傳與清理</button>
@@ -177,6 +177,7 @@
             <p id="ytm-notice" class="yt-notice" role="status" aria-live="polite"></p>
           </div>
           <div class="pane-body">
+            <div class="yt-callout bad ytm-missing" id="ytm-missing" hidden></div>
             <div class="ytm-section" id="ytm-setup" hidden>
               <div id="ytm-setup-state"></div>
               <ol class="ytm-guide">
@@ -282,7 +283,7 @@
 <script src="/static/app.js?v=2.6.1"></script>
 <script src="/static/panes.js?v=2.2.0"></script>
 <script src="/static/db-glossary.js?v=2.2.0"></script>
-<script src="/static/ops-youtube.js?v=3"></script>
+<script src="/static/ops-youtube.js?v=4"></script>
 <script>
 let filter = 'open';
 let curInc = null;
@@ -598,7 +599,7 @@ async function loadStorage(){
         <input type="checkbox" data-reclaim="${escapeHtml(i.id)}" ${i.deletable ? '' : 'disabled'}>
         <span class="ytm-row-main"><b>${escapeHtml(i.label)}</b><small>${KIND_NAMES[i.kind] || i.kind} · ${escapeHtml(i.detail)}</small></span>
         <span class="ytm-row-actions"><b>${fmtBytes(i.bytes)}</b></span>
-      </label>`).join('') : '<div class="ops-empty">沒有找到可回收的檔案，一切乾淨 👍</div>';
+      </label>`).join('') : '<div class="ops-empty">沒有找到可回收的檔案。</div>';
     list.querySelectorAll('[data-reclaim]').forEach(cb => cb.onchange = () => {
       cb.checked ? storageSel.add(cb.dataset.reclaim) : storageSel.delete(cb.dataset.reclaim);
       const btn = document.getElementById('storage-delete');
@@ -633,9 +634,9 @@ async function runDiagnostics(){
   output.innerHTML='<li class="note">檢查中…</li>';
   try {
     const result=await apiFetch('/api/admin/diagnostics');
-    output.innerHTML=result.checks.map(c=>`<li class="${c.ok?'ok':'bad'}"><i>${c.ok?'✓':'✕'}</i><span><b>${escapeHtml(c.name)}</b>　${escapeHtml(c.detail)}</span></li>`).join('')
+    output.innerHTML=result.checks.map(c=>`<li class="${c.ok?'ok':'bad'}"><i>${c.ok?'OK':'X'}</i><span><b>${escapeHtml(c.name)}</b>　${escapeHtml(c.detail)}</span></li>`).join('')
       +result.notes.map(n=>`<li class="note">${escapeHtml(n)}</li>`).join('');
-  } catch(e){output.innerHTML=`<li class="bad"><i>✕</i><span>${escapeHtml(e.message)}</span></li>`;}
+  } catch(e){output.innerHTML=`<li class="bad"><i>X</i><span>${escapeHtml(e.message)}</span></li>`;}
 }
 </script>
 </body>

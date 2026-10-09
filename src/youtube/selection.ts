@@ -26,11 +26,10 @@ export async function uploadSelection(
   const rows = ctx.db
     .prepare(
       `SELECT * FROM trips WHERE owner_id=? AND superseded_by IS NULL
-       ${options.date ? "AND date=?" : ""}
        ${options.ids ? `AND trip_id IN (${options.ids.map(() => "?").join(",")})` : ""}
        ORDER BY start_epoch DESC,trip_id`,
     )
-    .all(user, ...(options.date ? [options.date] : []), ...(options.ids ?? [])) as TripRow[];
+    .all(user, ...(options.ids ?? [])) as TripRow[];
   const uploads = ctx.db
     .prepare(
       "SELECT * FROM youtube_uploads WHERE user_id=? AND channel_id=? AND status!='cancelled' ORDER BY id DESC",
@@ -147,24 +146,33 @@ export async function uploadSelection(
       }
     }),
   );
+  const matches = (trip: (typeof trips)[number]) =>
+    !options.filter ||
+    options.filter === "all" ||
+    trip.groups[options.filter as keyof typeof trip.groups];
+  // 日期側欄：每天符合目前篩選的趟數（不受選定日期影響）。
+  const byDate = new Map<string, { date: string; trips: number; ready: number }>();
+  for (const trip of trips) {
+    const entry = byDate.get(trip.date) ?? { date: trip.date, trips: 0, ready: 0 };
+    if (matches(trip)) entry.trips++;
+    if (trip.groups.ready) entry.ready++;
+    byDate.set(trip.date, entry);
+  }
+  const dates = [...byDate.values()].filter((d) => d.trips > 0);
+  const scoped = options.date ? trips.filter((trip) => trip.date === options.date) : trips;
   const counts: Record<string, number> = {
     ready: 0,
     queued: 0,
     uploaded: 0,
     unavailable: 0,
-    all: trips.length,
+    all: scoped.length,
   };
-  for (const trip of trips) {
+  for (const trip of scoped) {
     for (const key of ["ready", "queued", "uploaded"] as const)
       if (trip.groups[key]) counts[key] = (counts[key] ?? 0) + 1;
     if (trip.group === "unavailable") counts.unavailable = (counts.unavailable ?? 0) + 1;
   }
-  const filtered = trips.filter(
-    (trip) =>
-      !options.filter ||
-      options.filter === "all" ||
-      trip.groups[options.filter as keyof typeof trip.groups],
-  );
+  const filtered = scoped.filter(matches);
   const offset = Math.min(
     options.offset,
     Math.max(0, Math.ceil(filtered.length / options.limit) - 1) * options.limit,
@@ -174,5 +182,7 @@ export async function uploadSelection(
     total: filtered.length,
     counts,
     offset,
+    dates,
+    totals: { ready: trips.filter((trip) => trip.groups.ready).length, all: trips.length },
   };
 }
