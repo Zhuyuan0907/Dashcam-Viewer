@@ -106,7 +106,7 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
         config = service.config();
       return {
         configured: !!config,
-        defaults: service.defaults(),
+        defaults: service.defaults(req.user.id),
         parameters: PARAMETERS,
         account: account
           ? {
@@ -271,6 +271,17 @@ export function registerYoutube(app: FastifyInstance, ctx: AppContext): void {
         service.pause(req.user.id, req.body.paused);
       }
       return { status: "saved" };
+    }),
+  );
+  // 標題／說明範本：使用者一編輯就自動儲存，下次開啟沿用。
+  app.put(
+    "/api/youtube/templates",
+    write,
+    guard((req) => {
+      const title = text(req.body?.title_template, 2000);
+      const description = text(req.body?.description_template, 10000);
+      if (!title.trim()) throw new Error("標題範本不能空白");
+      return { saved_at: service.saveTemplates(req.user.id, title, description) };
     }),
   );
   app.post(

@@ -171,8 +171,19 @@
                 <div class="yt-settings-main">
                   <h2>標題與說明</h2>
                   <p class="yt-hint">
-                    每部影片會自動帶入自己的日期、時間與鏡頭，通常保留預設即可。
+                    每部影片會自動帶入自己的日期、時間與鏡頭。修改後會自動儲存，下次上傳沿用。
                   </p>
+                  <div class="yt-autosave">
+                    <span id="yt-save-state" role="status" aria-live="polite"></span>
+                    <button
+                      id="yt-reset-template"
+                      class="btn btn--ghost btn--sm"
+                      type="button"
+                      hidden
+                    >
+                      還原預設
+                    </button>
+                  </div>
                   <label class="field"
                     >影片標題<input class="form-input" id="yt-title" maxlength="2000"
                   /></label>

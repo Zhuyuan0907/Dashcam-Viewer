@@ -27,7 +27,12 @@ async function shot(page: Page, name: string) {
 }
 const connected = {
   configured: true,
-  defaults: { title_template: "行車記錄 {date} {camera}", description_template: "旅程 {trip_id}" },
+  defaults: {
+    title_template: "行車記錄 {date} {camera}",
+    description_template: "旅程 {trip_id}",
+    builtin: { title_template: "行車記錄 {date} {camera}", description_template: "旅程 {trip_id}" },
+    saved_at: null,
+  },
   parameters: ["date", "camera", "trip_id"],
   account: {
     channel_title: "UI 頻道",
@@ -706,4 +711,38 @@ test("a selection that changed in another tab returns to review without submitti
   await expect(page.locator("#yt-notice")).toContainText("已移出清單");
   await expect(page.locator("#yt-foot-status")).toHaveText("已選 1 趟 · 1 部影片");
   expect(uploads).toBe(0);
+});
+
+test("editing the title template saves it automatically", async ({ page }) => {
+  await setup(page);
+  await mockPicker(page, [pickerTrip(0)]);
+  await page.route("**/api/youtube/account", (r) => r.fulfill({ json: connected }));
+  await page.route("**/api/youtube/preview", (r) =>
+    r.fulfill({ json: { title: "預覽", description: "預覽" } }),
+  );
+  const saves: any[] = [];
+  await page.route("**/api/youtube/templates", (r) => {
+    saves.push(r.request().postDataJSON());
+    return r.fulfill({ json: { saved_at: Date.now() } });
+  });
+  await page.goto("/youtube");
+  await page.locator('[data-trip="trip-0"]').check();
+  await page.locator("#yt-next").click();
+  await expect(page.locator("#yt-save-state")).toHaveText("使用預設範本");
+  await expect(page.locator("#yt-reset-template")).toBeHidden();
+  await page.locator("#yt-title").fill("我的旅程 {date}");
+  await expect(page.locator("#yt-save-state")).toContainText("已自動儲存");
+  expect(saves).toHaveLength(1);
+  expect(saves[0].title_template).toBe("我的旅程 {date}");
+  await expect(page.locator("#yt-reset-template")).toBeVisible();
+  // 沒有變更就不再送出。
+  await page.locator("#yt-next").click();
+  await expect(page.locator("#yt-step-2")).toBeVisible();
+  expect(saves).toHaveLength(1);
+  await page.locator("#yt-prev").click();
+  await page.locator("#yt-reset-template").click();
+  await expect.poll(() => saves.length).toBe(2);
+  expect(saves[1].title_template).toBe("行車記錄 {date} {camera}");
+  await expect(page.locator("#yt-reset-template")).toBeHidden();
+  await noOverflow(page);
 });

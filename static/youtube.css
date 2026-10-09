@@ -1507,3 +1507,23 @@ body.yt-wide .wrap {
     justify-content: flex-start;
   }
 }
+/* 標題範本自動儲存狀態 */
+.yt-autosave {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.yt-autosave [data-type="ok"] {
+  color: var(--ok);
+}
+.yt-autosave [data-type="error"] {
+  color: var(--crit);
+  font-weight: 600;
+}
+.yt-autosave button[hidden] {
+  display: none;
+}

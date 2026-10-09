@@ -1027,7 +1027,9 @@ test("spread mode spaces upload starts evenly across the day instead of bursting
     await f.service.tick(); // 前鏡頭：第一部立即開始
     await f.service.tick();
     const rows = () =>
-      f.ctx.db.prepare("SELECT camera,status,not_before FROM youtube_uploads ORDER BY id").all() as any[];
+      f.ctx.db
+        .prepare("SELECT camera,status,not_before FROM youtube_uploads ORDER BY id")
+        .all() as any[];
     assert.equal(rows()[0].status, "processing");
     assert.equal(rows()[1].status, "queued");
     const initiations = () => f.mock.calls.filter((c) => c.url.includes("uploadType")).length;
@@ -1110,6 +1112,47 @@ test("1080p uploads are confirmed only after YouTube finishes the HD version", a
     assert.equal(done.yt_width, 1920);
     assert.equal(done.yt_height, 1080);
     assert.equal(done.yt_definition, "hd");
+  } finally {
+    await f.close();
+  }
+});
+
+test("title and description templates are saved per user and reused", async () => {
+  const f = await fixture();
+  try {
+    const save = (payload: unknown) =>
+      f.app.inject({
+        method: "PUT",
+        url: "/api/youtube/templates",
+        headers: { cookie: f.cookie },
+        payload,
+      });
+    assert.equal(f.service.defaults(1).title_template, DEFAULT_TITLE);
+    const ok = await save({
+      title_template: "我的 {date} {camera}",
+      description_template: "說明 {trip_id}",
+    });
+    assert.equal(ok.statusCode, 200);
+    assert.ok(ok.json().saved_at);
+    const account = await f.app.inject({
+      url: "/api/youtube/account",
+      headers: { cookie: f.cookie },
+    });
+    assert.equal(account.json().defaults.title_template, "我的 {date} {camera}");
+    assert.equal(account.json().defaults.builtin.title_template, DEFAULT_TITLE);
+    assert.equal(
+      (await save({ title_template: "{nope}", description_template: "" })).statusCode,
+      400,
+    );
+    assert.equal((await save({ title_template: "  ", description_template: "" })).statusCode, 400);
+    assert.equal(f.service.defaults(1).title_template, "我的 {date} {camera}");
+    // 改回內建預設時刪除紀錄，之後跟著預設走。
+    const reset = await save({
+      title_template: DEFAULT_TITLE,
+      description_template: DEFAULT_DESCRIPTION,
+    });
+    assert.equal(reset.json().saved_at, null);
+    assert.equal(f.service.defaults(1).saved_at, null);
   } finally {
     await f.close();
   }

@@ -457,9 +457,59 @@
     );
   }
 
+  /* ── 範本自動儲存：有更動才送出，停止輸入 0.8 秒後儲存 ───────────── */
+  let savedTemplates = null,
+    saveTimer = 0,
+    saving = null;
+  const currentTemplates = () => ({
+    title_template: $("yt-title").value,
+    description_template: $("yt-description").value,
+  });
+  const sameTemplates = (a, b) =>
+    !!a &&
+    !!b &&
+    a.title_template === b.title_template &&
+    a.description_template === b.description_template;
+  function renderSaveState(text, type = "") {
+    const el = $("yt-save-state");
+    el.textContent = text;
+    el.dataset.type = type;
+    $("yt-reset-template").hidden = sameTemplates(currentTemplates(), info.defaults.builtin);
+  }
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    if (sameTemplates(currentTemplates(), savedTemplates)) return renderSaveState(savedLabel());
+    renderSaveState("尚未儲存的變更…");
+    saveTimer = setTimeout(() => void saveTemplates(), 800);
+  }
+  const savedLabel = () =>
+    info.defaults.saved_at
+      ? `已自動儲存 ${new Date(info.defaults.saved_at).toLocaleString("zh-TW", { hour12: false })}`
+      : "使用預設範本";
+  async function saveTemplates() {
+    clearTimeout(saveTimer);
+    const next = currentTemplates();
+    if (sameTemplates(next, savedTemplates)) return;
+    if (!next.title_template.trim()) return renderSaveState("標題不能空白，尚未儲存", "error");
+    if (saving) await saving.catch(() => {});
+    renderSaveState("儲存中…");
+    saving = request("/api/youtube/templates", next, "PUT");
+    try {
+      const r = await saving;
+      savedTemplates = next;
+      info.defaults.saved_at = r.saved_at;
+      if (sameTemplates(currentTemplates(), next)) renderSaveState(savedLabel(), "ok");
+    } catch (e) {
+      renderSaveState(`無法儲存：${e.message || "請稍後再試"}`, "error");
+    } finally {
+      saving = null;
+    }
+  }
   function setupParameters() {
     $("yt-title").value = info.defaults.title_template;
     $("yt-description").value = info.defaults.description_template;
+    savedTemplates = currentTemplates();
+    renderSaveState(savedLabel());
     editing = $("yt-title");
     $("yt-parameters").replaceChildren();
     for (const key of info.parameters) {
@@ -472,6 +522,7 @@
         editing.setRangeText(`{${key}}`, editing.selectionStart, editing.selectionEnd, "end");
         editing.focus();
         schedulePreview();
+        scheduleSave();
       };
       $("yt-parameters").appendChild(b);
     }
@@ -543,6 +594,7 @@
   }
 
   async function go(next) {
+    if (step === 1) await saveTemplates();
     if (next === 0) await loadTrips();
     if (next === 1) await preview().catch((e) => ($("yt-preview-result").textContent = e.message));
     if (next === 2) {
@@ -601,9 +653,29 @@
       location.href = data.url;
     });
   $("yt-confirm-upload").onchange = render;
+  $("yt-reset-template").onclick = () => {
+    $("yt-title").value = info.defaults.builtin.title_template;
+    $("yt-description").value = info.defaults.builtin.description_template;
+    schedulePreview();
+    void saveTemplates();
+  };
+  // 離開頁面前把還沒送出的變更存起來。
+  addEventListener("pagehide", () => {
+    if (!info || sameTemplates(currentTemplates(), savedTemplates)) return;
+    if (!currentTemplates().title_template.trim()) return;
+    void fetch("/api/youtube/templates", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(currentTemplates()),
+      keepalive: true,
+    });
+  });
   for (const id of ["yt-title", "yt-description"]) {
     $(id).onfocus = () => (editing = $(id));
-    $(id).oninput = schedulePreview;
+    $(id).oninput = () => {
+      schedulePreview();
+      scheduleSave();
+    };
   }
   document.querySelectorAll("[data-camera-mode]").forEach((button) => {
     button.onclick = () => {

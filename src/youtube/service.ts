@@ -7,7 +7,13 @@ import { TRIPS_DIR } from "../config.js";
 import { withinTrips } from "../util/paths.js";
 import { YoutubeVault } from "./vault.js";
 import { YoutubeAPI, YoutubeError, type OAuthConfig, type Tokens } from "./api.js";
-import { DEFAULT_TITLE, DEFAULT_DESCRIPTION, metadata, variables } from "./templates.js";
+import {
+  DEFAULT_TITLE,
+  DEFAULT_DESCRIPTION,
+  PARAMETERS,
+  metadata,
+  variables,
+} from "./templates.js";
 
 export interface UploadRow {
   id: number;
@@ -112,6 +118,8 @@ CREATE TABLE IF NOT EXISTS youtube_pairs(user_id INTEGER NOT NULL REFERENCES use
  front_desc INTEGER NOT NULL DEFAULT 0, rear_desc INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
  message TEXT NOT NULL DEFAULT '', not_before INTEGER NOT NULL DEFAULT 0, done_at INTEGER, failed INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY(user_id,channel_id,trip_id));
+CREATE TABLE IF NOT EXISTS youtube_templates(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ title_template TEXT NOT NULL, description_template TEXT NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS youtube_cleanup(trip_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, original_dir TEXT NOT NULL, tombstone TEXT NOT NULL);
 `;
 export function version(row: TripRow): string {
@@ -1311,7 +1319,42 @@ export class YoutubeService {
       else await this.finishCleanup(row);
     }
   }
-  defaults() {
-    return { title_template: DEFAULT_TITLE, description_template: DEFAULT_DESCRIPTION };
+  /** 使用者最後一次編輯的標題／說明範本；沒有編輯過就是內建預設。 */
+  defaults(user?: number) {
+    const saved =
+      user === undefined
+        ? undefined
+        : (this.ctx.db
+            .prepare(
+              "SELECT title_template,description_template,updated_at FROM youtube_templates WHERE user_id=?",
+            )
+            .get(user) as
+            | { title_template: string; description_template: string; updated_at: number }
+            | undefined);
+    return {
+      title_template: saved?.title_template ?? DEFAULT_TITLE,
+      description_template: saved?.description_template ?? DEFAULT_DESCRIPTION,
+      builtin: { title_template: DEFAULT_TITLE, description_template: DEFAULT_DESCRIPTION },
+      saved_at: saved?.updated_at ?? null,
+    };
+  }
+  /** 自動儲存範本；與內建預設相同時刪除紀錄（之後跟著預設更新）。 */
+  saveTemplates(user: number, title: string, description: string): number | null {
+    for (const template of [title, description])
+      for (const [, key] of template.matchAll(/\{([^{}]+)\}/g))
+        if (!PARAMETERS.includes(key!)) throw new Error(`未知參數 {${key}}`);
+    if (title === DEFAULT_TITLE && description === DEFAULT_DESCRIPTION) {
+      this.ctx.db.prepare("DELETE FROM youtube_templates WHERE user_id=?").run(user);
+      return null;
+    }
+    const now = this.clock();
+    this.ctx.db
+      .prepare(
+        `INSERT INTO youtube_templates(user_id,title_template,description_template,updated_at) VALUES(?,?,?,?)
+         ON CONFLICT(user_id) DO UPDATE SET title_template=excluded.title_template,
+         description_template=excluded.description_template,updated_at=excluded.updated_at`,
+      )
+      .run(user, title, description, now);
+    return now;
   }
 }
