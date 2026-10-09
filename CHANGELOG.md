@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.9.5 — 2026-10-09
+
+- Cache versioned `/static/` files for a year (`immutable`); the link changes whenever the file does, so page loads no longer revalidate every stylesheet and script through the tunnel.
+- Probe the front and rear cameras in parallel when a trip page asks for media details.
+
 ## 2.9.4 — 2026-10-09
 
 - Stamp every `/static/` link with a version taken from the file's modification time and size when a page is rendered. Cloudflare extends browser caching of static files to four hours, so a changed page could load with old CSS/JS and look broken; now a changed file always gets a new URL.

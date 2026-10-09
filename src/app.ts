@@ -93,6 +93,13 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
   });
   await app.register(rateLimit, { global: false });
   await app.register(fastifyStatic, { root: STATIC_DIR, prefix: "/static/" });
+  // 頁面出頁時會把 /static/ 連結加上依檔案內容產生的 ?v=（見 routes/pages.ts）；帶版本的網址
+  // 內容不會變，可讓瀏覽器與 Cloudflare 長期快取，換頁不必每個檔案都再驗證一次。
+  app.addHook("onSend", async (req, reply, payload) => {
+    if (reply.statusCode === 200 && req.url.startsWith("/static/") && /[?&]v=/.test(req.url))
+      reply.header("Cache-Control", "public, max-age=31536000, immutable");
+    return payload;
+  });
   app.get("/healthz", async (_req, reply) => {
     try {
       ctx.db.prepare("SELECT 1").get();

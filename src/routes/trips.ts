@@ -133,13 +133,15 @@ export function registerTrips(app: FastifyInstance, ctx: AppContext): void {
       const row = getTrip(db, req.params["*"]);
       if (!row || !canViewTrip(db, req.user!, row))
         return reply.code(404).send({ detail: "旅程不存在" });
-      const result: Record<string, unknown> = {};
-      for (const camera of ["front", "rear"] as const) {
-        const file = row[`${camera}_path`];
-        if (file && withinTrips(file))
-          result[camera] = await inspectMediaCached(file).catch(() => null);
-      }
-      return result;
+      // 前後鏡頭同時探測（ffprobe 讀大檔約各 1 秒），結果有快取。
+      const entries = await Promise.all(
+        (["front", "rear"] as const).map(async (camera) => {
+          const file = row[`${camera}_path`];
+          if (!file || !withinTrips(file)) return null;
+          return [camera, await inspectMediaCached(file).catch(() => null)] as const;
+        }),
+      );
+      return Object.fromEntries(entries.filter((entry) => entry !== null));
     },
   );
   app.get("/api/trip-owners", { preHandler: requireUser }, async (req) =>
