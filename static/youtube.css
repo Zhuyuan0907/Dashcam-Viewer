@@ -835,7 +835,7 @@ body.yt-wide .wrap {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr) 280px;
+  grid-template-columns: 228px minmax(0, 1fr) 280px;
 }
 .yt-rail {
   min-height: 0;
@@ -1302,7 +1302,7 @@ body.yt-wide .wrap {
 /* 中寬：已選清單移到下方橫條 */
 @media (max-width: 1199px) {
   .yt-picker {
-    grid-template-columns: 190px minmax(0, 1fr);
+    grid-template-columns: 208px minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
   }
   .yt-rail {
@@ -1555,9 +1555,8 @@ body.yt-wide .wrap {
 /* 左欄「待上傳／全部」：數字不超出外框 */
 .yt-rail .yt-seg button {
   min-width: 0;
-  padding: 6px 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 6px 4px;
+  font-size: 13px;
 }
 .yt-rail .yt-seg button span {
   margin-left: 3px;
