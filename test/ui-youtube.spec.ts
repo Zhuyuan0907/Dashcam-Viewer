@@ -393,6 +393,8 @@ test("ops channel settings save the daily limit with an even-spread pace", async
   await page.goto("/ops#youtube");
   await page.locator('[data-ytm="account"]').click();
   await expect(page.locator('input[name="ytm-spread"][value="1"]')).toBeChecked();
+  // 切換分頁會重新載入頻道資料；等載入完成再輸入，避免表單重繪蓋掉輸入值。
+  await page.waitForLoadState("networkidle");
   await page.locator("#ytm-limit").fill("12");
   await expect(page.locator("#ytm-pace-hint")).toContainText("每 2 小時 上傳一部");
   await page.locator('input[name="ytm-spread"][value="0"]').check();
