@@ -1,0 +1,281 @@
+/* ── 維運頁 › 雲端備份 ─────────────────────────────────────────────── */
+.cbk-tools {
+  margin: 12px 0 4px;
+}
+.cbk-two {
+  margin-top: 12px;
+}
+.cbk-now {
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+.cbk-now-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.cbk-now-head b {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.cbk-now progress {
+  width: 100%;
+  height: 8px;
+}
+.cbk-now-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 8px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.cbk-idle {
+  margin-top: 12px;
+}
+.yt-badge.s-done {
+  background: color-mix(in oklch, var(--ok) 16%, var(--surface));
+  color: var(--ok);
+}
+.yt-badge.s-cancelled {
+  background: var(--surface-3);
+  color: var(--ink-3);
+}
+#cbk-detail h3 {
+  font-size: 16px;
+  line-height: 1.4;
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+.cbk-meta {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 12px 0;
+  font-size: 13.5px;
+}
+.cbk-meta dt {
+  color: var(--ink-3);
+}
+.cbk-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.cbk-meta code,
+.cbk-restore code,
+.cbk-mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* 選擇旅程 */
+.cbk-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.cbk-summary b {
+  font-size: 15px;
+}
+.cbk-summary .yt-hint {
+  margin: 4px 0 0;
+}
+.cbk-pick-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px 14px;
+  flex-wrap: wrap;
+  margin: 14px 0 6px;
+}
+.cbk-cams {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.cbk-cams select {
+  width: auto;
+  min-width: 132px;
+}
+.cbk-day h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+  margin: 14px 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+.cbk-trip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  background: var(--surface);
+}
+.cbk-trip:has(input:checked) {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.cbk-trip.is-done {
+  cursor: default;
+}
+.cbk-trip input {
+  width: 18px;
+  height: 18px;
+}
+.cbk-trip-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cbk-trip-main b {
+  font-size: 14.5px;
+  font-variant-numeric: tabular-nums;
+}
+.cbk-trip-main small {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.cbk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.cbk-chip {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.cbk-chip.s-done {
+  background: color-mix(in oklch, var(--ok) 16%, var(--surface));
+  color: var(--ok);
+}
+.cbk-chip.s-queued,
+.cbk-chip.s-uploading {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+.cbk-chip.s-failed,
+.cbk-chip.s-missing {
+  background: color-mix(in oklch, var(--crit) 12%, var(--surface));
+  color: var(--crit);
+}
+.cbk-chip.s-stale {
+  background: color-mix(in oklch, var(--warn) 18%, var(--surface));
+  color: color-mix(in oklch, var(--warn) 70%, var(--ink));
+}
+.cbk-selbar {
+  position: sticky;
+  bottom: -18px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px -20px -18px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.cbk-selbar span {
+  margin-right: auto;
+}
+
+/* 已備份 */
+.cbk-restore {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.cbk-restore summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.cbk-restore ol {
+  margin: 8px 0 2px;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  color: var(--ink-2);
+}
+
+/* 設定 */
+.cbk-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.cbk-card h3 {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+.cbk-card .yt-check {
+  margin: 10px 0;
+}
+.cbk-key-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 8px 0;
+}
+.cbk-key-row input {
+  flex: 1 1 260px;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+.cbk-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+.cbk-advanced[hidden] {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .cbk-trip {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .cbk-chips {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .cbk-selbar {
+    bottom: -14px;
+    margin: 10px -15px -14px;
+    padding: 10px 15px;
+  }
+}

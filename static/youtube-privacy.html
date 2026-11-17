@@ -24,7 +24,7 @@
 
     <main class="policy-main">
       <h1>隱私權政策 / Privacy Policy</h1>
-      <p class="public-date">生效及更新日期：2026-10-08</p>
+      <p class="public-date">生效及更新日期：2026-11-18</p>
       <p>
         本政策適用於「{{SITE_TITLE}}」（使用 Dashcam Viewer
         程式提供的行車影片管理服務，以下稱「本站」），涵蓋本站帳號、影片管理、分享，以及
@@ -36,7 +36,9 @@
         YouTube channel. This policy explains the account information, footage, Google OAuth
         credentials and YouTube API data we collect; their purposes, recipients, storage, retention,
         security, and deletion. Google authorization is optional. We do not sell Google user data,
-        use it for advertising, or use it to train AI models.
+        use it for advertising, or use it to train AI models. If the operator enables off-site
+        backup, original trip videos and a database snapshot without sign-in sessions, upload
+        passwords or Google credentials are stored encrypted with a third-party storage service.
       </p>
       <nav class="policy-toc" aria-label="政策目錄">
         <a href="#collection">蒐集資料</a><a href="#use">使用目的</a
@@ -153,6 +155,11 @@
             YouTube API 授權請求。Google 依自身政策處理資料。
           </li>
           <li>
+            <strong>站外備份儲存（營運者啟用時）：</strong
+            >營運者可把旅程的原始影片，以及資料庫快照（帳號、加鹽密碼雜湊、旅程資訊、備註與片段紀錄）上傳到營運者選定的加密儲存服務（chunkproxy）作為站外備份。快照會先移除登入工作階段、上傳密碼、分享連結密文、Google
+            授權憑證與 YouTube 上傳資訊。儲存服務依自身政策處理資料。
+          </li>
+          <li>
             <strong>站台營運者：</strong
             >具有伺服器、資料庫與備份管理權限，用於提供服務、處理你的請求及必要安全維運。一般使用者只能透過
             YouTube 功能查看自己的上傳紀錄。
@@ -183,7 +190,8 @@
         <h2>5. 儲存、安全與保存期間 / Storage, security and retention</h2>
         <p>
           帳號、影片索引、工作紀錄與 Google 授權資料存於營運者管理的伺服器及 SQLite
-          資料庫；影片和剪輯檔案存於該站台的檔案空間，只有你選定並確認的影片另傳送到 YouTube。
+          資料庫；影片和剪輯檔案存於該站台的檔案空間，只有你選定並確認的影片另傳送到
+          YouTube。營運者啟用雲端備份時，旅程影片與資料庫快照會另存一份到站外的加密儲存服務。
         </p>
         <p>
           Google OAuth Client Secret、access token、refresh token 及續傳資訊以 AES-256-GCM
@@ -208,6 +216,10 @@
           <li>
             <strong>備份：</strong>資料庫快照預設每 24 小時建立、保留最近 7
             份，可由營運者調整。回退備份可能保存更久，並包含加密授權資料與金鑰；快照不等於影片備份。刪除請求可一併要求處理備份殘留。
+          </li>
+          <li>
+            <strong>站外雲端備份：</strong
+            >營運者啟用時，影片與資料庫快照的站外副本保存到營運者在儲存服務刪除為止；本機刪除旅程不會自動刪除站外副本。刪除請求可一併要求刪除站外副本。
           </li>
           <li>
             <strong>技術日誌：</strong

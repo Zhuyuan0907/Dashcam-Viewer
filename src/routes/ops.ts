@@ -36,6 +36,8 @@ const SENSITIVE: Record<string, Set<string>> = {
   users: new Set(["password_hash"]),
   sessions: new Set(["token"]),
   sftp_sessions: new Set(["password"]),
+  cloud_backup_config: new Set(["secret"]),
+  cloud_backups: new Set(["upload_secret"]),
 };
 const REDACTED = "••• redacted";
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.10.0 — 2026-11-18
+
+- Add Ops › Cloud backup: back up original trip videos (no re-encoding) and, optionally, a database snapshot to the chunkproxy encrypted storage service as an off-site copy that a platform cannot take down. The owner stores the API key (encrypted with its own key file, never shown again); admins choose trips by date with per-camera status, or back up everything not yet backed up, and can turn on automatic backup of new trips.
+- Upload one file at a time in the background: files up to 100 MB in one request, larger ones in resumable parts that continue after a restart; videos over 10 GB are split evenly into numbered volumes. Each file is hashed with SHA-256 before upload and only counts as backed up when the service reports the same hash.
+- Pause the queue with the service's top-up link when upload credits run out, and when the key is rejected; a storage outage holds the whole queue with backoff instead of failing items one by one. Cancelling an open upload asks the service to refund it. An optional speed limit keeps backups from saturating the uplink the site also uses.
+- Record every uploaded file (name, file ID, SHA-256, local path) and keep the records after a trip is deleted locally; a CSV restore list and restore instructions are provided because the upload key cannot list or download files.
+- Database snapshots sent off-site drop sign-in sessions, SFTP passwords, share-link ciphertexts, YouTube credentials and upload tokens.
+- Disclose the optional off-site backup in the privacy policy.
+
 ## 2.9.5 — 2026-10-09
 
 - Cache versioned `/static/` files for a year (`immutable`); the link changes whenever the file does, so page loads no longer revalidate every stylesheet and script through the tunnel.

@@ -21,6 +21,7 @@ import { registerEdit } from "./routes/edit.js";
 import { registerClips } from "./routes/clips.js";
 import { registerConfig } from "./routes/config.js";
 import { registerYoutube } from "./routes/youtube.js";
+import { registerCloudBackup } from "./routes/cloud.js";
 import { registerOps } from "./routes/ops.js";
 import { registerShares } from "./routes/shares.js";
 import { BackgroundTasks } from "./background.js";
@@ -134,6 +135,7 @@ export async function buildApp(ctx: AppContext, opts: BuildOptions = {}): Promis
   registerConfig(app, ctx);
   registerOps(app, ctx);
   registerYoutube(app, ctx);
+  registerCloudBackup(app, ctx);
 
   return app;
 }

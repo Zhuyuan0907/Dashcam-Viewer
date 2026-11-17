@@ -11,9 +11,12 @@ import { JobRegistry } from "./jobs.js";
 import type { BackgroundTasks } from "./background.js";
 
 import type { YoutubeService } from "./youtube/service.js";
+import type { CloudBackupService } from "./cloud/service.js";
 
 export interface AppContext {
   youtube?: YoutubeService;
+  /** 雲端備份（chunkproxy）；由 routes/cloud.ts 建立。 */
+  cloud?: CloudBackupService;
   tasks?: BackgroundTasks;
   db: DB;
   sessions: SftpSessionManager;

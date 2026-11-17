@@ -24,6 +24,24 @@
     pref_theme: ["介面主題"],
     device_note: ["舊版裝置備註", "改用多裝置前留下的文字"],
     token: ["登入憑證", "瀏覽器保存的登入通行證（已遮蔽）"],
+    remote_name: ["雲端檔名", "在儲存服務網站上看到的檔名"],
+    remote_id: ["雲端檔案編號", "儲存服務回傳的檔案編號"],
+    sha256: ["SHA-256", "上傳前在本機計算的校驗碼，用來核對下載回來的檔案"],
+    remote_sha256: ["雲端回報的 SHA-256", "與本機相同才算備份成功"],
+    remote_state: ["雲端狀態", "儲存服務回報的處理狀態"],
+    byte_offset: ["從第幾個位元組開始", "分卷在原始影片中的位置"],
+    byte_length: ["這一份的大小"],
+    volume: ["第幾份"],
+    volumes: ["共幾份", "超過 10 GB 的影片會切成多份上傳"],
+    parts_done: ["已完成分段"],
+    part_count: ["分段總數"],
+    key_hint: ["金鑰結尾", "只保存最後 4 個字元方便辨認"],
+    auto_new: ["自動備份新旅程"],
+    db_snapshot: ["一起備份資料庫"],
+    rate_mbps: ["速度上限（Mbps）", "0 = 不限"],
+    pause_reason: ["暫停原因", "user = 手動、credits = 點數不足、auth = 金鑰無效"],
+    topup_url: ["儲值連結", "點數不足時儲存服務提供的連結"],
+    last_db_at: ["上次資料庫快照"],
     trip_id: ["旅程代號", "每一趟旅程獨一無二的識別碼"],
     date: ["日期"],
     day_order: ["當天第幾趟"],
@@ -151,13 +169,19 @@
       summary: ["status", "message", "created_at"] },
     background_job_events: { label: "作業處理紀錄", desc: "背景作業執行時每一步的進度訊息（背景作業頁會整理成時間軸）。",
       title: (r) => r.message, summary: ["stage", "job_id", "created_at"] },
+    cloud_backups: { label: "雲端備份紀錄", desc: "每一個上傳到站外儲存的檔案（超過 10 GB 的影片會分成多份）。上傳金鑰不能列出雲端檔案，這裡是還原時對照的唯一紀錄；旅程刪除後仍保留。",
+      title: (r) => r.remote_name || `備份 #${r.id}`, summary: ["status", "byte_length", "completed_at"] },
+    cloud_backup_events: { label: "雲端備份過程", desc: "每份雲端備份的步驟紀錄（計算校驗碼、開啟分段上傳、完成或錯誤）。",
+      title: (r) => r.message, summary: ["stage", "backup_id", "created_at"] },
+    cloud_backup_config: { label: "雲端備份設定", desc: "儲存服務網址、加密保存的 API 金鑰、自動備份與速度上限。金鑰已隱藏。",
+      title: () => "雲端備份設定", summary: ["endpoint", "paused", "updated_at"] },
     media_commits: { label: "影片寫入紀錄", desc: "替換影片檔時的安全紀錄；若中途斷電可據此復原。正常情況下是空的。",
       title: (r) => `寫入 #${r.id}`, summary: ["trip_id"] },
   };
 
   const BOOL = /^(has_|is_|show_|must_|trips_public$|auto_process$|complete$)/;
   const TIME = /(_at|_epoch|^last_activity)$/;
-  const BYTES = /(_bytes|^size$|^received$)$/;
+  const BYTES = /(_bytes|^size$|^received$|^byte_length$|^byte_offset$|^source_size$|^part_size$)$/;
   const SECS = /(duration_sec|^trim_offset_sec$|^start_sec$|^end_sec$)$/;
   const JSONISH = /(_json|^payload$|^result$|_snapshot$|^entries$|^value$)$/;
   const PATHISH = /(_path|_dir)$/;
@@ -165,7 +189,7 @@
     role: { admin: "管理員", viewer: "一般使用者" },
     status: { active: "進行中", processing: "處理中", done: "已完成", open: "待處理", resolved: "已解決", dismissed: "已忽略",
       queued: "等待執行", running: "處理中", succeeded: "已完成", failed: "失敗", partial: "部分成功", cancelled: "已取消",
-      interrupted: "重啟中斷", cancelling: "取消中", closed: "已結束", expired: "已逾時" },
+      interrupted: "重啟中斷", cancelling: "取消中", closed: "已結束", expired: "已逾時", uploading: "上傳中" },
     layout: { front: "前鏡頭", rear: "後鏡頭", pip: "子母畫面" },
     quality: { precise: "精確", fast: "快速無損" },
     severity: { error: "錯誤", warn: "警告", info: "資訊" },

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/style.css?v=2.7.0">
   <link rel="stylesheet" href="/static/ui.css?v=2.2.0">
   <link rel="stylesheet" href="/static/youtube.css?v=7">
+  <link rel="stylesheet" href="/static/cloud-backup.css">
   <style>
     .ops-pill { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; font-family:var(--font-mono); letter-spacing:.03em; }
     .ops-pill.sev-error { background:color-mix(in oklch, var(--crit) 14%, var(--surface)); color:var(--crit); }
@@ -94,6 +95,7 @@
         <button class="console-tab" data-pane="health"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>健康檢查與工具</button>
         <button class="console-tab" data-pane="storage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/></svg>儲存空間<small id="tab-storage-free"></small></button>
         <button class="console-tab" data-pane="youtube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="4"/><polygon points="10 9 15 12 10 15 10 9"/></svg>YouTube 管理</button>
+        <button class="console-tab" data-pane="cloud"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>雲端備份<small id="tab-cloud-state"></small></button>
         <button class="console-tab" data-pane="db"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>資料庫檢視</button>
         <p class="console-nav-foot">資料庫檢視為唯讀，不會修改任何資料；密碼與登入憑證已自動隱藏。</p>
       </nav>
@@ -232,6 +234,119 @@
           </div>
         </section>
 
+        <section class="pane" id="pane-cloud">
+          <div class="pane-head">
+            <div><h2>雲端備份</h2><p>把旅程的原始影片與資料庫加密備份到站外儲存空間。上傳的是原檔，不會轉檔，也不會被平台下架。</p></div>
+          </div>
+          <div class="ytm-bar">
+            <div class="ytm-tabs ops-tabs" role="tablist">
+              <button class="ops-tab" type="button" data-cbk="progress">備份進度</button>
+              <button class="ops-tab" type="button" data-cbk="pick">選擇旅程</button>
+              <button class="ops-tab" type="button" data-cbk="done">已備份</button>
+              <button class="ops-tab" type="button" data-cbk="settings">設定</button>
+            </div>
+            <p id="cbk-notice" class="yt-notice" role="status" aria-live="polite"></p>
+          </div>
+          <div class="pane-body">
+            <div id="cbk-banner"></div>
+
+            <div class="ytm-section" id="cbk-progress" hidden>
+              <div class="ytm-stat" id="cbk-stat"></div>
+              <div id="cbk-current"></div>
+              <div class="yt-actions cbk-tools">
+                <button class="btn btn--ghost btn--sm" type="button" id="cbk-pause">暫停備份</button>
+                <button class="btn btn--ghost btn--sm" type="button" id="cbk-db-now">立即備份資料庫</button>
+                <button class="btn btn--ghost btn--sm" type="button" id="cbk-cancel-queued">取消所有等待中</button>
+              </div>
+              <div class="yt-two cbk-two">
+                <div><div id="cbk-jobs" class="ops-card-list"></div><div class="yt-pager" id="cbk-jobs-pager"></div></div>
+                <div class="yt-preview-box" id="cbk-detail"></div>
+              </div>
+            </div>
+
+            <div class="ytm-section" id="cbk-pick" hidden>
+              <div class="cbk-summary" id="cbk-pick-summary"></div>
+              <div class="cbk-pick-bar">
+                <div class="ops-tabs" role="group" aria-label="篩選">
+                  <button class="ops-tab" type="button" data-cbk-filter="pending">未備份</button>
+                  <button class="ops-tab" type="button" data-cbk-filter="all">全部</button>
+                  <button class="ops-tab" type="button" data-cbk-filter="done">已備份</button>
+                </div>
+                <label class="cbk-cams">鏡頭
+                  <select id="cbk-cameras" class="form-input">
+                    <option value="both">前後鏡頭</option>
+                    <option value="front">只有前鏡頭</option>
+                    <option value="rear">只有後鏡頭</option>
+                  </select>
+                </label>
+                <button class="btn btn--ghost btn--sm" type="button" id="cbk-select-page">選取本頁未備份</button>
+              </div>
+              <div id="cbk-trips" class="cbk-trips"></div>
+              <div class="yt-pager" id="cbk-trips-pager"></div>
+              <div class="cbk-selbar">
+                <span id="cbk-sel-text">尚未選取旅程</span>
+                <button class="btn btn--ghost btn--sm" type="button" id="cbk-clear-sel" hidden>清除選取</button>
+                <button class="btn btn--solid btn--sm" type="button" id="cbk-enqueue" disabled>加入備份</button>
+              </div>
+            </div>
+
+            <div class="ytm-section" id="cbk-done" hidden>
+              <div class="ytm-sync">
+                <div><b>雲端上的檔案</b><span id="cbk-done-count"></span></div>
+                <p>本站的 API 金鑰只能上傳，不能列出、下載或刪除雲端檔案。要下載或刪除，請登入儲存服務網站，依下方的檔名或檔案編號操作。下載的「還原清單」記錄了每個檔案對應的旅程與 SHA-256，請另外保存一份。</p>
+                <div class="yt-actions">
+                  <a class="btn btn--solid btn--sm" id="cbk-manifest" href="/api/cloud-backup/manifest.csv" download>下載還原清單（CSV）</a>
+                  <a class="btn btn--ghost btn--sm" id="cbk-site" href="https://cp.c-h.tw/" target="_blank" rel="noopener">開啟儲存服務網站</a>
+                </div>
+              </div>
+              <details class="cbk-restore">
+                <summary>如何從雲端還原</summary>
+                <ol>
+                  <li>在儲存服務網站依檔名下載。檔名格式是 <code>dashcam_日期_開始-結束_鏡頭_…mp4</code>，時間是車機時間。</li>
+                  <li>超過 10 GB 的影片會分成幾份（檔名結尾 <code>.001</code>、<code>.002</code>…），全部下載後依序合併：Windows 用 <code>copy /b 檔名.mp4.001+檔名.mp4.002 檔名.mp4</code>，macOS／Linux 用 <code>cat 檔名.mp4.0* &gt; 檔名.mp4</code>。</li>
+                  <li>用還原清單裡的 SHA-256 核對下載的檔案（每一份分卷各有一個）。</li>
+                  <li>依清單的「本機路徑」放回資料目錄的 <code>trips/</code> 底下並改回原檔名。旅程紀錄還在時，放回後即可播放。</li>
+                  <li>整台主機重建時：先停止服務，把最新的資料庫快照（<code>dashcam-db_….sqlite</code>）改名為 <code>dashcam.db</code> 放進資料目錄，再依清單放回影片。快照不含登入狀態與 YouTube 授權，所有人需要重新登入、YouTube 需要重新連結。</li>
+                </ol>
+              </details>
+              <div id="cbk-done-list" class="ops-card-list"></div>
+              <div class="yt-pager" id="cbk-done-pager"></div>
+            </div>
+
+            <div class="ytm-section" id="cbk-settings" hidden>
+              <div class="cbk-card">
+                <h3>儲存服務的 API 金鑰</h3>
+                <p class="yt-hint" id="cbk-key-state"></p>
+                <div class="cbk-key-row">
+                  <input id="cbk-key" type="password" class="form-input" autocomplete="new-password" spellcheck="false" placeholder="貼上 cpk_ 開頭的金鑰">
+                  <button class="btn btn--solid btn--sm" type="button" id="cbk-key-save">儲存金鑰</button>
+                  <button class="btn btn--danger btn--sm" type="button" id="cbk-key-remove" hidden>移除金鑰</button>
+                </div>
+                <p class="yt-hint">金鑰以加密方式保存在伺服器，不會再顯示在瀏覽器。這種金鑰只能上傳；每上傳一個檔案（每一份分卷）會用掉 1 次上傳點數，點數用完時備份會自動暫停並顯示儲值連結。</p>
+                <div class="yt-actions"><button class="btn btn--ghost btn--sm" type="button" id="cbk-check">檢查金鑰與點數</button><span class="yt-hint">會開一個測試上傳再立刻取消，不扣點數。</span></div>
+              </div>
+              <div class="cbk-card">
+                <h3>備份方式</h3>
+                <label class="yt-check"><input type="checkbox" id="cbk-auto"><span><b>自動備份新旅程</b><br>開啟後，之後整理完成的旅程會在約 10 分鐘後自動排入備份；不會把現有的旅程全部排進去（現有的請到「選擇旅程」挑選）。</span></label>
+                <label class="yt-check"><input type="checkbox" id="cbk-db"><span><b>一起備份資料庫</b><br>旅程資訊、備註、匯出片段紀錄、裝置與帳號（密碼只有加鹽雜湊），整台主機故障時才還原得回影片以外的資料。不含登入工作階段、上傳密碼與 YouTube 授權。影片備份完成後補一份，最多每 12 小時一次；沒有新備份時每 7 天一次。</span></label>
+                <div class="ytm-form">
+                  <label class="field">上傳速度上限（Mbps，0 = 不限）<input id="cbk-rate" type="number" min="0" max="10000" step="1" class="form-input"></label>
+                </div>
+                <p class="yt-hint">備份和網站共用家裡的上傳頻寬。如果備份時網站變慢，設定上限（例如上傳頻寬的一半）。</p>
+                <div class="yt-actions"><button class="btn btn--solid btn--sm" type="button" id="cbk-save">儲存設定</button></div>
+              </div>
+              <details class="cbk-card cbk-advanced" id="cbk-advanced">
+                <summary>進階：服務網址</summary>
+                <div class="ytm-form">
+                  <label class="field">API 網址<input id="cbk-endpoint" type="url" class="form-input" spellcheck="false"></label>
+                </div>
+                <p class="yt-hint">只有儲存服務搬家時才需要修改。留空會回到預設網址。</p>
+                <div class="yt-actions"><button class="btn btn--ghost btn--sm" type="button" id="cbk-endpoint-save">儲存網址</button></div>
+              </details>
+            </div>
+          </div>
+        </section>
+
         <section class="pane" id="pane-db">
           <div class="pane-body flush">
             <div class="dbv">
@@ -284,6 +399,7 @@
 <script src="/static/panes.js?v=2.2.0"></script>
 <script src="/static/db-glossary.js?v=2.2.0"></script>
 <script src="/static/ops-youtube.js?v=5"></script>
+<script src="/static/ops-cloud.js"></script>
 <script>
 let filter = 'open';
 let curInc = null;
@@ -296,9 +412,11 @@ let retryES = null;
   renderHeader(user);
   loadIncidents();
   OpsYoutube.init(user);
+  OpsCloud.init(user);
   const consoleCtl = DashcamUI.initConsole(document.getElementById('ops-console'), {
     onChange: (id) => {
       if (id === 'youtube') OpsYoutube.activate().catch((e) => showToast(e.message, 'error'));
+      if (id === 'cloud') OpsCloud.activate().catch((e) => showToast(e.message, 'error'));
       if (id === 'storage') loadStorage();
     },
   });

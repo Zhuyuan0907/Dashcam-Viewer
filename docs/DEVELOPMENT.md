@@ -18,12 +18,13 @@ src/
   server.ts / app.ts     進入點、Fastify 組裝、啟動時的中斷殘留修復
   config.ts              環境變數 → 常數
   db.ts                  SQLite schema 與升級
-  routes/                HTTP API 與頁面（trips、upload、edit、clips、shares、ops、youtube…）
+  routes/                HTTP API 與頁面（trips、upload、edit、clips、shares、ops、youtube、cloud…）
   trips/                 organizer（切趟／合併）、prebuilt（已整理旅程匯入）、repo（旅程 DB 存取）
   uploads/ sftp/         瀏覽器分塊續傳、內建 SFTP、扁平資料夾分流
   dashcams/              各記錄器檔名解析與鏡頭配對
   media/                 FFmpeg 包裝、時間軸、磁碟預留
   youtube/               OAuth、上傳佇列、播放清單配對、狀態同步
+  cloud/                 雲端備份（chunkproxy 客戶端、上傳佇列、去敏資料庫快照）
   storage/               儲存空間回收、備份打包
   settings/              站台設定與 UI 字串預設
 static/                  各頁 HTML + 共用 app.js / style.css / ui.css / themes.css
