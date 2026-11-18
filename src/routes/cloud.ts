@@ -51,7 +51,7 @@ const wallClock = (epoch: number | null) =>
   epoch ? new Date(epoch * 1000).toISOString().slice(0, 16).replace("T", " ") : "";
 
 export function registerCloudBackup(app: FastifyInstance, ctx: AppContext): void {
-  const service = (ctx.cloud ??= new CloudBackupService(ctx));
+  const service = (ctx.cloud ??= new CloudBackupService(ctx, { log: app.log }));
   const requireAdmin = makeRequireAdmin(ctx),
     requireOwner = makeRequireOwner(ctx);
   // 不接受跨站帶 cookie 的寫入。
@@ -115,6 +115,7 @@ export function registerCloudBackup(app: FastifyInstance, ctx: AppContext): void
         pause_reason: config.pause_reason || null,
         topup_url: config.topup_url,
         last_db_at: config.last_db_at || null,
+        waiting: service.waitState(),
         stats: service.stats(),
         current: current
           ? {
@@ -208,6 +209,12 @@ export function registerCloudBackup(app: FastifyInstance, ctx: AppContext): void
     "/api/cloud-backup/check",
     { ...write, config: { rateLimit: { max: 6, timeWindow: "1 minute" } } },
     guard(() => service.check()),
+  );
+  // 連線問題排定的等待（例如主機 DNS 故障）在網路恢復後可以不必等，下一輪就重試。
+  app.post(
+    "/api/cloud-backup/retry-now",
+    { ...write, config: { rateLimit: { max: 6, timeWindow: "1 minute" } } },
+    guard(() => ({ rescheduled: service.retryNow() })),
   );
 
   app.get<{ Querystring: { filter?: string; page?: string; limit?: string } }>(

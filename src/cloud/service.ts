@@ -25,6 +25,7 @@ import {
   DEFAULT_ENDPOINT,
   SINGLE_MAX_BYTES,
   VOLUME_MAX_BYTES,
+  type ClientOptions,
   type RemoteFile,
   type RemoteUpload,
 } from "./chunkproxy.js";
@@ -229,6 +230,23 @@ export interface CloudBackupOptions {
   intervalMs?: number;
   /** 單一分段的重試等待基準（毫秒）。 */
   retryDelayMs?: number;
+  /** 服務日誌（Fastify 的 app.log）；失敗原因會寫進去，方便事後查。 */
+  log?: CloudLogger;
+  /** 測試用：連線逾時與 DNS 查詢。 */
+  client?: ClientOptions;
+}
+
+export interface CloudLogger {
+  info(obj: object, msg: string): void;
+  warn(obj: object, msg: string): void;
+}
+
+/** 整個佇列因連線問題等待重試時，給狀態頁顯示的原因與時間。 */
+export interface CloudWaitState {
+  until: number;
+  since: number;
+  message: string;
+  failures: number;
 }
 
 export class CloudBackupService {
@@ -253,6 +271,10 @@ export class CloudBackupService {
   /** 連線類錯誤後整個佇列一起等待，避免服務中斷時把每一項的重試次數都耗光。 */
   private cooldownUntil = 0;
   private failures = 0;
+  /** 這一輪等待的原因與開始時間（成功上傳後清除）。 */
+  private waiting: { message: string; since: number } | null = null;
+  private readonly log?: CloudLogger;
+  private readonly clientOptions: ClientOptions;
   live: LiveProgress | null = null;
 
   constructor(
@@ -266,6 +288,8 @@ export class CloudBackupService {
     this.snapshotDir = opts.snapshotDir ?? path.join(DATA_DIR, "cloud-backup");
     this.intervalMs = opts.intervalMs ?? 5000;
     this.retryDelayMs = opts.retryDelayMs ?? 2000;
+    this.log = opts.log;
+    this.clientOptions = opts.client ?? {};
     ctx.db.exec(SCHEMA);
     const interrupted = ctx.db
       .prepare("SELECT id FROM cloud_backups WHERE status='uploading'")
@@ -289,7 +313,7 @@ export class CloudBackupService {
   client(): ChunkproxyClient {
     const key = this.apiKey();
     if (!key) throw new BackupFailure("尚未設定雲端備份的 API 金鑰");
-    return new ChunkproxyClient(this.config().endpoint, key);
+    return new ChunkproxyClient(this.config().endpoint, key, this.clientOptions);
   }
   setKey(key: string): void {
     this.config();
@@ -340,12 +364,35 @@ export class CloudBackupService {
         )
         .run(this.clock());
       await this.interrupt("pause");
-    } else
+    } else {
       this.ctx.db
         .prepare(
           "UPDATE cloud_backup_config SET paused=0,pause_reason='',topup_url=NULL,updated_at=? WHERE id=1",
         )
         .run(this.clock());
+      // 使用者按「繼續備份」就是要現在開始，不必再等之前連線失敗排定的重試時間。
+      this.retryNow();
+    }
+  }
+
+  /** 整個佇列正在等待重試時的原因與下次重試時間；沒有在等就回傳 null。 */
+  waitState(): CloudWaitState | null {
+    if (!this.waiting || this.clock() >= this.cooldownUntil) return null;
+    return {
+      until: this.cooldownUntil,
+      since: this.waiting.since,
+      message: this.waiting.message,
+      failures: this.failures,
+    };
+  }
+
+  /** 立即重試：結束整個佇列的等待，排定稍後重試的項目也改成現在就可以執行（下一輪就開始）。 */
+  retryNow(): number {
+    this.cooldownUntil = 0;
+    const now = this.clock();
+    return this.ctx.db
+      .prepare("UPDATE cloud_backups SET not_before=? WHERE status='queued' AND not_before>?")
+      .run(now, now).changes;
   }
   private pauseFor(reason: "credits" | "auth", topupUrl: string | null = null): void {
     this.ctx.db
@@ -389,6 +436,8 @@ export class CloudBackupService {
     const config = this.config();
     if (config.paused && ["credits", "auth"].includes(config.pause_reason))
       await this.setPaused(false);
+    // 連得上也開得了上傳：之前因連線問題排定的等待可以直接結束。
+    else this.retryNow();
     return { ok: true, message: "金鑰有效、點數足夠；測試用的上傳已取消並退還點數" };
   }
 
@@ -1170,6 +1219,7 @@ export class CloudBackupService {
         throw new BackupFailure("儲存服務回報的 SHA-256 與本機不符，請重試");
       const now = this.clock();
       this.failures = 0;
+      this.waiting = null;
       db.prepare(
         `UPDATE cloud_backups SET remote_id=?,remote_sha256=?,remote_state=?,uploaded_bytes=byte_length,upload_id=NULL,
          upload_secret=NULL,retry_count=0,completed_at=? WHERE id=?`,
@@ -1185,6 +1235,7 @@ export class CloudBackupService {
         await fs.rm(row.source_path, { force: true }).catch(() => {});
         db.prepare("UPDATE cloud_backup_config SET last_db_at=? WHERE id=1").run(now);
       }
+      this.log?.info({ backup: row.id, remote: remote.id }, "雲端備份完成一份");
     } catch (error) {
       const current = this.get(row.id);
       if (!current) return;
@@ -1204,9 +1255,11 @@ export class CloudBackupService {
       } else if (error instanceof ChunkproxyError && error.reason === "credits") {
         this.pauseFor("credits", error.topupUrl);
         this.update(row.id, "queued", "上傳點數不足，備份已暫停；儲值後按「繼續備份」");
+        this.log?.warn({ backup: row.id, status: error.status }, "雲端備份：上傳點數不足，已暫停");
       } else if (error instanceof ChunkproxyError && error.reason === "auth") {
         this.pauseFor("auth");
         this.update(row.id, "queued", "API 金鑰無效或已撤銷，備份已暫停；更新金鑰後會繼續");
+        this.log?.warn({ backup: row.id, status: error.status }, "雲端備份：API 金鑰被拒，已暫停");
       } else if (
         error instanceof ChunkproxyError &&
         (error.reason === "transient" || (error.reason === "not_found" && current.upload_id))
@@ -1225,12 +1278,20 @@ export class CloudBackupService {
               error.retryAfterMs,
               Math.min(3_600_000, 30_000 * 2 ** Math.min(this.failures - 1, 7)),
             );
+          this.waiting = { message, since: this.waiting?.since ?? this.clock() };
           return this.cooldownUntil;
         };
-        // 服務整個連不上（斷線、502/503/504、限流）：整個佇列一起等，不算這一份的失敗次數，
-        // 否則服務中斷一天會把等待中的項目一個個耗成「失敗」。
-        if (error.outage) this.update(row.id, "queued", message, cooldown());
-        else {
+        this.log?.warn(
+          { backup: row.id, reason: error.reason, status: error.status, outage: error.outage },
+          `雲端備份暫時失敗：${message}`,
+        );
+        // 服務整個連不上（斷線、DNS、502/503/504、限流）：整個佇列一起等，不算這一份的失敗次數，
+        // 否則服務中斷一天會把等待中的項目一個個耗成「失敗」。這一份的排序不往後挪，恢復後先重試它，
+        // 不會在中斷期間輪流把其他影片整支讀過一遍算校驗碼。
+        if (error.outage) {
+          cooldown();
+          this.update(row.id, "queued", message);
+        } else {
           db.prepare("UPDATE cloud_backups SET retry_count=retry_count+1 WHERE id=?").run(row.id);
           const retries = this.get(row.id)!.retry_count;
           if (retries > MAX_TRANSIENT_RETRIES)
@@ -1240,14 +1301,16 @@ export class CloudBackupService {
           else this.update(row.id, "queued", message, cooldown());
         }
       } else {
-        this.update(
-          row.id,
-          "failed",
+        const message =
           error instanceof BackupFailure || error instanceof ChunkproxyError
             ? error.message
             : error instanceof Error && !/ENOENT|EACCES|EIO/.test(error.message)
               ? error.message
-              : "無法讀取本機檔案，請檢查後重試",
+              : "無法讀取本機檔案，請檢查後重試";
+        this.update(row.id, "failed", message);
+        this.log?.warn(
+          { backup: row.id, err: error instanceof Error ? error.message : String(error) },
+          `雲端備份失敗：${message}`,
         );
       }
     } finally {

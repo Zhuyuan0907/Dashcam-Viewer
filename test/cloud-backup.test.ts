@@ -150,7 +150,13 @@ async function mockChunkproxy(partSize = 64 * 1024) {
 }
 
 async function fixture(
-  options: { volumeMax?: number; singleMax?: number; partSize?: number } = {},
+  options: {
+    volumeMax?: number;
+    singleMax?: number;
+    partSize?: number;
+    log?: { info(obj: object, msg: string): void; warn(obj: object, msg: string): void };
+    lookup?: unknown;
+  } = {},
 ) {
   const mock = await mockChunkproxy(options.partSize);
   let now = Date.now();
@@ -165,6 +171,8 @@ async function fixture(
       snapshotDir,
       intervalMs: 3_600_000,
       retryDelayMs: 1,
+      log: options.log,
+      ...(options.lookup ? { client: { lookup: options.lookup as any } } : {}),
     });
   const f = await makeAdminApp(root, (ctx) => {
     ctx.cloud = make(ctx);
@@ -631,5 +639,158 @@ test("upload speed limit spaces out the request body", async () => {
     assert.equal(remote.sha256, sha(data));
   } finally {
     await mock.close();
+  }
+});
+
+/** 依指定延遲回答 DNS 查詢（一律指向本機的模擬服務），或回報 DNS 錯誤、或永遠不回答。 */
+function lookupAfter(ms: number, code?: string) {
+  return ((_host: string, options: { all?: boolean }, callback: (...args: any[]) => void) => {
+    if (ms < 0) return;
+    setTimeout(() => {
+      if (code) callback(Object.assign(new Error(`getaddrinfo ${code}`), { code }));
+      else if (options.all) callback(null, [{ address: "127.0.0.1", family: 4 }]);
+      else callback(null, "127.0.0.1", 4);
+    }, ms);
+  }) as any;
+}
+
+test("a slow DNS lookup is not mistaken for an unresponsive storage service", async () => {
+  const mock = await mockChunkproxy();
+  const file = path.join(root, "slow-dns.bin");
+  const data = crypto.randomBytes(4096);
+  await fs.writeFile(file, data);
+  // Node 內建 agent 的閒置逾時（預設 5 秒）從查 DNS 就開始算；縮短它來重現正式站的情況。
+  const agent = http.globalAgent as http.Agent & { options: { timeout?: number } };
+  const previous = agent.options.timeout;
+  agent.options.timeout = 150;
+  try {
+    const client = new ChunkproxyClient(mock.endpoint.replace("127.0.0.1", "storage.test"), KEY, {
+      lookup: lookupAfter(400),
+    });
+    const remote = await client.uploadSmall("slow-dns.bin", {
+      file,
+      start: 0,
+      length: data.length,
+    });
+    assert.equal(remote.sha256, sha(data));
+  } finally {
+    agent.options.timeout = previous;
+    await mock.close();
+  }
+});
+
+test("connection failures say what went wrong and count as an outage", async () => {
+  const mock = await mockChunkproxy();
+  const file = path.join(root, "unreachable.bin");
+  await fs.writeFile(file, crypto.randomBytes(1024));
+  const endpoint = mock.endpoint.replace("127.0.0.1", "storage.test");
+  const attempt = async (lookup: unknown) => {
+    const client = new ChunkproxyClient(endpoint, KEY, {
+      connectTimeoutMs: 200,
+      lookup: lookup as any,
+    });
+    const started = Date.now();
+    const error = await client
+      .uploadSmall("unreachable.bin", { file, start: 0, length: 1024 })
+      .then(
+        () => assert.fail("upload should fail"),
+        (e) => e,
+      );
+    return { error, elapsed: Date.now() - started };
+  };
+  try {
+    const dns = await attempt(lookupAfter(0, "EAI_AGAIN"));
+    assert.match(dns.error.message, /DNS 查詢失敗：EAI_AGAIN/);
+    assert.equal(dns.error.outage, true);
+    const hung = await attempt(lookupAfter(-1));
+    assert.match(hung.error.message, /1 秒內連不上儲存服務/);
+    assert.equal(hung.error.outage, true);
+    assert.ok(hung.elapsed >= 190 && hung.elapsed < 3000, `gave up after ${hung.elapsed} ms`);
+    assert.equal(mock.log.length, 0, "nothing reached the service");
+  } finally {
+    await mock.close();
+  }
+});
+
+test("while the service is unreachable the status explains the wait; retry-now and resume skip it", async () => {
+  const logged: string[] = [];
+  const f = await fixture({
+    volumeMax: 10 * 1024 * 1024,
+    log: { info: () => {}, warn: (_obj, msg) => logged.push(msg) },
+  });
+  try {
+    await f.service.enqueue([f.tripId], "front", 1);
+    f.mock.state.failPart = 0;
+    f.mock.state.failTimes = 1_000;
+    f.advance(1000);
+    await f.service.tick();
+    const call = (method: string, url: string) =>
+      f.app.inject({
+        method: method as any,
+        url,
+        headers: { cookie: f.cookie, "content-type": "application/json" },
+        payload: "{}",
+      });
+    const first = (await call("GET", "/api/cloud-backup/status")).json().waiting;
+    assert.match(first.message, /HTTP 503/);
+    assert.equal(first.failures, 1);
+    assert.ok(first.until > first.since);
+    assert.ok(
+      logged.some((m) => /雲端備份暫時失敗：.*HTTP 503/.test(m)),
+      "failure is logged",
+    );
+
+    // 立即重試：不必推進時間，下一輪就再試（仍失敗 → 連續次數累加、起始時間不變）。
+    const retried = await call("POST", "/api/cloud-backup/retry-now");
+    assert.equal(retried.statusCode, 200);
+    assert.equal(f.service.waitState(), null);
+    const before = f.mock.log.length;
+    await f.service.tick();
+    assert.ok(f.mock.log.length > before, "retried without waiting for the cooldown");
+    const second = f.service.waitState()!;
+    assert.equal(second.failures, 2);
+    assert.equal(second.since, first.since);
+
+    // 網路恢復後按「繼續備份」同樣不必等。
+    f.mock.state.failTimes = 0;
+    await f.service.setPaused(false);
+    await f.service.tick();
+    const row = f.rows()[0]!;
+    assert.equal(row.status, "done");
+    assert.equal(f.service.waitState(), null);
+    assert.equal((await call("GET", "/api/cloud-backup/status")).json().waiting, null);
+  } finally {
+    await f.close();
+  }
+});
+
+test("during a DNS outage the same item is retried first instead of reading every queued file", async () => {
+  let dnsDown = true;
+  const lookup = ((host: string, options: any, callback: any) =>
+    lookupAfter(0, dnsDown ? "EAI_AGAIN" : undefined)(host, options, callback)) as any;
+  const f = await fixture({ lookup });
+  try {
+    f.service.updateSettings({ endpoint: f.mock.endpoint.replace("127.0.0.1", "storage.test") });
+    await f.service.enqueue([f.tripId], "both", 1);
+    assert.ok(f.rows().length > 2);
+    for (let i = 0; i < 3; i++) {
+      f.advance(3_600_000);
+      await f.service.tick();
+    }
+    const rows = f.rows();
+    assert.match(rows[0]!.message, /DNS 查詢失敗：EAI_AGAIN/);
+    assert.ok(rows[0]!.sha256, "the first item was hashed once");
+    assert.deepEqual(
+      rows.slice(1).map((r) => r.sha256),
+      rows.slice(1).map(() => null),
+      "other items are not read while the service is unreachable",
+    );
+    assert.ok(rows.every((r) => r.status === "queued" && r.retry_count === 0));
+    assert.equal(f.mock.log.length, 0);
+    dnsDown = false;
+    await f.drain();
+    assert.ok(f.rows().every((r) => r.status === "done"));
+  } finally {
+    await f.close();
   }
 });

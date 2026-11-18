@@ -53,6 +53,7 @@ window.OpsCloud = (() => {
   /** 車機時間以 UTC 存，照原樣顯示。 */
   const wall = (epoch) => new Date(epoch * 1000).toISOString().slice(11, 16);
   const when = (ms) => (ms ? new Date(ms).toLocaleString("zh-TW", { hour12: false }) : "");
+  const clock = (ms) => new Date(ms).toLocaleTimeString("zh-TW", { hour12: false, hour: "2-digit", minute: "2-digit" });
   const minutes = (sec) => {
     const m = Math.round(sec / 60);
     return m >= 60 ? `${Math.floor(m / 60)} 小時 ${m % 60} 分` : `${m} 分`;
@@ -101,11 +102,21 @@ window.OpsCloud = (() => {
     else if (s.paused)
       html = `<div class="yt-callout warn"><b>備份已暫停</b><p>等待中的項目會保留；按「繼續備份」從上次完成的分段接著傳。</p>
         <div class="yt-actions"><button class="btn btn--solid btn--sm" type="button" data-banner="resume">繼續備份</button></div></div>`;
+    else if (s.waiting)
+      html = `<div class="yt-callout warn"><b>上傳暫時失敗，${esc(clock(s.waiting.until))} 自動重試</b>
+        <p>${esc(s.waiting.message.replace(/[，；]稍後自動重試$/, ""))}${s.waiting.failures > 1 ? `（從 ${esc(clock(s.waiting.since))} 起已連續 ${s.waiting.failures} 次）` : ""}。等待期間整個佇列都會保留，已上傳的分段不會重傳；問題排除後可以按「立即重試」。</p>
+        <div class="yt-actions">
+          <button class="btn btn--solid btn--sm" type="button" data-banner="retry">立即重試</button>
+          <button class="btn btn--ghost btn--sm" type="button" data-banner="check">檢查連線與點數</button>
+        </div></div>`;
     box.innerHTML = html;
     box.querySelectorAll("[data-goto]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); void show(a.dataset.goto); }));
     box.querySelectorAll("[data-banner]").forEach((b) => (b.onclick = () => act(b, async () => {
       if (b.dataset.banner === "check") await runCheck();
-      else {
+      else if (b.dataset.banner === "retry") {
+        await request("/api/cloud-backup/retry-now", {});
+        notice("已安排立即重試，幾秒內開始。", "ok");
+      } else {
         await request("/api/cloud-backup/pause", { paused: false });
         notice("已繼續備份。", "ok");
       }
@@ -151,7 +162,7 @@ window.OpsCloud = (() => {
           ${cur.phase === "uploading" && cur.rate ? `<span>${speed(cur.rate)}</span><span>這一份${eta(cur.total - cur.done, cur.rate)}</span>` : ""}
           ${cur.part_count ? `<span>分段 ${cur.parts_done} / ${cur.part_count}</span>` : ""}</div></div>`;
     } else
-      $("cbk-current").innerHTML = st.queued && !s.paused && s.configured
+      $("cbk-current").innerHTML = st.queued && !s.paused && !s.waiting && s.configured
         ? '<p class="yt-hint cbk-idle">下一份即將開始（重試等待中的項目會在排定時間後繼續）。</p>'
         : "";
     $("cbk-pause").textContent = s.paused ? "繼續備份" : "暫停備份";

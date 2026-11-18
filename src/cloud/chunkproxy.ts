@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import type { LookupFunction } from "node:net";
 
 export const DEFAULT_ENDPOINT = "https://api-cp.c-h.tw/v1/chunkproxy";
 /** 單一請求上限是 100 MB；留餘裕，超過就走分段上傳。 */
@@ -71,6 +72,12 @@ export class ChunkproxyError extends Error {
     );
   }
 }
+
+/** getaddrinfo 的錯誤碼：這台主機查不到儲存服務的網址（DNS 故障，或網址打錯）。 */
+const DNS_ERRORS = new Set(["ENOTFOUND", "EAI_AGAIN", "EAI_FAIL", "EAI_NODATA", "EAI_NONAME"]);
+
+const span = (ms: number) =>
+  ms >= 60_000 ? `${Math.round(ms / 60_000)} 分鐘` : `${Math.max(1, Math.round(ms / 1000))} 秒`;
 
 /** 檔案中的一段位元組（分段/分卷都直接從原始檔串流，不整段讀進記憶體）。 */
 export interface FileSlice {
@@ -139,16 +146,31 @@ export function parseRemoteFile(json: unknown): RemoteFile {
   };
 }
 
+export interface ClientOptions {
+  /** 連上之後，多久沒有任何資料往來就放棄。 */
+  timeoutMs?: number;
+  /** DNS 查詢加上建立連線（含 TLS 交握）最多等多久。 */
+  connectTimeoutMs?: number;
+  /** 自訂 DNS 查詢（測試用）。 */
+  lookup?: LookupFunction;
+}
+
 export class ChunkproxyClient {
   private readonly base: URL;
+  private readonly timeoutMs: number;
+  private readonly connectTimeoutMs: number;
+  private readonly lookup?: LookupFunction;
   constructor(
     endpoint: string,
     private readonly apiKey: string,
-    private readonly timeoutMs = 10 * 60_000,
+    opts: ClientOptions = {},
   ) {
     this.base = new URL(endpoint.replace(/\/+$/, "") + "/");
     if (!["https:", "http:"].includes(this.base.protocol))
       throw new Error("儲存服務網址必須是 http(s)");
+    this.timeoutMs = opts.timeoutMs ?? 10 * 60_000;
+    this.connectTimeoutMs = opts.connectTimeoutMs ?? 30_000;
+    this.lookup = opts.lookup;
   }
 
   /** 100 MB 以內的檔案一次送出。 */
@@ -270,39 +292,67 @@ export class ChunkproxyClient {
     return new Promise((resolve, reject) => {
       if (opts.signal?.aborted) return reject(new ChunkproxyError("aborted"));
       let settled = false;
+      let connectTimer: NodeJS.Timeout | undefined;
       const finish = (error: Error | null, value?: unknown) => {
         if (settled) return;
         settled = true;
+        clearTimeout(connectTimer);
         opts.signal?.removeEventListener("abort", onAbort);
         if (error) reject(error);
         else resolve(value);
       };
-      const transport = url.protocol === "https:" ? https : http;
-      const req = transport.request(url, {
+      const secure = url.protocol === "https:";
+      const req = (secure ? https : http).request(url, {
         method,
         headers: {
           ...headers,
           ...(body === null ? {} : { "content-length": String(length) }),
           "user-agent": "dashcam-viewer-backup",
         },
+        // 一定要明確指定：Node 內建 agent 的閒置逾時只有 5 秒，而且從查 DNS 就開始算，
+        // 主機 DNS 慢一點就會被當成「服務沒有回應」。連線階段另由 connectTimeoutMs 把關。
+        timeout: this.timeoutMs,
+        ...(this.lookup ? { lookup: this.lookup } : {}),
       });
       const onAbort = () => {
         req.destroy();
         finish(new ChunkproxyError("aborted"));
       };
       opts.signal?.addEventListener("abort", onAbort, { once: true });
+      connectTimer = setTimeout(() => {
+        req.destroy();
+        finish(
+          new ChunkproxyError(
+            "transient",
+            `${span(this.connectTimeoutMs)}內連不上儲存服務，請確認這台主機的網路；稍後自動重試`,
+          ),
+        );
+      }, this.connectTimeoutMs);
+      req.on("socket", (socket) => {
+        const connected = () => clearTimeout(connectTimer);
+        // 重用的 keep-alive 連線早已連上；新連線等 TLS 交握（http 則是 TCP）完成才算。
+        if (!socket.connecting) connected();
+        else socket.once(secure ? "secureConnect" : "connect", connected);
+      });
       req.setTimeout(this.timeoutMs, () => {
         req.destroy();
-        finish(new ChunkproxyError("transient", "儲存服務長時間沒有回應，稍後自動重試"));
-      });
-      req.on("error", (error) => {
         finish(
-          error instanceof ChunkproxyError
-            ? error
-            : new ChunkproxyError(
-                "transient",
-                `${MESSAGES.transient}（${(error as NodeJS.ErrnoException).code ?? "連線中斷"}）`,
-              ),
+          new ChunkproxyError(
+            "transient",
+            `儲存服務超過 ${span(this.timeoutMs)}沒有回應，稍後自動重試`,
+          ),
+        );
+      });
+      req.on("error", (error: NodeJS.ErrnoException) => {
+        if (error instanceof ChunkproxyError) return finish(error);
+        const code = error.code ?? "連線中斷";
+        finish(
+          new ChunkproxyError(
+            "transient",
+            DNS_ERRORS.has(code)
+              ? `查不到儲存服務的網址（DNS 查詢失敗：${code}），請確認這台主機的網路與 DNS；稍後自動重試`
+              : `${MESSAGES.transient}（${code}）`,
+          ),
         );
       });
       req.on("response", (res) => {

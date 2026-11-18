@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.10.1 — 2026-11-19
+
+- Cloud backup no longer gives up after five seconds when DNS or connecting is slow. Node's built-in HTTP agent applies its 5-second keep-alive timeout before a connection is established, so a slow lookup was reported as "the storage service did not respond for a long time"; requests now set their own timeouts (30 seconds to connect, 10 minutes of silence once connected).
+- Say what actually failed: DNS lookup failures, connection timeouts and network errors each get their own message, and every failure is written to the service log.
+- When the whole queue waits after a connection problem, Ops › Cloud backup shows the reason, how many attempts failed since when, and the next retry time, with "Retry now" and "Check connection and credits". Resuming the queue or a successful check also ends the wait.
+- During an outage, retry the same item first instead of moving on and hashing every other queued video in turn.
+
 ## 2.10.0 — 2026-11-18
 
 - Add Ops › Cloud backup: back up original trip videos (no re-encoding) and, optionally, a database snapshot to the chunkproxy encrypted storage service as an off-site copy that a platform cannot take down. The owner stores the API key (encrypted with its own key file, never shown again); admins choose trips by date with per-camera status, or back up everything not yet backed up, and can turn on automatic backup of new trips.
