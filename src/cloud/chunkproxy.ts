@@ -7,7 +7,9 @@
  * - 更大（單檔上限 10 GiB）：POST /uploads 開啟 → PUT /uploads/{id}/parts/{n} → POST complete；
  *   DELETE /uploads/{id} 取消並退還點數。重送同一分段是安全的；閒置一小時的上傳會被清掉並退點。
  * - 每次上傳扣一次點數；點數不足回 402 並附儲值連結，不能自動重試。
+ * - 完成時回報的 sha256：單次上傳是整個檔案的 SHA-256；分段上傳則是組合校驗碼（見 compositeSha256）。
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
@@ -121,9 +123,18 @@ async function* throttled(
   }
 }
 
+/**
+ * 分段上傳完成時服務回報的校驗碼：各段 SHA-256（32 bytes）依序串接後再算一次 SHA-256，
+ * 後面加上「-段數」（與 S3 分段上傳的組合校驗碼同一種做法），不是整個檔案的 SHA-256。
+ */
+export function compositeSha256(partHashes: string[]): string {
+  const joined = Buffer.concat(partHashes.map((hex) => Buffer.from(hex, "hex")));
+  return `${crypto.createHash("sha256").update(joined).digest("hex")}-${partHashes.length}`;
+}
+
 function sha(value: unknown): string | null {
   if (typeof value !== "string" || !value) return null;
-  if (/^[0-9a-f]{64}$/i.test(value)) return value.toLowerCase();
+  if (/^[0-9a-f]{64}(-\d+)?$/i.test(value)) return value.toLowerCase();
   const raw = Buffer.from(value, "base64");
   return raw.length === 32 ? raw.toString("hex") : value;
 }
@@ -218,16 +229,24 @@ export class ChunkproxyClient {
     return upload;
   }
 
-  async putPart(upload: RemoteUpload, index: number, slice: FileSlice, opts: TransferOptions = {}) {
+  /** 傳一段，回傳實際送出內容的 SHA-256（完成時用來核對服務端的組合校驗碼）。 */
+  async putPart(
+    upload: RemoteUpload,
+    index: number,
+    slice: FileSlice,
+    opts: TransferOptions = {},
+  ): Promise<string> {
+    const hash = crypto.createHash("sha256");
     await this.session(() =>
       this.request(
         "PUT",
         `uploads/${encodeURIComponent(upload.id)}/parts/${index}`,
         { "x-upload-token": upload.upload_token, "content-type": "application/octet-stream" },
         slice,
-        opts,
+        { ...opts, onChunk: (chunk) => hash.update(chunk) },
       ),
     );
+    return hash.digest("hex");
   }
 
   async complete(upload: RemoteUpload, signal?: AbortSignal) {
@@ -284,7 +303,7 @@ export class ChunkproxyClient {
     route: string,
     headers: Record<string, string>,
     body: FileSlice | string | null,
-    opts: TransferOptions,
+    opts: TransferOptions & { onChunk?: (chunk: Buffer) => void },
   ): Promise<unknown> {
     const url = new URL(route, this.base);
     const length =
@@ -396,6 +415,7 @@ export class ChunkproxyClient {
           for await (const chunk of throttled(stream, opts.bytesPerSecond ?? 0, opts.signal)) {
             if (settled) break;
             sent += chunk.length;
+            opts.onChunk?.(chunk);
             opts.onProgress?.(sent);
             if (!req.write(chunk))
               await new Promise<void>((resolve) => {

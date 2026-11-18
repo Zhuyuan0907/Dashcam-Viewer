@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +12,7 @@ const root = await fs.mkdtemp(path.join(os.tmpdir(), "dashcam-cloud-"));
 process.env.DASHCAM_DATA_DIR = root;
 const { makeAdminApp } = await import("./_appctx.js");
 const { CloudBackupService, planVolumes } = await import("../src/cloud/service.js");
-const { ChunkproxyClient } = await import("../src/cloud/chunkproxy.js");
+const { ChunkproxyClient, compositeSha256 } = await import("../src/cloud/chunkproxy.js");
 const { SecretVault } = await import("../src/util/secret-vault.js");
 const { upsertTrip } = await import("../src/trips/repo.js");
 const { newSessionToken } = await import("../src/auth.js");
@@ -25,7 +26,15 @@ async function mockChunkproxy(partSize = 64 * 1024) {
   const files = new Map<string, { name: string; data: Buffer }>();
   const uploads = new Map<
     string,
-    { name: string; size: number; token: string; parts: Map<number, Buffer>; aborted: boolean }
+    {
+      name: string;
+      size: number;
+      token: string;
+      parts: Map<number, Buffer>;
+      aborted: boolean;
+      /** 完成後保留：真正的服務重複呼叫 complete 會回同一個檔案。 */
+      completed?: string;
+    }
   >();
   const log: string[] = [];
   const state = {
@@ -36,6 +45,8 @@ async function mockChunkproxy(partSize = 64 * 1024) {
     expireOn: -1,
     corruptSha: false,
     pending: false,
+    /** 收到某一段時呼叫（測試在傳送途中改動本機檔案）。 */
+    onPart: null as null | ((n: number) => void),
   };
   let next = 0;
   const server = http.createServer(async (req, res) => {
@@ -49,11 +60,18 @@ async function mockChunkproxy(partSize = 64 * 1024) {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(data));
     };
-    const fileInfo = (id: string, data: Buffer) => ({
+    // 和真正的服務一樣：單次上傳回報整檔 SHA-256，分段上傳回報各段 SHA-256 的組合加「-段數」。
+    const fileInfo = (id: string, data: Buffer, parts?: Buffer[]) => ({
       id,
       size: data.length,
       chunks: Math.max(1, Math.ceil(data.length / 8388608)),
-      sha256: state.corruptSha ? sha(Buffer.from("other")) : sha(data),
+      sha256: parts
+        ? compositeSha256(
+            (state.corruptSha ? [Buffer.from("other"), ...parts.slice(1)] : parts).map(sha),
+          )
+        : state.corruptSha
+          ? sha(Buffer.from("other"))
+          : sha(data),
       public: false,
       state: state.pending ? "pending" : "success",
     });
@@ -116,6 +134,7 @@ async function mockChunkproxy(partSize = 64 * 1024) {
         state.failTimes--;
         return json(503, { error: "unavailable" });
       }
+      state.onPart?.(n);
       const expected = Math.min(partSize, upload.size - n * partSize);
       if (body.length !== expected) return json(400, { error: "bad part length" });
       upload.parts.set(n, body);
@@ -124,11 +143,12 @@ async function mockChunkproxy(partSize = 64 * 1024) {
     if (req.method === "POST" && m[4]) {
       const count = Math.ceil(upload.size / partSize);
       if (upload.parts.size !== count) return json(400, { error: "missing parts" });
-      const data = Buffer.concat([...Array(count).keys()].map((i) => upload.parts.get(i)!));
-      const id = `file-${++next}`;
+      const parts = [...Array(count).keys()].map((i) => upload.parts.get(i)!);
+      const data = Buffer.concat(parts);
+      const id = upload.completed ?? `file-${++next}`;
+      upload.completed = id;
       files.set(id, { name: upload.name, data });
-      uploads.delete(m[1]!);
-      return json(200, fileInfo(id, data));
+      return json(200, fileInfo(id, data, parts));
     }
     if (req.method === "DELETE" && !m[2] && !m[4]) {
       upload.aborted = true;
@@ -289,8 +309,20 @@ test("backs up original front and rear files; large files become verified volume
     assert.ok(front.equals(f.frontData));
     assert.ok(remote(rows[3]!.remote_id).equals(f.rearData));
     for (const r of rows) {
-      assert.equal(r.remote_sha256, r.sha256);
+      assert.equal(r.verified, 1);
       assert.equal(r.upload_secret, null);
+    }
+    // 單次上傳核對整檔 SHA-256；分段上傳核對各段 SHA-256 的組合（與服務端算法相同）。
+    assert.equal(rows[3]!.remote_sha256, rows[3]!.sha256);
+    const partHashes = (data: Buffer) =>
+      [...Array(Math.ceil(data.length / (64 * 1024))).keys()].map((i) =>
+        sha(data.subarray(i * 64 * 1024, (i + 1) * 64 * 1024)),
+      );
+    for (const r of rows.slice(0, 3)) {
+      const volume = f.frontData.subarray(r.byte_offset, r.byte_offset + r.byte_length);
+      assert.equal(r.remote_sha256, compositeSha256(partHashes(volume)));
+      assert.equal(r.part_sha256, partHashes(volume).join(""));
+      assert.equal(r.sha256, sha(volume));
     }
     assert.match(
       rows[0]!.remote_name,
@@ -790,6 +822,78 @@ test("during a DNS outage the same item is retried first instead of reading ever
     dnsDown = false;
     await f.drain();
     assert.ok(f.rows().every((r) => r.status === "done"));
+  } finally {
+    await f.close();
+  }
+});
+
+test("an upload begun without recorded part hashes is verified by re-reading the local file", async () => {
+  const f = await fixture({ volumeMax: 10 * 1024 * 1024 });
+  try {
+    await f.service.enqueue([f.tripId], "front", 1);
+    f.mock.state.failPart = 4;
+    f.mock.state.failTimes = 3;
+    f.advance(1000);
+    await f.service.tick();
+    const partial = f.rows()[0]!;
+    assert.equal(partial.parts_done, 4);
+    // 由舊版開始的上傳沒有各段雜湊。
+    f.ctx.db.prepare("UPDATE cloud_backups SET part_sha256=NULL WHERE id=?").run(partial.id);
+    await f.drain();
+    const row = f.rows()[0]!;
+    assert.equal(row.status, "done");
+    assert.equal(row.verified, 1);
+    assert.match(row.remote_sha256, /^[0-9a-f]{64}-11$/);
+    assert.ok(
+      f.service.events(row.id).some((e) => e.stage === "verify"),
+      "re-read the local file to check every part",
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test("a checksum mismatch on a finished split upload is retried without uploading again", async () => {
+  const f = await fixture({ volumeMax: 10 * 1024 * 1024 });
+  try {
+    await f.service.enqueue([f.tripId], "front", 1);
+    f.mock.state.corruptSha = true;
+    f.advance(1000);
+    await f.service.tick();
+    const failed = f.rows()[0]!;
+    assert.equal(failed.status, "failed");
+    assert.match(failed.message, /SHA-256/);
+    assert.ok(failed.upload_id, "the finished upload session is kept");
+    f.mock.state.corruptSha = false;
+    const before = f.mock.log.length;
+    assert.equal(f.service.retry(failed.id), 1);
+    await f.drain();
+    const row = f.rows()[0]!;
+    assert.equal(row.status, "done");
+    assert.equal(row.verified, 1);
+    assert.deepEqual(f.mock.log.slice(before), [`POST /uploads/${failed.upload_id}/complete`]);
+    assert.equal(row.attempts, 1, "no second upload credit");
+    assert.ok(f.mock.files.get(row.remote_id)!.data.equals(f.frontData));
+  } finally {
+    await f.close();
+  }
+});
+
+test("footage changed while its split upload was running is not marked as backed up", async () => {
+  const f = await fixture({ volumeMax: 10 * 1024 * 1024 });
+  try {
+    await f.service.enqueue([f.tripId], "front", 1);
+    // 傳到第 7 段時檔案被改（修改時間變了）；送出的各段仍與服務端一致，但不能算備份完成。
+    const later = new Date(Date.now() + 60_000);
+    f.mock.state.onPart = (n) => {
+      if (n === 6) fsSync.utimesSync(f.front, later, later);
+    };
+    f.advance(1000);
+    await f.service.tick();
+    const row = f.rows()[0]!;
+    assert.equal(row.status, "failed");
+    assert.match(row.message, /備份途中被變更/);
+    assert.equal(row.verified, 0);
   } finally {
     await f.close();
   }

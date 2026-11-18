@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.10.2 — 2026-11-19
+
+- Verify split uploads against the checksum the storage service actually reports for them: SHA-256 over the concatenated SHA-256 digests of the parts, followed by `-<part count>` (single uploads still report the whole-file SHA-256). Every finished split upload was being marked "checksum does not match" even though the stored file was intact.
+- Hash each part from the bytes as they are sent and keep the digests with the upload, so verification needs no extra read; uploads started by an older version are checked by re-reading the local file part by part.
+- Retrying a volume whose upload had finished calls "complete" again on the same upload instead of uploading it a second time, so it uses no further credit.
+- Do not count a split upload as backed up if the local video changed while it was being sent.
+- Record whether each backup was verified (`verified`) instead of inferring it from equal hashes.
+
 ## 2.10.1 — 2026-11-19
 
 - Cloud backup no longer gives up after five seconds when DNS or connecting is slow. Node's built-in HTTP agent applies its 5-second keep-alive timeout before a connection is established, so a slow lookup was reported as "the storage service did not respond for a long time"; requests now set their own timeouts (30 seconds to connect, 10 minutes of silence once connected).

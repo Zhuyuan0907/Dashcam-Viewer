@@ -22,6 +22,7 @@ import { SecretVault } from "../util/secret-vault.js";
 import {
   ChunkproxyClient,
   ChunkproxyError,
+  compositeSha256,
   DEFAULT_ENDPOINT,
   SINGLE_MAX_BYTES,
   VOLUME_MAX_BYTES,
@@ -68,6 +69,10 @@ export interface BackupRow {
   remote_sha256: string | null;
   remote_state: string | null;
   remote_checks: number;
+  /** 分段上傳各段的 SHA-256（hex 依序串接）；用來核對服務端的組合校驗碼。 */
+  part_sha256: string | null;
+  /** 1 = 完成時服務回報的校驗碼與本機相符。 */
+  verified: number;
   attempts: number;
   retry_count: number;
   not_before: number;
@@ -116,6 +121,7 @@ CREATE TABLE IF NOT EXISTS cloud_backups(id INTEGER PRIMARY KEY AUTOINCREMENT, k
  status TEXT NOT NULL DEFAULT 'queued', message TEXT NOT NULL DEFAULT '', uploaded_bytes INTEGER NOT NULL DEFAULT 0,
  upload_id TEXT, upload_secret TEXT, part_size INTEGER, part_count INTEGER, parts_done INTEGER NOT NULL DEFAULT 0,
  remote_id TEXT, remote_sha256 TEXT, remote_state TEXT, remote_checks INTEGER NOT NULL DEFAULT 0,
+ part_sha256 TEXT, verified INTEGER NOT NULL DEFAULT 0,
  attempts INTEGER NOT NULL DEFAULT 0, retry_count INTEGER NOT NULL DEFAULT 0, not_before INTEGER NOT NULL DEFAULT 0,
  created_by INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, completed_at INTEGER);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_backups_unique ON cloud_backups(kind,trip_id,camera,source_version,volume) WHERE status != 'cancelled';
@@ -291,6 +297,20 @@ export class CloudBackupService {
     this.log = opts.log;
     this.clientOptions = opts.client ?? {};
     ctx.db.exec(SCHEMA);
+    // 2.10.1 以前建立的資料表補上欄位；當時只有整檔 SHA-256 相同才算核對過。
+    const columns = new Set(
+      (ctx.db.prepare("PRAGMA table_info(cloud_backups)").all() as { name: string }[]).map(
+        (c) => c.name,
+      ),
+    );
+    if (!columns.has("part_sha256"))
+      ctx.db.exec("ALTER TABLE cloud_backups ADD COLUMN part_sha256 TEXT");
+    if (!columns.has("verified")) {
+      ctx.db.exec("ALTER TABLE cloud_backups ADD COLUMN verified INTEGER NOT NULL DEFAULT 0");
+      ctx.db.exec(
+        "UPDATE cloud_backups SET verified=1 WHERE status='done' AND remote_sha256 IS NOT NULL AND remote_sha256=sha256",
+      );
+    }
     const interrupted = ctx.db
       .prepare("SELECT id FROM cloud_backups WHERE status='uploading'")
       .all() as { id: number }[];
@@ -1004,6 +1024,34 @@ export class CloudBackupService {
     this.enqueueDatabase(null, "自動排程");
   }
 
+  /**
+   * 核對服務完成時回報的校驗碼。單次上傳回報整個檔案的 SHA-256；分段上傳回報各段 SHA-256 的組合
+   * （compositeSha256）。各段雜湊在上傳時就記下；缺的（例如由舊版開始的上傳）從本機原檔逐段補算。
+   */
+  private async matchesRemote(id: number, reported: string, signal: AbortSignal): Promise<boolean> {
+    const row = this.get(id)!;
+    if (reported === row.sha256) return true;
+    const composite = /^[0-9a-f]{64}-(\d+)$/.exec(reported);
+    if (!composite || !row.part_size || !row.part_count || Number(composite[1]) !== row.part_count)
+      return false;
+    let hashes: string[] =
+      row.part_sha256?.length === row.part_count * 64 ? row.part_sha256.match(/.{64}/g)! : [];
+    if (!hashes.length) {
+      this.note(id, "重新讀取本機檔案，逐段核對雲端校驗碼");
+      this.event(id, "verify", "重新讀取本機檔案，逐段核對雲端校驗碼");
+      for (let n = 0; n < row.part_count; n++) {
+        const start = n * row.part_size;
+        const length = Math.min(row.part_size, row.byte_length - start);
+        hashes.push(
+          await hashSlice(row.source_path, row.byte_offset + start, length, signal, (done) =>
+            this.progress(id, "hashing", start + done, row.byte_length),
+          ),
+        );
+      }
+    }
+    return compositeSha256(hashes) === reported;
+  }
+
   /** 完成時伺服器若回報仍在處理，稍後盡力再查一次（上傳金鑰可能沒有查詢權限，查不到就保留原狀）。 */
   private async checkRemote(): Promise<void> {
     const row = this.ctx.db
@@ -1160,7 +1208,7 @@ export class CloudBackupService {
             signal,
           );
           db.prepare(
-            "UPDATE cloud_backups SET upload_id=?,upload_secret=?,part_size=?,part_count=?,parts_done=0,uploaded_bytes=0 WHERE id=?",
+            "UPDATE cloud_backups SET upload_id=?,upload_secret=?,part_size=?,part_count=?,parts_done=0,uploaded_bytes=0,part_sha256='' WHERE id=?",
           ).run(
             upload.id,
             this.vault.seal(upload.upload_token, `cloud:upload:${row.id}`),
@@ -1178,9 +1226,10 @@ export class CloudBackupService {
         for (let n = row.parts_done; n < upload.part_count; n++) {
           const start = n * upload.part_size;
           const length = Math.min(upload.part_size, row.byte_length - start);
+          let digest = "";
           for (let attempt = 1; ; attempt++) {
             try {
-              await client.putPart(
+              digest = await client.putPart(
                 upload,
                 n,
                 { file: row.source_path, start: row.byte_offset + start, length },
@@ -1202,9 +1251,11 @@ export class CloudBackupService {
               await delay(this.retryDelayMs * attempt * attempt, signal);
             }
           }
+          // 各段雜湊依序接上；中間缺了（例如舊版開始的上傳）就整串作廢，完成時改從原檔補算。
           db.prepare(
-            "UPDATE cloud_backups SET parts_done=?,uploaded_bytes=?,updated_at=? WHERE id=?",
-          ).run(n + 1, start + length, this.clock(), row.id);
+            `UPDATE cloud_backups SET parts_done=?,uploaded_bytes=?,updated_at=?,
+             part_sha256=CASE WHEN length(COALESCE(part_sha256,''))=? THEN COALESCE(part_sha256,'')||? ELSE NULL END WHERE id=?`,
+          ).run(n + 1, start + length, this.clock(), n * 64, digest, row.id);
           if (n + 1 === upload.part_count || (n + 1) % 16 === 0)
             this.event(row.id, "transfer", `已上傳 ${n + 1} / ${upload.part_count} 段`);
         }
@@ -1215,15 +1266,22 @@ export class CloudBackupService {
         throw new BackupFailure(
           `儲存服務回報的大小（${remote.size}）與本機（${row.byte_length}）不符，請重試`,
         );
-      if (remote.sha256 && remote.sha256 !== row.sha256)
+      if (remote.sha256 && !(await this.matchesRemote(row.id, remote.sha256, signal)))
         throw new BackupFailure("儲存服務回報的 SHA-256 與本機不符，請重試");
+      // 分段上傳的組合校驗碼是由送出的內容算的：再確認原檔在上傳期間沒有被改過。
+      const after = await fs.stat(row.source_path).catch(() => null);
+      if (
+        row.kind === "trip" &&
+        (!after || after.size !== row.source_size || Math.abs(after.mtimeMs - row.source_mtime) > 1)
+      )
+        throw new BackupFailure("本機影片在備份途中被變更（例如裁剪），請重新加入備份");
       const now = this.clock();
       this.failures = 0;
       this.waiting = null;
       db.prepare(
-        `UPDATE cloud_backups SET remote_id=?,remote_sha256=?,remote_state=?,uploaded_bytes=byte_length,upload_id=NULL,
-         upload_secret=NULL,retry_count=0,completed_at=? WHERE id=?`,
-      ).run(remote.id, remote.sha256, remote.state, now, row.id);
+        `UPDATE cloud_backups SET remote_id=?,remote_sha256=?,remote_state=?,verified=?,uploaded_bytes=byte_length,
+         upload_id=NULL,upload_secret=NULL,retry_count=0,completed_at=? WHERE id=?`,
+      ).run(remote.id, remote.sha256, remote.state, remote.sha256 ? 1 : 0, now, row.id);
       this.update(
         row.id,
         "done",
@@ -1266,7 +1324,7 @@ export class CloudBackupService {
       ) {
         if (error.reason === "not_found")
           db.prepare(
-            "UPDATE cloud_backups SET upload_id=NULL,upload_secret=NULL,part_size=NULL,part_count=NULL,parts_done=0,uploaded_bytes=0 WHERE id=?",
+            "UPDATE cloud_backups SET upload_id=NULL,upload_secret=NULL,part_size=NULL,part_count=NULL,parts_done=0,uploaded_bytes=0,part_sha256=NULL WHERE id=?",
           ).run(row.id);
         const message =
           error.reason === "not_found" ? "雲端的分段上傳已過期，將重新上傳這一份" : error.message;

@@ -31,7 +31,7 @@ function dto(row: BackupRow) {
     remote_name: row.remote_name,
     remote_id: row.remote_id,
     sha256: row.sha256,
-    verified: !!row.remote_sha256 && row.remote_sha256 === row.sha256,
+    verified: !!row.verified,
     remote_state: row.remote_state,
     attempts: row.attempts,
     not_before: row.not_before,
